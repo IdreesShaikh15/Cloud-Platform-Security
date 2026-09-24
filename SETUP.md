@@ -66,7 +66,7 @@ Make sure kubectl points at the new cluster: `kubectl config current-context` sh
 | `429 Too Many Requests` from Docker Hub during build | `docker login`, or pull the base image via the mirror: `docker pull mirror.gcr.io/library/python:3.11-slim && docker tag mirror.gcr.io/library/python:3.11-slim python:3.11-slim` |
 | Pods stuck in `ErrImageNeverPull` / `ImagePullBackOff` | re-run `scripts/build-images.sh` (images must be loaded into **every** node) |
 | Pods `Pending` with "didn't match node selector" | nodes not labelled: re-run the labelling loop at the end of `setup-cluster.sh` |
-| Agents log `send to X failed: UNAVAILABLE` right after deploy | normal for a few seconds while peers start |
+| Agents log `peer link to X DOWN` right after deploy | normal for a few seconds while peers start; if it persists, check `kubectl -n resilience get endpoints` and that port 50051 is listening in the agent pod |
 | Isolation "doesn't block traffic" | Calico isn't enforcing: `kubectl -n kube-system get pods -l k8s-app=calico-node` must all be Running |
 | `pip install` fails inside `docker build` behind a corporate proxy | `docker build --build-arg HTTPS_PROXY=$HTTPS_PROXY --network host ...` |
 | Changed `apps/src/*` | re-run `scripts/build-images.sh` (it regenerates the hash manifest), then `kubectl apply -f k8s/generated/known-good-hashes.json` and restart the agents |

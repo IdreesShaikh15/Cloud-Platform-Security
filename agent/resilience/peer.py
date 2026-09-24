@@ -114,6 +114,7 @@ class PeerClient:
         self._lock = threading.Lock()
         self.last_ok: Dict[str, float] = {}
         self.last_err: Dict[str, str] = {}
+        self._down: Dict[str, bool] = {}
 
     def _send(self, nid: str, env: pb.SignedEnvelope):
         stub = self.stubs[nid]
@@ -122,13 +123,21 @@ class PeerClient:
             ack = call(env, timeout=self.timeout)
             with self._lock:
                 self.last_ok[nid] = time.time()
+                was_down = self._down.pop(nid, False)
+            if was_down:
+                log.info("peer link to %s restored", nid)
             if not ack.accepted:
                 log.debug("peer %s rejected our %s: %s", nid, env.kind, ack.reason)
             return ack
         except grpc.RpcError as exc:
             with self._lock:
                 self.last_err[nid] = f"{exc.code().name}: {exc.details()}"
-            log.debug("send to %s failed: %s", nid, exc)
+                newly_down = not self._down.get(nid)
+                self._down[nid] = True
+            # Warn once per outage; an unreachable peer means our evidence and
+            # votes are silently lost, so it must be visible in the logs.
+            if newly_down:
+                log.warning("peer link to %s DOWN (%s): %s", nid, env.kind, self.last_err[nid])
             return None
 
     def broadcast(self, env: pb.SignedEnvelope, wait: bool = False):

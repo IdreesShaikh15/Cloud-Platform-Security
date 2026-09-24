@@ -32,13 +32,28 @@ def _loop(node, tick_s: float):
         time.sleep(max(0.05, tick_s - (time.time() - t0)))
 
 
-def run_agent():
+def wire_agent(cfg, node_id, signer, registry, tls, telemetry, backend, metrics,
+               compromise, bind: str):
+    """Build an agent and attach its gRPC server + client.
+
+    The server is stored on the agent (agent.server): grpcio stops a server
+    as soon as its Python object is garbage-collected, so a discarded
+    `PeerServer(...).start()` silently stops accepting peer connections."""
     from .agent import ResilienceAgent
+    from .peer import PeerClient, PeerServer
+
+    agent = ResilienceAgent(cfg, node_id, signer, registry, telemetry, backend, metrics, compromise)
+    agent.server = PeerServer(node_id, bind, tls, cfg.node_of_agent, agent.on_envelope).start()
+    agent.transport = PeerClient(node_id, cfg.nodes, tls)
+    return agent
+
+
+def run_agent():
     from .config import load_cluster_config
     from .crypto import KeyRegistry, Signer
     from .metrics import MetricsRecorder
     from .monitoring import HttpTelemetrySource
-    from .peer import PeerClient, PeerServer, TlsMaterial
+    from .peer import TlsMaterial
     from .response import K8sBackend
     from .simhooks import CompromiseSource
     from .status_server import serve_status
@@ -50,12 +65,11 @@ def run_agent():
     tls = TlsMaterial.from_dir(os.environ.get("TLS_DIR", "/etc/resilience/tls"))
     backend = K8sBackend(cfg.healthcare_namespace, cfg.resilience_namespace, cfg.known_good_image)
     metrics = MetricsRecorder(node_id, path=os.environ.get("METRICS_FILE", "/var/log/resilience/metrics.jsonl"))
-    agent = ResilienceAgent(cfg, node_id, signer, registry, HttpTelemetrySource(cfg), backend,
-                            metrics, CompromiseSource())
+    bind = os.environ.get("GRPC_BIND", "0.0.0.0:50051")
+    agent = wire_agent(cfg, node_id, signer, registry, tls, HttpTelemetrySource(cfg), backend,
+                       metrics, CompromiseSource(), bind)
     agent.resync_from_cluster()
-    PeerServer(node_id, os.environ.get("GRPC_BIND", "0.0.0.0:50051"), tls,
-               cfg.node_of_agent, agent.on_envelope).start()
-    agent.transport = PeerClient(node_id, cfg.nodes, tls)
+    logging.getLogger("agent").info("gRPC/mTLS peer server listening on %s", bind)
     serve_status(agent, int(os.environ.get("STATUS_PORT", "8081")))
     logging.getLogger("agent").info("agent %s up (quorum %d of %d)", node_id,
                                     cfg.quorum.quorum, cfg.quorum.n)
