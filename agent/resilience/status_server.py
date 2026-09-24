@@ -1,0 +1,47 @@
+"""Read-only HTTP status endpoint (consumed by the dashboard and metrics collector).
+
+GET /status   -> agent/controller state (JSON)
+GET /metrics  -> per-incident metric summary (JSON)
+GET /healthz  -> liveness
+There is deliberately no write endpoint.
+"""
+from __future__ import annotations
+
+import json
+import logging
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+log = logging.getLogger(__name__)
+
+
+def serve_status(node, port: int) -> ThreadingHTTPServer:
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def _send(self, code, obj):
+            body = json.dumps(obj, default=str).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            try:
+                if self.path.startswith("/status"):
+                    return self._send(200, node.status())
+                if self.path.startswith("/metrics"):
+                    return self._send(200, node.metrics_summary())
+                if self.path.startswith("/healthz"):
+                    return self._send(200, {"ok": True})
+                return self._send(404, {"error": "not found"})
+            except Exception as exc:  # never crash the agent because of the dashboard
+                log.exception("status handler failed")
+                return self._send(500, {"error": str(exc)})
+
+    srv = ThreadingHTTPServer(("0.0.0.0", port), Handler)
+    srv.daemon_threads = True
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv

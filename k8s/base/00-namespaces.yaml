@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: healthcare
+  labels: {app.kubernetes.io/part-of: cr-platform}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: resilience
+  labels: {app.kubernetes.io/part-of: cr-platform}

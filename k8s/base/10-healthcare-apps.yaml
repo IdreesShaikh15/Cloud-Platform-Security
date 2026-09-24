@@ -1,0 +1,220 @@
+# Healthcare workloads: one per resilience node (Minikube node labelled resilience.io/zone).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: patient-portal
+  namespace: healthcare
+  labels: {app: patient-portal, resilience.io/node: "A"}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}          # recovery must fully replace the compromised pod
+  selector: {matchLabels: {app: patient-portal}}
+  template:
+    metadata:
+      labels: {app: patient-portal, resilience.io/node: "A"}
+    spec:
+      nodeSelector: {resilience.io/zone: "a"}
+      containers:
+      - name: app
+        image: cr-healthcare-app:1.0
+        imagePullPolicy: IfNotPresent
+        ports: [{containerPort: 8080}]
+        env:
+        - {name: ROLE, value: "patient-portal"}
+        - {name: AUTH_URL, value: "http://auth-service:8080"}
+        - {name: RECORDS_URL, value: "http://records-api:8080"}
+        - {name: DATABASE_URL, value: "http://database:8080"}
+        - {name: PORTAL_URL, value: "http://patient-portal:8080"}
+        - name: POD_IP
+          valueFrom: {fieldRef: {fieldPath: status.podIP}}
+        - name: POD_NAME
+          valueFrom: {fieldRef: {fieldPath: metadata.name}}
+        readinessProbe:
+          httpGet: {path: /health, port: 8080}
+          periodSeconds: 2
+        resources:
+          requests: {cpu: 50m, memory: 64Mi}
+          limits: {cpu: 500m, memory: 256Mi}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: patient-portal, namespace: healthcare}
+spec:
+  selector: {app: patient-portal}
+  ports: [{port: 8080, targetPort: 8080}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: healthcare
+  labels: {app: auth-service, resilience.io/node: "B"}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}          # recovery must fully replace the compromised pod
+  selector: {matchLabels: {app: auth-service}}
+  template:
+    metadata:
+      labels: {app: auth-service, resilience.io/node: "B"}
+    spec:
+      nodeSelector: {resilience.io/zone: "b"}
+      containers:
+      - name: app
+        image: cr-healthcare-app:1.0
+        imagePullPolicy: IfNotPresent
+        ports: [{containerPort: 8080}]
+        env:
+        - {name: ROLE, value: "auth-service"}
+        - {name: AUTH_URL, value: "http://auth-service:8080"}
+        - {name: RECORDS_URL, value: "http://records-api:8080"}
+        - {name: DATABASE_URL, value: "http://database:8080"}
+        - {name: PORTAL_URL, value: "http://patient-portal:8080"}
+        - name: POD_IP
+          valueFrom: {fieldRef: {fieldPath: status.podIP}}
+        - name: POD_NAME
+          valueFrom: {fieldRef: {fieldPath: metadata.name}}
+        readinessProbe:
+          httpGet: {path: /health, port: 8080}
+          periodSeconds: 2
+        resources:
+          requests: {cpu: 50m, memory: 64Mi}
+          limits: {cpu: 500m, memory: 256Mi}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: auth-service, namespace: healthcare}
+spec:
+  selector: {app: auth-service}
+  ports: [{port: 8080, targetPort: 8080}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: records-api
+  namespace: healthcare
+  labels: {app: records-api, resilience.io/node: "C"}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}          # recovery must fully replace the compromised pod
+  selector: {matchLabels: {app: records-api}}
+  template:
+    metadata:
+      labels: {app: records-api, resilience.io/node: "C"}
+    spec:
+      nodeSelector: {resilience.io/zone: "c"}
+      containers:
+      - name: app
+        image: cr-healthcare-app:1.0
+        imagePullPolicy: IfNotPresent
+        ports: [{containerPort: 8080}]
+        env:
+        - {name: ROLE, value: "records-api"}
+        - {name: AUTH_URL, value: "http://auth-service:8080"}
+        - {name: RECORDS_URL, value: "http://records-api:8080"}
+        - {name: DATABASE_URL, value: "http://database:8080"}
+        - {name: PORTAL_URL, value: "http://patient-portal:8080"}
+        - name: POD_IP
+          valueFrom: {fieldRef: {fieldPath: status.podIP}}
+        - name: POD_NAME
+          valueFrom: {fieldRef: {fieldPath: metadata.name}}
+        readinessProbe:
+          httpGet: {path: /health, port: 8080}
+          periodSeconds: 2
+        resources:
+          requests: {cpu: 50m, memory: 64Mi}
+          limits: {cpu: 500m, memory: 256Mi}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: records-api, namespace: healthcare}
+spec:
+  selector: {app: records-api}
+  ports: [{port: 8080, targetPort: 8080}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: database
+  namespace: healthcare
+  labels: {app: database, resilience.io/node: "D"}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}          # recovery must fully replace the compromised pod
+  selector: {matchLabels: {app: database}}
+  template:
+    metadata:
+      labels: {app: database, resilience.io/node: "D"}
+    spec:
+      nodeSelector: {resilience.io/zone: "d"}
+      containers:
+      - name: app
+        image: cr-healthcare-app:1.0
+        imagePullPolicy: IfNotPresent
+        ports: [{containerPort: 8080}]
+        env:
+        - {name: ROLE, value: "database"}
+        - {name: AUTH_URL, value: "http://auth-service:8080"}
+        - {name: RECORDS_URL, value: "http://records-api:8080"}
+        - {name: DATABASE_URL, value: "http://database:8080"}
+        - {name: PORTAL_URL, value: "http://patient-portal:8080"}
+        - name: POD_IP
+          valueFrom: {fieldRef: {fieldPath: status.podIP}}
+        - name: POD_NAME
+          valueFrom: {fieldRef: {fieldPath: metadata.name}}
+        readinessProbe:
+          httpGet: {path: /health, port: 8080}
+          periodSeconds: 2
+        resources:
+          requests: {cpu: 50m, memory: 64Mi}
+          limits: {cpu: 500m, memory: 256Mi}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: database, namespace: healthcare}
+spec:
+  selector: {app: database}
+  ports: [{port: 8080, targetPort: 8080}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: client
+  namespace: healthcare
+  labels: {app: client}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}          # recovery must fully replace the compromised pod
+  selector: {matchLabels: {app: client}}
+  template:
+    metadata:
+      labels: {app: client, resilience.io/node: "client"}
+    spec:
+      nodeSelector: {resilience.io/zone: "a"}
+      containers:
+      - name: app
+        image: cr-healthcare-app:1.0
+        imagePullPolicy: IfNotPresent
+        ports: [{containerPort: 8080}]
+        env:
+        - {name: ROLE, value: "client"}
+        - {name: AUTH_URL, value: "http://auth-service:8080"}
+        - {name: RECORDS_URL, value: "http://records-api:8080"}
+        - {name: DATABASE_URL, value: "http://database:8080"}
+        - {name: PORTAL_URL, value: "http://patient-portal:8080"}
+        - name: POD_IP
+          valueFrom: {fieldRef: {fieldPath: status.podIP}}
+        - name: POD_NAME
+          valueFrom: {fieldRef: {fieldPath: metadata.name}}
+        readinessProbe:
+          httpGet: {path: /health, port: 8080}
+          periodSeconds: 2
+        resources:
+          requests: {cpu: 50m, memory: 64Mi}
+          limits: {cpu: 500m, memory: 256Mi}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: client, namespace: healthcare}
+spec:
+  selector: {app: client}
+  ports: [{port: 8080, targetPort: 8080}]

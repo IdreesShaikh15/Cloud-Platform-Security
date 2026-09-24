@@ -1,0 +1,4 @@
+grpcio==1.84.0
+protobuf==7.36.2
+cryptography==50.0.1
+kubernetes==36.0.3

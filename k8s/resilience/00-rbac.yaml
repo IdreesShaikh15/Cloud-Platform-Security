@@ -1,0 +1,40 @@
+# Least-privilege identity for agents and the baseline controller.
+# They may only: manage NetworkPolicies + patch Deployments in `healthcare`,
+# and read ConfigMaps (the attack marker) in `resilience`.
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: resilience-agent, namespace: resilience}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: resilience-actuator, namespace: healthcare}
+rules:
+- apiGroups: ["networking.k8s.io"]
+  resources: ["networkpolicies"]
+  verbs: ["get", "list", "create", "update", "patch", "delete"]
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "patch"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: resilience-actuator, namespace: healthcare}
+subjects: [{kind: ServiceAccount, name: resilience-agent, namespace: resilience}]
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: resilience-actuator}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: resilience-reader, namespace: resilience}
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: resilience-reader, namespace: resilience}
+subjects: [{kind: ServiceAccount, name: resilience-agent, namespace: resilience}]
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: resilience-reader}

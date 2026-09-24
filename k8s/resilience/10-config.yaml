@@ -1,0 +1,74 @@
+# Shared configuration for all agents, the baseline controller and the dashboard.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resilience-config
+  namespace: resilience
+data:
+  config.json: |
+    {
+      "healthcare_namespace": "healthcare",
+      "resilience_namespace": "resilience",
+      "known_good_image": "cr-healthcare-app:known-good",
+      "process_allowlist": [
+        "python",
+        "python3"
+      ],
+      "client_stats_url": "http://client.healthcare.svc.cluster.local:8080/stats",
+      "timers": {
+        "tick_s": 1.0,
+        "evidence_window_s": 30,
+        "contradiction_grace_s": 8,
+        "executor_stagger_s": 3,
+        "stage_dwell_s": 10,
+        "validate_timeout_s": 90,
+        "max_clock_skew_s": 15
+      },
+      "trust": {
+        "agent_decay_per_s": 2.5,
+        "agent_recover_per_s": 0.5,
+        "invalid_message_penalty": 20,
+        "vote_min_trust": 40,
+        "suspect_below": 50,
+        "workload_decay_per_s": 10,
+        "workload_recover_per_s": 2
+      },
+      "quorum": {
+        "n": 4,
+        "f": 1,
+        "evidence_min_conf": 0.3,
+        "local_min_conf": 0.5,
+        "score_threshold": 0.6,
+        "diversity_bonus": 0.15
+      },
+      "nodes": {
+        "A": {
+          "agent_name": "agent-a",
+          "agent_addr": "agent-a.resilience.svc.cluster.local:50051",
+          "status_url": "http://agent-a.resilience.svc.cluster.local:8081/status",
+          "workload": "patient-portal",
+          "telemetry_url": "http://patient-portal.healthcare.svc.cluster.local:8080"
+        },
+        "B": {
+          "agent_name": "agent-b",
+          "agent_addr": "agent-b.resilience.svc.cluster.local:50051",
+          "status_url": "http://agent-b.resilience.svc.cluster.local:8081/status",
+          "workload": "auth-service",
+          "telemetry_url": "http://auth-service.healthcare.svc.cluster.local:8080"
+        },
+        "C": {
+          "agent_name": "agent-c",
+          "agent_addr": "agent-c.resilience.svc.cluster.local:50051",
+          "status_url": "http://agent-c.resilience.svc.cluster.local:8081/status",
+          "workload": "records-api",
+          "telemetry_url": "http://records-api.healthcare.svc.cluster.local:8080"
+        },
+        "D": {
+          "agent_name": "agent-d",
+          "agent_addr": "agent-d.resilience.svc.cluster.local:50051",
+          "status_url": "http://agent-d.resilience.svc.cluster.local:8081/status",
+          "workload": "database",
+          "telemetry_url": "http://database.healthcare.svc.cluster.local:8080"
+        }
+      }
+    }

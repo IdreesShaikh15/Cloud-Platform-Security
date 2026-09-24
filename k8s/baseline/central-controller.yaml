@@ -1,0 +1,41 @@
+# Centralized baseline (spec section 9). Deploy INSTEAD of the agents:
+#   scripts/switch-mode.sh baseline
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: central-controller
+  namespace: resilience
+  labels: {app: central-controller}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: central-controller}}
+  template:
+    metadata:
+      labels: {app: central-controller}
+    spec:
+      serviceAccountName: resilience-agent
+      containers:
+      - name: controller
+        image: cr-agent:1.0
+        imagePullPolicy: IfNotPresent
+        args: ["baseline"]
+        ports: [{containerPort: 8081, name: status}]
+        readinessProbe:
+          httpGet: {path: /healthz, port: 8081}
+          periodSeconds: 3
+        volumeMounts:
+        - {name: config, mountPath: /etc/resilience/config.json, subPath: config.json}
+        - {name: hashes, mountPath: /etc/resilience/hashes}
+        - {name: logs, mountPath: /var/log/resilience}
+      volumes:
+      - {name: config, configMap: {name: resilience-config}}
+      - {name: hashes, configMap: {name: known-good-hashes}}
+      - {name: logs, emptyDir: {}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: central-controller, namespace: resilience}
+spec:
+  selector: {app: central-controller}
+  ports: [{name: status, port: 8081, targetPort: 8081}]

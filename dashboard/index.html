@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Resilience Status</title>
+<style>
+  :root { --bg:#0f1419; --card:#1a2129; --fg:#e6edf3; --mut:#8b949e; --ok:#3fb950; --warn:#d29922; --bad:#f85149; --info:#58a6ff; }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--fg); font:14px/1.4 system-ui, sans-serif; }
+  h1 { font-size:18px; margin:0 0 4px; } .mut { color:var(--mut); font-size:12px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:12px; margin:12px 0; }
+  .card { background:var(--card); border-radius:8px; padding:12px; border-left:4px solid var(--ok); }
+  .card.ISOLATED,.card.RECOVERING { border-color:var(--bad); } .card.VALIDATING,.card.REINTEGRATING { border-color:var(--warn); }
+  .row { display:flex; justify-content:space-between; margin:3px 0; }
+  .bar { height:8px; background:#30363d; border-radius:4px; overflow:hidden; margin:2px 0 6px; }
+  .bar > i { display:block; height:100%; }
+  .stages { display:flex; gap:2px; margin:6px 0; } .stages span { flex:1; font-size:9px; text-align:center; padding:2px 0; background:#30363d; border-radius:3px; }
+  .stages span.on { background:var(--warn); color:#000; } .stages span.done { background:#2e4d36; }
+  .tag { font-size:11px; padding:1px 6px; border-radius:10px; background:#30363d; }
+  .tag.bad { background:var(--bad); color:#000; }
+  table { width:100%; border-collapse:collapse; font-size:12px; } td,th { text-align:left; padding:3px 6px; border-bottom:1px solid #30363d; }
+  section { background:var(--card); border-radius:8px; padding:12px; margin-top:12px; overflow-x:auto; }
+</style>
+</head>
+<body>
+<h1>Distributed Cyber-Resilience Platform</h1>
+<div class="mut" id="sub">loading...</div>
+<div class="grid" id="nodes"></div>
+<section><b>Recent quorum decisions</b><table id="dec"></table></section>
+<section><b>Pending votes</b> <span class="mut">(need 3 of 4 eligible signed votes)</span><table id="pend"></table></section>
+<section><b>Rejected messages</b> <span class="mut">(signature / mTLS identity failures)</span><table id="rej"></table></section>
+<section><b>Incident metrics</b> <span class="mut">(seconds since injection; min across agents)</span><table id="met"></table></section>
+<script>
+const STAGES = ["QUARANTINE","RESTRICTED","MONITORED","PEER_VALIDATED","FULL"];
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const t = x => x ? new Date(x*1000).toLocaleTimeString() : "-";
+const col = v => v == null ? "#30363d" : v >= 70 ? "var(--ok)" : v >= 40 ? "var(--warn)" : "var(--bad)";
+const bar = v => `<div class="bar"><i style="width:${v ?? 0}%;background:${col(v)}"></i></div>`;
+function stages(n) {
+  if (n.phase === "HEALTHY") return "";
+  const i = STAGES.indexOf(n.stage);
+  return `<div class="stages">${STAGES.map((s,j)=>`<span class="${n.phase==='REINTEGRATING'&&j===i?'on':(n.phase==='REINTEGRATING'&&j<i?'done':'')}">${s.replace('_',' ')}</span>`).join("")}</div>`;
+}
+async function refresh() {
+  try {
+    const s = await (await fetch("api/state")).json();
+    document.getElementById("sub").textContent = `mode: ${s.mode} · updated ${new Date().toLocaleTimeString()}` + (s.baseline ? " · centralized baseline running" : "");
+    document.getElementById("nodes").innerHTML = Object.entries(s.nodes).map(([id,n]) => `
+      <div class="card ${n.phase}">
+        <div class="row"><b>Node ${id} · ${esc(n.workload)}</b><span class="tag">${n.phase}</span></div>
+        ${stages(n)}
+        <div class="row"><span>workload trust</span><span>${n.workload_trust ?? "-"}</span></div>${bar(n.workload_trust)}
+        <div class="row"><span>agent trust (peers' median)</span><span>${n.agent_trust ?? "-"}
+          ${n.agent_trust != null && n.agent_trust < 50 ? '<span class="tag bad">SUSPECT</span>' : ''}</span></div>${bar(n.agent_trust)}
+        <div class="mut">views: ${Object.entries(n.agent_trust_views||{}).map(([p,v])=>`${p}:${v}`).join(" ")}
+          ${n.agent_up ? "" : " · <b style='color:var(--bad)'>agent unreachable</b>"}
+          ${n.agent_compromised_sim ? ` · <b style='color:var(--bad)'>sim: ${esc(n.agent_compromised_sim)}</b>` : ""}</div>
+        <div class="mut">W(T)=${n.score ? n.score.W : "-"} ${(n.detections||[]).map(d=>`· ${d.type} ${d.confidence}`).join(" ")}</div>
+        <div class="mut">last decision: ${n.last_decision ? `${n.last_decision.action} ${n.last_decision.stage||""} by ${n.last_decision.voters.join(",")} @ ${t(n.last_decision.t)}` : "none"}</div>
+      </div>`).join("");
+    document.getElementById("dec").innerHTML = "<tr><th>time</th><th>action</th><th>target</th><th>epoch</th><th>stage</th><th>signed by</th></tr>" +
+      s.decisions.map(d => `<tr><td>${t(d.t)}</td><td>${d.action}</td><td>${d.target}</td><td>${d.epoch}</td><td>${esc(d.stage)}</td><td>${d.voters.join(", ")}</td></tr>`).join("");
+    document.getElementById("pend").innerHTML = "<tr><th>proposal</th><th>voters so far</th></tr>" +
+      Object.entries(s.pending_votes).map(([k,v]) => `<tr><td>${esc(k)}</td><td>${v.join(", ")} (${v.length}/3)</td></tr>`).join("");
+    document.getElementById("rej").innerHTML = "<tr><th>time</th><th>from (mTLS)</th><th>claimed</th><th>reason</th><th>seen by</th></tr>" +
+      s.rejections.map(r => `<tr><td>${t(r.t)}</td><td>${esc(r.from)}</td><td>${esc(r.claimed_signer)}</td><td>${esc(r.reason)}</td><td>${r.seen_by}</td></tr>`).join("");
+  } catch (e) { document.getElementById("sub").textContent = "dashboard backend unreachable: " + e; }
+}
+async function refreshMetrics() {
+  try {
+    const rows = await (await fetch("api/metrics")).json();
+    const by = {};
+    for (const r of rows) { const k = r.incident; (by[k] ||= []).push(r); }
+    const keys = ["ttd_s","tti_s","ttr_s","ttv_s","ttf_s","trust_recovery_s","time_to_flag_s"];
+    const min = (rs,k) => { const v = rs.map(r=>r[k]).filter(x=>x!=null); return v.length ? Math.min(...v).toFixed(1) : "-"; };
+    document.getElementById("met").innerHTML = "<tr><th>scenario</th><th>target</th><th>mode</th><th>TTD</th><th>TTI</th><th>TTR</th><th>validated</th><th>full</th><th>trust-recovery</th><th>flag attacker</th><th>false isolation</th><th>availability</th></tr>" +
+      Object.values(by).map(rs => `<tr><td>${esc(rs[0].scenario)}</td><td>${rs[0].target}</td><td>${rs[0].mode}</td>${keys.map(k=>`<td>${min(rs,k)}</td>`).join("")}<td>${rs.some(r=>r.false_isolation)?'<b style="color:var(--bad)">YES</b>':'no'}</td><td>${rs.find(r=>r.availability!=null)?.availability ?? "-"}</td></tr>`).join("");
+  } catch (e) {}
+}
+refresh(); refreshMetrics(); setInterval(refresh, 1000); setInterval(refreshMetrics, 5000);
+</script>
+</body>
+</html>

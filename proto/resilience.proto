@@ -1,0 +1,79 @@
+// Peer-to-peer protocol between Resilience Agents.
+//
+// Every message that carries a claim (evidence or a vote) travels inside a
+// SignedEnvelope: the payload is the serialized Evidence/Vote, signed with the
+// originating agent's Ed25519 key. The transport itself is gRPC over mutual
+// TLS, so each connection is also bound to an X.509 identity (CN=agent-x).
+// A receiver accepts an envelope only if:
+//   1. the mTLS peer identity == envelope.signer        (no relaying/spoofing)
+//   2. the Ed25519 signature verifies under signer's key (non-repudiation)
+//   3. payload.origin / payload.voter == envelope.signer
+//   4. the timestamp is fresh and the id has not been seen (anti-replay)
+
+syntax = "proto3";
+
+package resilience.v1;
+
+enum ObservationType {
+  OBSERVATION_UNSPECIFIED = 0;
+  NETWORK = 1;
+  PROCESS = 2;
+  FILE_INTEGRITY = 3;
+  AUTH = 4;
+}
+
+message Evidence {
+  string evidence_id = 1;            // uuid4, used for de-duplication
+  string origin = 2;                 // node id of the sender, e.g. "A"
+  string target = 3;                 // node id of the observed workload
+  ObservationType observation = 4;
+  double confidence = 5;             // 0.0 - 1.0
+  double timestamp = 6;              // unix seconds (sender clock)
+  string summary = 7;                // human readable, e.g. "42 outbound conns"
+}
+
+enum ActionKind {
+  ACTION_UNSPECIFIED = 0;
+  CONTAIN = 1;                       // isolate + recover the target
+  VALIDATE = 2;                      // recovered target passed health+hash checks
+  ADVANCE_STAGE = 3;                 // move target to the next reintegration stage
+}
+
+message Vote {
+  string vote_id = 1;
+  string voter = 2;                  // node id of the voting agent
+  string target = 3;
+  ActionKind action = 4;
+  uint32 epoch = 5;                  // incident counter for the target
+  string stage = 6;                  // for ADVANCE_STAGE: the stage being entered
+  double score = 7;                  // voter's weighted evidence score (CONTAIN)
+  double timestamp = 8;
+  repeated string evidence_ids = 9;  // evidence the voter relied on
+}
+
+message SignedEnvelope {
+  string signer = 1;                 // node id whose key signed the payload
+  string kind = 2;                   // "evidence" | "vote" (domain separation)
+  bytes payload = 3;                 // serialized Evidence or Vote
+  bytes signature = 4;               // Ed25519(kind || 0x00 || payload)
+}
+
+message Ack {
+  bool accepted = 1;
+  string reason = 2;
+}
+
+message PingRequest {
+  string from_node = 1;
+}
+
+message PingReply {
+  string node = 1;
+  double timestamp = 2;
+}
+
+service ResiliencePeer {
+  rpc SubmitEvidence(SignedEnvelope) returns (Ack);
+  rpc SubmitVote(SignedEnvelope) returns (Ack);
+  rpc Ping(PingRequest) returns (PingReply);
+}

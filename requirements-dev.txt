@@ -1,0 +1,4 @@
+# Host-side tools: cert generation, tests, local simulator, metrics collector.
+-r agent/requirements.txt
+grpcio-tools==1.84.0
+pytest>=8

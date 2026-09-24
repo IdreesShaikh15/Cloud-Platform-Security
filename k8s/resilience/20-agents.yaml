@@ -1,0 +1,216 @@
+# Resilience agents A-D, each pinned to the same Minikube node as its workload.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-a
+  namespace: resilience
+  labels: {app: resilience-agent, resilience.io/node: "A"}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: resilience-agent, resilience.io/node: "A"}}
+  template:
+    metadata:
+      labels: {app: resilience-agent, resilience.io/node: "A"}
+    spec:
+      serviceAccountName: resilience-agent
+      nodeSelector: {resilience.io/zone: "a"}   # co-located with patient-portal
+      containers:
+      - name: agent
+        image: cr-agent:1.0
+        imagePullPolicy: IfNotPresent
+        args: ["agent"]
+        env:
+        - {name: NODE_ID, value: "A"}
+        ports: [{containerPort: 50051, name: grpc}, {containerPort: 8081, name: status}]
+        readinessProbe:
+          httpGet: {path: /healthz, port: 8081}
+          periodSeconds: 3
+        volumeMounts:
+        - {name: config, mountPath: /etc/resilience/config.json, subPath: config.json}
+        - {name: hashes, mountPath: /etc/resilience/hashes}
+        - {name: pubkeys, mountPath: /etc/resilience/pubkeys}
+        - {name: tls, mountPath: /etc/resilience/tls}
+        - {name: signing, mountPath: /etc/resilience/keys}
+        - {name: logs, mountPath: /var/log/resilience}
+        resources:
+          requests: {cpu: 50m, memory: 96Mi}
+          limits: {cpu: 500m, memory: 256Mi}
+      volumes:
+      - {name: config, configMap: {name: resilience-config}}
+      - {name: hashes, configMap: {name: known-good-hashes}}
+      - {name: pubkeys, configMap: {name: peer-pubkeys}}
+      - {name: tls, secret: {secretName: agent-a-tls}}
+      - {name: signing, secret: {secretName: agent-a-signing}}
+      - {name: logs, emptyDir: {}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: agent-a, namespace: resilience}
+spec:
+  selector: {app: resilience-agent, resilience.io/node: "A"}
+  ports:
+  - {name: grpc, port: 50051, targetPort: 50051}
+  - {name: status, port: 8081, targetPort: 8081}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-b
+  namespace: resilience
+  labels: {app: resilience-agent, resilience.io/node: "B"}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: resilience-agent, resilience.io/node: "B"}}
+  template:
+    metadata:
+      labels: {app: resilience-agent, resilience.io/node: "B"}
+    spec:
+      serviceAccountName: resilience-agent
+      nodeSelector: {resilience.io/zone: "b"}   # co-located with auth-service
+      containers:
+      - name: agent
+        image: cr-agent:1.0
+        imagePullPolicy: IfNotPresent
+        args: ["agent"]
+        env:
+        - {name: NODE_ID, value: "B"}
+        ports: [{containerPort: 50051, name: grpc}, {containerPort: 8081, name: status}]
+        readinessProbe:
+          httpGet: {path: /healthz, port: 8081}
+          periodSeconds: 3
+        volumeMounts:
+        - {name: config, mountPath: /etc/resilience/config.json, subPath: config.json}
+        - {name: hashes, mountPath: /etc/resilience/hashes}
+        - {name: pubkeys, mountPath: /etc/resilience/pubkeys}
+        - {name: tls, mountPath: /etc/resilience/tls}
+        - {name: signing, mountPath: /etc/resilience/keys}
+        - {name: logs, mountPath: /var/log/resilience}
+        resources:
+          requests: {cpu: 50m, memory: 96Mi}
+          limits: {cpu: 500m, memory: 256Mi}
+      volumes:
+      - {name: config, configMap: {name: resilience-config}}
+      - {name: hashes, configMap: {name: known-good-hashes}}
+      - {name: pubkeys, configMap: {name: peer-pubkeys}}
+      - {name: tls, secret: {secretName: agent-b-tls}}
+      - {name: signing, secret: {secretName: agent-b-signing}}
+      - {name: logs, emptyDir: {}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: agent-b, namespace: resilience}
+spec:
+  selector: {app: resilience-agent, resilience.io/node: "B"}
+  ports:
+  - {name: grpc, port: 50051, targetPort: 50051}
+  - {name: status, port: 8081, targetPort: 8081}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-c
+  namespace: resilience
+  labels: {app: resilience-agent, resilience.io/node: "C"}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: resilience-agent, resilience.io/node: "C"}}
+  template:
+    metadata:
+      labels: {app: resilience-agent, resilience.io/node: "C"}
+    spec:
+      serviceAccountName: resilience-agent
+      nodeSelector: {resilience.io/zone: "c"}   # co-located with records-api
+      containers:
+      - name: agent
+        image: cr-agent:1.0
+        imagePullPolicy: IfNotPresent
+        args: ["agent"]
+        env:
+        - {name: NODE_ID, value: "C"}
+        ports: [{containerPort: 50051, name: grpc}, {containerPort: 8081, name: status}]
+        readinessProbe:
+          httpGet: {path: /healthz, port: 8081}
+          periodSeconds: 3
+        volumeMounts:
+        - {name: config, mountPath: /etc/resilience/config.json, subPath: config.json}
+        - {name: hashes, mountPath: /etc/resilience/hashes}
+        - {name: pubkeys, mountPath: /etc/resilience/pubkeys}
+        - {name: tls, mountPath: /etc/resilience/tls}
+        - {name: signing, mountPath: /etc/resilience/keys}
+        - {name: logs, mountPath: /var/log/resilience}
+        resources:
+          requests: {cpu: 50m, memory: 96Mi}
+          limits: {cpu: 500m, memory: 256Mi}
+      volumes:
+      - {name: config, configMap: {name: resilience-config}}
+      - {name: hashes, configMap: {name: known-good-hashes}}
+      - {name: pubkeys, configMap: {name: peer-pubkeys}}
+      - {name: tls, secret: {secretName: agent-c-tls}}
+      - {name: signing, secret: {secretName: agent-c-signing}}
+      - {name: logs, emptyDir: {}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: agent-c, namespace: resilience}
+spec:
+  selector: {app: resilience-agent, resilience.io/node: "C"}
+  ports:
+  - {name: grpc, port: 50051, targetPort: 50051}
+  - {name: status, port: 8081, targetPort: 8081}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-d
+  namespace: resilience
+  labels: {app: resilience-agent, resilience.io/node: "D"}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: resilience-agent, resilience.io/node: "D"}}
+  template:
+    metadata:
+      labels: {app: resilience-agent, resilience.io/node: "D"}
+    spec:
+      serviceAccountName: resilience-agent
+      nodeSelector: {resilience.io/zone: "d"}   # co-located with database
+      containers:
+      - name: agent
+        image: cr-agent:1.0
+        imagePullPolicy: IfNotPresent
+        args: ["agent"]
+        env:
+        - {name: NODE_ID, value: "D"}
+        ports: [{containerPort: 50051, name: grpc}, {containerPort: 8081, name: status}]
+        readinessProbe:
+          httpGet: {path: /healthz, port: 8081}
+          periodSeconds: 3
+        volumeMounts:
+        - {name: config, mountPath: /etc/resilience/config.json, subPath: config.json}
+        - {name: hashes, mountPath: /etc/resilience/hashes}
+        - {name: pubkeys, mountPath: /etc/resilience/pubkeys}
+        - {name: tls, mountPath: /etc/resilience/tls}
+        - {name: signing, mountPath: /etc/resilience/keys}
+        - {name: logs, mountPath: /var/log/resilience}
+        resources:
+          requests: {cpu: 50m, memory: 96Mi}
+          limits: {cpu: 500m, memory: 256Mi}
+      volumes:
+      - {name: config, configMap: {name: resilience-config}}
+      - {name: hashes, configMap: {name: known-good-hashes}}
+      - {name: pubkeys, configMap: {name: peer-pubkeys}}
+      - {name: tls, secret: {secretName: agent-d-tls}}
+      - {name: signing, secret: {secretName: agent-d-signing}}
+      - {name: logs, emptyDir: {}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: agent-d, namespace: resilience}
+spec:
+  selector: {app: resilience-agent, resilience.io/node: "D"}
+  ports:
+  - {name: grpc, port: 50051, targetPort: 50051}
+  - {name: status, port: 8081, targetPort: 8081}

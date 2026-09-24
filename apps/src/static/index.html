@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CareCloud Patient Portal (demo)</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; background: #f6f8fa; color: #1f2328; }
+  h1 { font-size: 1.4rem; }
+  .note { color: #656d76; font-size: .9rem; }
+  table { border-collapse: collapse; background: #fff; width: 100%; max-width: 900px; }
+  th, td { padding: .4rem .7rem; border-bottom: 1px solid #d0d7de; text-align: left; }
+  #status { margin: 1rem 0; font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>CareCloud Patient Portal</h1>
+<p class="note">Synthetic data only. Node A of the Distributed Cyber-Resilience Platform demo.</p>
+<div id="status">Loading...</div>
+<table><thead><tr><th>MRN</th><th>Name</th><th>DOB</th><th>Condition</th></tr></thead>
+<tbody id="rows"></tbody></table>
+<script>
+async function load() {
+  const status = document.getElementById('status');
+  try {
+    const r = await fetch('/api/patients');
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || r.status);
+    status.textContent = `OK - ${d.patients.length} records (served by ${d.served_by})`;
+    document.getElementById('rows').innerHTML = d.patients.map(p =>
+      `<tr><td>${p.mrn}</td><td>${p.name}</td><td>${p.dob}</td><td>${p.condition}</td></tr>`).join('');
+  } catch (e) {
+    status.textContent = 'Service degraded: ' + e.message;
+  }
+}
+load(); setInterval(load, 3000);
+</script>
+</body>
+</html>

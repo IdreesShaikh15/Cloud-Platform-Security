@@ -1,0 +1,34 @@
+# Read-only status dashboard. It only GETs /status from agents; it never decides.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard
+  namespace: resilience
+  labels: {app: dashboard}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: dashboard}}
+  template:
+    metadata:
+      labels: {app: dashboard}
+    spec:
+      containers:
+      - name: dashboard
+        image: cr-dashboard:1.0
+        imagePullPolicy: IfNotPresent
+        env:
+        - {name: RESILIENCE_CONFIG, value: /etc/resilience/config.json}
+        - {name: BASELINE_URL, value: "http://central-controller.resilience.svc.cluster.local:8081"}
+        ports: [{containerPort: 8090}]
+        volumeMounts:
+        - {name: config, mountPath: /etc/resilience/config.json, subPath: config.json}
+      volumes:
+      - {name: config, configMap: {name: resilience-config}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: dashboard, namespace: resilience}
+spec:
+  type: NodePort
+  selector: {app: dashboard}
+  ports: [{port: 8090, targetPort: 8090, nodePort: 30090}]
