@@ -7,10 +7,15 @@
                                               # (point the dashboard at them, see demo.md)
 
 Scenarios
-  app-compromise    genuine compromise of Node C's workload (exfil+tamper+bruteforce)
-  false-accusation  agent A is compromised and accuses healthy Node B
-  forge-evidence    agent A tries to impersonate B's signature
-  baseline          the centralized controller under the same two attacks
+  app-compromise     genuine compromise of Node C's workload (exfil+tamper+bruteforce)
+  false-accusation   agent A is compromised and accuses healthy Node B
+  forge-evidence     agent A tries to impersonate B's signature
+  agent-crash        agent D is killed, then Node C is genuinely compromised: A, B, C
+                     still reach 3-of-4 quorum and complete the full pipeline without D
+  baseline           the centralized controller under the same two attacks
+  controller-crash   the centralized controller is killed, then Node C is genuinely
+                     compromised: no detection or response occurs at all (single point
+                     of failure)
 Timers are accelerated (0.5 s ticks, 3 s stage dwell) so a full cycle takes ~30 s.
 """
 from __future__ import annotations
@@ -21,9 +26,13 @@ import logging
 import os
 import sys
 import time
+import uuid
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from world import LocalBaseline, LocalCluster  # noqa: E402
+
+import grpc  # noqa: E402 - after world.py has put agent/ on sys.path
+from resilience.proto import resilience_pb2 as pb  # noqa: E402
 
 
 def banner(msg):
@@ -79,6 +88,86 @@ def forge(c: LocalCluster) -> bool:
     return bool(rej)
 
 
+def agent_crash(c: LocalCluster) -> bool:
+    banner("SCENARIO 5: agent D crashes, then Node C is genuinely compromised")
+    # This scenario tests fault tolerance to a crashed peer, not trust
+    # recovery timing or evidence-window expiry from an earlier scenario.
+    # The forge-evidence scenario (run just before this one in "all") has A
+    # genuinely, validly sign fabricated evidence about D; that evidence sits
+    # in every peer's pool for the full evidence window and correctly keeps
+    # decaying A's trust for as long as it's there. Resetting the trust score
+    # alone isn't enough - the still-fresh fabricated evidence would just
+    # decay it right back down within seconds. Clear it too, using the same
+    # per-target pool-clearing the platform already does on every real
+    # containment (EvidencePool.clear_target), so this scenario starts clean.
+    # First let any evidence broadcast from that prior scenario, still
+    # in-flight on the network (broadcast() is fire-and-forget), actually
+    # land - otherwise it can arrive just after our clear and undo it.
+    time.sleep(2.0)
+    for a in c.agents.values():
+        for other in c.cfg.nodes:
+            if other != a.id:
+                a.agent_trust.set(other, 100.0)
+            a.pool.clear_target(other)
+    c.agents["D"].tick()  # make sure D has run at least once before we kill it
+    c.crash_agent("D")
+
+    try:
+        c.agents["A"].transport.stubs["D"].Ping(pb.PingRequest(from_node="A"), timeout=2.0)
+        down = False
+    except grpc.RpcError:
+        down = True
+    print(f"  agent D crashed; A can no longer reach D over gRPC: {down}")
+
+    # Node C may already have an incident history from an earlier scenario
+    # (e.g. app-compromise), so compare epochs relatively, not against a
+    # hardcoded absolute value.
+    epoch_before = c.agents["A"].states["C"].epoch
+    c.mark("agent-crash", "C", attacker="D")
+    c.world.attack("C")
+    ok = c.wait_until(lambda: all(c.agents[n].states["C"].phase != "HEALTHY" for n in "ABC"), 15)
+    survivors = c.agents["B"].states["C"].last_decision
+    quorum_excludes_d = bool(survivors) and "D" not in survivors["voters"]
+    print(f"  contained using only surviving agents: {ok}  decision: {survivors}")
+    print(f"  D (crashed) did not vote: {quorum_excludes_d}")
+    ok2 = c.wait_until(lambda: all(c.agents[n].states["C"].phase == "HEALTHY"
+                                   and c.agents[n].states["C"].epoch == epoch_before + 1 for n in "ABC"), 90)
+    print(f"  A, B, C completed the full pipeline (D still down): {ok2}")
+    show_metrics(c.agents["B"])
+    return down and ok and ok2 and quorum_excludes_d and (len(survivors["voters"]) >= 3 if survivors else False)
+
+
+def controller_crash(with_status: bool = False) -> bool:
+    banner("SCENARIO 6: centralized controller crashes, then Node C is genuinely compromised")
+    b = LocalBaseline(with_status=with_status).start()
+    time.sleep(1)
+    b.crash()
+    print("  central controller crashed (single point of failure)")
+
+    marker = {"id": uuid.uuid4().hex[:8], "scenario": "controller-crash", "target": "C",
+             "attacker": None, "injected_at": time.time()}
+    b.backend.marker = marker
+    # The crashed controller's own tick loop never runs, so it would never
+    # pick the marker up (that IS the finding) - record it directly here so
+    # the incident, and the fact that nothing happened after it, is logged.
+    b.ctl.metrics.set_marker(marker)
+    b.world.attack("C")
+    time.sleep(8)  # long enough that a live controller would easily have detected+contained this
+    no_response = b.ctl.states["C"].phase == "HEALTHY" and b.ctl.states["C"].epoch == 0
+    b.ctl.metrics.event("no_response_confirmed", time.time(), "C", crashed=True)
+    print(f"  no detection/response occurred while the controller was down: {no_response}")
+    show_metrics(b.ctl)
+    if with_status:
+        print("\ncontroller (crashed) stays up for inspection; status at http://localhost:50261/status (Ctrl-C to stop)")
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            pass
+    b.stop()
+    return no_response
+
+
 def baseline() -> bool:
     banner("SCENARIO 4: centralized baseline under the same attacks")
     b = LocalBaseline()
@@ -104,17 +193,23 @@ def baseline() -> bool:
     return b.ctl.states["B"].epoch > 0
 
 
+CLUSTER_SCENARIOS = ("app-compromise", "false-accusation", "forge-evidence", "agent-crash")
+BASELINE_SCENARIOS = ("baseline", "controller-crash")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("scenario", nargs="?", default="all",
-                    choices=["all", "app-compromise", "false-accusation", "forge-evidence", "baseline"])
-    ap.add_argument("--serve", action="store_true", help="keep agents running with /status on :50251-4")
+                    choices=["all", *CLUSTER_SCENARIOS, *BASELINE_SCENARIOS])
+    ap.add_argument("--serve", action="store_true",
+                    help="keep agents/controller running with /status exposed "
+                         "(agents on :50251-4, baseline controller on :50261)")
     ap.add_argument("-v", action="store_true")
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO if a.v else logging.WARNING,
                         format="%(asctime)s %(levelname)s %(message)s")
     results = {}
-    if a.scenario != "baseline":
+    if a.scenario in ("all", *CLUSTER_SCENARIOS):
         c = LocalCluster(with_status=a.serve).start()
         time.sleep(2)
         try:
@@ -124,6 +219,10 @@ def main():
                 results["false-accusation"] = false_accusation(c)
             if a.scenario in ("all", "forge-evidence"):
                 results["forge-evidence"] = forge(c)
+            # agent-crash kills node D for the rest of this cluster's life, so
+            # it must run last among the scenarios that share this LocalCluster.
+            if a.scenario in ("all", "agent-crash"):
+                results["agent-crash"] = agent_crash(c)
             if a.serve:
                 print("\nagents keep running; status at http://localhost:50251-50254/status (Ctrl-C to stop)")
                 while True:
@@ -134,6 +233,10 @@ def main():
             c.stop()
     if a.scenario in ("all", "baseline"):
         results["baseline"] = baseline()
+    if a.scenario in ("all", "controller-crash"):
+        # --serve only blocks-and-serves for a single, explicitly chosen scenario
+        # (matching the cluster branch above), not when running "all" of them.
+        results["controller-crash"] = controller_crash(with_status=a.serve and a.scenario == "controller-crash")
     banner("RESULTS")
     for k, v in results.items():
         print(f"  {k:18s} {'PASS' if v else 'FAIL'}")

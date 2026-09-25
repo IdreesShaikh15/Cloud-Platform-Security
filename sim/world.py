@@ -141,23 +141,35 @@ class LocalCluster:
                 serve_status(agent, int(spec.status_url.split(":")[2].split("/")[0]))
         self._stop = threading.Event()
         self._threads: List[threading.Thread] = []
+        # Per-agent stop events, so a single agent can be "crashed" mid-run
+        # while the other three keep ticking (the agent-crash scenario).
+        self._crashed: Dict[str, threading.Event] = {n: threading.Event() for n in self.agents}
+        self._servers_by_node: Dict[str, PeerServer] = dict(zip(self.agents, self.servers))
 
     def start(self):
-        for a in self.agents.values():
-            t = threading.Thread(target=self._loop, args=(a,), daemon=True)
+        for n, a in self.agents.items():
+            t = threading.Thread(target=self._loop, args=(n, a), daemon=True)
             t.start()
             self._threads.append(t)
         return self
 
-    def _loop(self, agent):
+    def _loop(self, node, agent):
         while not self._stop.is_set():
             t0 = time.time()
-            try:
-                agent.tick()
-            except Exception:
-                import traceback
-                traceback.print_exc()
+            if not self._crashed[node].is_set():
+                try:
+                    agent.tick()
+                except Exception:
+                    import traceback
+                    traceback.print_exc()
             self._stop.wait(max(0.01, self.cfg.timers.tick_s - (time.time() - t0)))
+
+    def crash_agent(self, node: str) -> None:
+        """Stop agent `node` entirely: it stops ticking (no monitoring, no
+        evidence, no votes) and its gRPC peer server is shut down, so peers
+        see its link go DOWN. Models a killed/partitioned resilience node."""
+        self._crashed[node].set()
+        self._servers_by_node[node].stop(0)
 
     def stop(self):
         self._stop.set()
@@ -190,10 +202,44 @@ class LocalCluster:
 
 
 class LocalBaseline:
-    def __init__(self, cfg: Optional[ClusterConfig] = None):
+    def __init__(self, cfg: Optional[ClusterConfig] = None, with_status: bool = False):
         self.cfg = cfg or fast_config(50351)
         self.world = FakeWorld()
         self.backend = FakeBackend(recovery_delay_s=2.0, on_recover=self.world.recover_workload)
         self.comp = CompromiseSource(path=None)
         self.ctl = CentralController(self.cfg, FakeTelemetry(self.world), self.backend,
                                      MetricsRecorder("CENTRAL", "centralized"), self.comp)
+        if with_status:
+            from resilience.status_server import serve_status
+            serve_status(self.ctl, 50261)
+        self._stop = threading.Event()
+        self._crashed = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+
+    def start(self):
+        """Run the controller's tick loop in a background thread, so it can
+        later be "crashed" (stopped) independently of the calling code."""
+        def loop():
+            while not self._stop.is_set():
+                t0 = time.time()
+                if not self._crashed.is_set():
+                    try:
+                        self.ctl.tick()
+                    except Exception:
+                        import traceback
+                        traceback.print_exc()
+                self._stop.wait(max(0.01, self.cfg.timers.tick_s - (time.time() - t0)))
+        self._thread = threading.Thread(target=loop, daemon=True)
+        self._thread.start()
+        return self
+
+    def crash(self) -> None:
+        """Stop the single central controller entirely: no more ticks, so no
+        detection, no isolation, no recovery for as long as it is down -
+        the single point of failure the distributed design avoids."""
+        self._crashed.set()
+
+    def stop(self):
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=3)
