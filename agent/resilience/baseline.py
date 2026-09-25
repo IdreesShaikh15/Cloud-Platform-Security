@@ -24,6 +24,7 @@ from .metrics import MetricsRecorder
 from .monitoring import Snapshot, TelemetrySource, fetch_availability
 from .response import ResponseBackend
 from .simhooks import CompromiseSource
+from . import observability as obs
 
 log = logging.getLogger(__name__)
 CONTAIN_THRESHOLD = 0.6
@@ -57,6 +58,7 @@ class CentralController:
         self.decisions: List[dict] = []
         self.lock = threading.RLock()
         self._comp_mode = None
+        self.events = obs.EventLog("CENTRAL", clock)     # observability only
 
     def _decide(self, now: float, target: str, action: str, note: str) -> None:
         d = {"t": now, "action": action, "target": target, "epoch": self.states[target].epoch,
@@ -64,6 +66,10 @@ class CentralController:
         self.decisions = (self.decisions + [d])[-30:]
         self.states[target].last_decision = d
         log.info("CENTRAL %s on %s: %s", action, target, note)
+        self.events.emit(obs.QUORUM, f"The central controller alone decided to {action} "
+                         f"{target} ({note}); no second opinion is required or possible.",
+                         target, {"action": action, "signers": ["CENTRAL"], "note": note,
+                                  "epoch": d["epoch"]})
 
     def _valid(self, target: str) -> bool:
         s, st = self.snaps.get(target), self.states[target]
@@ -86,6 +92,14 @@ class CentralController:
             for nid, st in self.states.items():
                 w = self.cfg.workload_of(nid)
                 conf = max_confidence(self.latest.get(nid, []))
+                ds = self.latest.get(nid, [])
+                self.events.emit(
+                    obs.OBSERVE,
+                    obs.describe_observation("CENTRAL", nid, w, self.detector.measurements.get(nid, {}),
+                                             conf).replace("Agent CENTRAL", "The central controller"),
+                    nid, {"confidence": conf, "measurements": self.detector.measurements.get(nid, {})},
+                    key=("observe", nid),
+                    fingerprint=tuple(sorted((d.observation.value, round(d.confidence, 1)) for d in ds)))
                 if conf >= 0.5:
                     self.metrics.event("first_detection", now, nid)
                 forced = comp.active and comp.target == nid
@@ -104,9 +118,16 @@ class CentralController:
                         self.metrics.event("isolation_applied", self.clock(), nid)
                         self.backend.recover(w, st.epoch)
                         st.phase = "RECOVERING"
+                        self.events.emit(obs.ACTION, f"The central controller isolated {w} ({nid}) "
+                                         f"and started redeploying it from the known-good image.",
+                                         nid, {"action": "isolate+recover", "workload": w,
+                                               "result": "ok"})
                     elif st.phase == "RECOVERING" and self.backend.recovery_done(w, st.epoch):
                         st.phase, st.phase_entered = "VALIDATING", now
                         self.metrics.event("recovered", now, nid)
+                        self.events.emit(obs.ACTION, f"The central controller sees {w} ({nid}) "
+                                         f"recovered; validating.", nid,
+                                         {"action": "recovered", "workload": w})
                     elif st.phase == "VALIDATING" and self._valid(nid):
                         # Binary reintegration: straight back to full access.
                         self.backend.apply_stage(w, "FULL", {})
@@ -116,8 +137,11 @@ class CentralController:
                         self.metrics.event("reintegrated", now, nid)
                 except Exception as exc:
                     log.error("central action on %s failed: %s", w, exc)
+                    self.events.emit(obs.ACTION, f"The central controller failed an action on {w}: "
+                                     f"{exc}.", nid, {"action": "failed", "result": str(exc)},
+                                     key=("fail", nid), every=10.0)
 
-    def status(self) -> dict:
+    def status(self, events_since: Optional[int] = None, include_events: bool = True) -> dict:
         with self.lock:
             targets = {}
             for nid, st in self.states.items():
@@ -129,7 +153,11 @@ class CentralController:
                                                 "summary": d.summary} for d in self.latest.get(nid, [])]}
             return {"node": "CENTRAL", "mode": "centralized", "time": self.clock(),
                     "compromised": self._comp_mode, "targets": targets,
-                    "decisions": self.decisions[-15:], "agent_trust": {}}
+                    "decisions": self.decisions[-15:], "agent_trust": {},
+                    "observations": {t: {**m, "confidence": max_confidence(self.latest.get(t, []))}
+                                     for t, m in self.detector.measurements.items()},
+                    "event_boot": self.events.boot, "event_seq": self.events.seq,
+                    "events": self.events.recent(since=events_since) if include_events else []}
 
     def metrics_summary(self) -> List[dict]:
         return self.metrics.summary(fetch_availability(self.cfg.client_stats_url))

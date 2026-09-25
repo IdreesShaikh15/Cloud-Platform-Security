@@ -51,6 +51,24 @@ def can_advance(stage: str, dwell_s: float, min_dwell_s: float, workload_trust: 
             and workload_trust >= STAGE_THRESHOLDS[nxt] and anomaly_conf < anomaly_limit)
 
 
+def advance_block_reason(stage: str, dwell_s: float, min_dwell_s: float, workload_trust: float,
+                         anomaly_conf: float, anomaly_limit: float = 0.3) -> Optional[str]:
+    """Plain-English reason can_advance() is False (None when it is True).
+    Observability only - the decision itself is always can_advance()."""
+    nxt = next_stage(stage)
+    if nxt is None:
+        return "already at FULL access"
+    if dwell_s < min_dwell_s:
+        return (f"must stay in {stage} another {min_dwell_s - dwell_s:.0f}s "
+                f"(minimum {min_dwell_s:g}s per stage)")
+    if workload_trust < STAGE_THRESHOLDS[nxt]:
+        return (f"workload trust {workload_trust:.0f} is below the {STAGE_THRESHOLDS[nxt]:g} "
+                f"needed for {nxt}")
+    if anomaly_conf >= anomaly_limit:
+        return f"an anomaly is still observed (confidence {anomaly_conf:.2f})"
+    return None
+
+
 def _ns_peer(ns: str) -> dict:
     return {"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": ns}}}
 

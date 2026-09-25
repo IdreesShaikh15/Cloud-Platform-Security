@@ -14,10 +14,10 @@ The simulator runs the 4 real agents (real Ed25519, real gRPC over mTLS, real qu
 against a fake cluster. It's a good backup if the live cluster misbehaves during a presentation.
 
 ```bash
-python3 sim/local_demo.py            # 4 scenarios, prints metrics, ends with 4 × PASS
+python3 sim/local_demo.py            # 6 scenarios, prints metrics, ends with 6 × PASS
 ```
 
-To watch it on the dashboard:
+To watch one on the dashboard (any of: app-compromise, false-accusation, forge-evidence, agent-crash):
 
 ```bash
 # T3
@@ -26,6 +26,14 @@ python3 sim/local_demo.py app-compromise --serve
 STATUS_URLS=http://localhost:50251/status,http://localhost:50252/status,http://localhost:50253/status,http://localhost:50254/status \
   PORT=8090 python3 dashboard/server.py
 # browser: http://localhost:8090
+```
+
+For the centralized-controller-crash scenario, serve the controller instead:
+
+```bash
+python3 sim/local_demo.py controller-crash --serve                     # T3
+STATUS_URLS=http://localhost:50261/status BASELINE_URL=http://localhost:50261 \
+  PORT=8090 python3 dashboard/server.py                                 # T1
 ```
 
 ---
@@ -70,6 +78,66 @@ Show the peers really use mTLS and signed evidence:
 kubectl -n resilience get secret agent-a-tls -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -subject -issuer
 kubectl -n resilience get configmap peer-pubkeys -o jsonpath='{.data.pubkeys\.json}'
 ```
+
+## 2b. Reading the dashboard (use this while presenting)
+
+The dashboard only *shows* what the agents do - it never decides anything. Top to bottom:
+
+**Node cards (one per resilience node).** Coloured square + letter = which node (the letter is
+what identifies it; colour is a helper). Left border = the workload's state: green healthy,
+red isolated/recovering, amber validating/reintegrating. *Workload trust* is how healthy the
+app is believed to be; *agent trust* is how much the other three agents believe this node's
+agent (median of their views). **SUSPECT** appears when that falls below 50. **Click a card** to
+open that agent's own view.
+
+**Live event timeline.** Every agent narrates what it does, newest first, one plain sentence
+per event. Because each agent logs its *own* view, the same moment usually appears 3-4 times,
+once per agent; that repetition is the point: independent agents reaching the same conclusion.
+Filter by agent (the chips at the top), by category, or type in the search box (e.g. `SUSPECT`,
+`W(B)`, `records-api`). Click an event to see its raw details.
+
+| Icon | Category | Read it as |
+|---|---|---|
+| 👁 | OBSERVE | "Here's what I measured on this workload" (4 signals vs their limits) |
+| ➚ | EVIDENCE_SENT | "I signed a report of what I saw and sent it to the others" |
+| ➘ | EVIDENCE_RECEIVED | "I got a peer's report; its signature and certificate check out" |
+| ⛔ | REJECTED | "I threw a message away" - forged signature or wrong identity |
+| Σ | SCORE | "Adding up all the reports, weighted by who sent them: W(T) = …" |
+| ✔ | VOTE_CAST | "I vote yes to contain / validate / move on, because …" |
+| ✋ | VOTE_WITHHELD | "I am *not* voting, because …" (usually: I don't see it myself) |
+| ↕ | TRUST_CHANGE | "My trust in that agent went from X to Y, because …" |
+| ⚑ | FLAG | "I now consider that agent SUSPECT / I stop counting its votes" |
+| ⚖ | QUORUM | "3 of 4 agents signed it - the decision is made" |
+| ⚙ | ACTION | "I applied the isolation / started the redeploy / changed the stage" |
+| 🔗 | PEER_LINK | "I lost (or regained) my connection to another agent" |
+
+**Agent detail panel (click a card).** Four questions, answered from that agent's point of view:
+1. *What does it measure?* A table of the 4 signals for every workload, value vs limit; red = over the limit.
+2. *Whom does it trust?* Its trust in each peer with a 60-second trend line. Dashed lines mark 50
+   (SUSPECT) and 40 (votes ignored). Hover the line for exact values.
+3. *How does it score the evidence?* For each workload: every report it holds, `confidence × sender's
+   trust = weight`, then `× support` (a type reported by only one agent counts half), then W(T).
+   It votes to contain only at W ≥ 0.6 **and** if it sees the problem itself.
+4. *Why has it voted or not?* One line per proposal with the exact reason.
+
+**Recent quorum decisions.** Every decision with the agents that signed it. Click **why?** to see the
+signed votes and the evidence that justified it.
+
+**Pending votes.** Proposals that have not reached 3 signatures yet. For each agent: voted, not voted
+(with its reason), or unreachable, plus any *not counted* votes from agents below trust 40.
+
+**Pause / Resume** freezes the whole screen (data is still collected and appears on resume).
+**Export events** downloads every agent's events as JSON for the report.
+
+What to point at in each scenario:
+- *Genuine compromise (A)*: OBSERVE → EVIDENCE_SENT from several agents → SCORE crosses 0.6 →
+  three VOTE_CASTs → QUORUM (A, B, C) → ACTIONs (isolate, recover) → stage-by-stage QUORUMs.
+- *False accusation (B)*: only A sends evidence about B; B, C, D log VOTE_WITHHELD "own observation of
+  B normal"; their TRUST_CHANGE lines show A dropping; FLAG "SUSPECT", then "votes ignored".
+  Pending votes shows CONTAIN B stuck at 1/3. In A's panel you can even see A's *honest* logic saying
+  B looks normal while its compromised logic votes anyway.
+- *Forgery (B′)*: REJECTED "signer 'B' != mTLS identity 'A'" and a forced TRUST_CHANGE of −20.
+- *Agent crash*: PEER_LINK "lost its link to agent D"; QUORUM still signed by A, B, C.
 
 ## 3. Scenario A: genuine compromise of an app node
 

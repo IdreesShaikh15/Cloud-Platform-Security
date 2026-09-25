@@ -115,6 +115,9 @@ class PeerClient:
         self.last_ok: Dict[str, float] = {}
         self.last_err: Dict[str, str] = {}
         self._down: Dict[str, bool] = {}
+        # Optional observability hook: fn(peer_id, up: bool, detail: str),
+        # called on each link down / restored transition.
+        self.link_listener: Optional[Callable[[str, bool, str], None]] = None
 
     def _send(self, nid: str, env: pb.SignedEnvelope):
         stub = self.stubs[nid]
@@ -126,6 +129,7 @@ class PeerClient:
                 was_down = self._down.pop(nid, False)
             if was_down:
                 log.info("peer link to %s restored", nid)
+                self._notify(nid, True, "link restored")
             if not ack.accepted:
                 log.debug("peer %s rejected our %s: %s", nid, env.kind, ack.reason)
             return ack
@@ -138,7 +142,15 @@ class PeerClient:
             # votes are silently lost, so it must be visible in the logs.
             if newly_down:
                 log.warning("peer link to %s DOWN (%s): %s", nid, env.kind, self.last_err[nid])
+                self._notify(nid, False, self.last_err[nid])
             return None
+
+    def _notify(self, nid: str, up: bool, detail: str) -> None:
+        if self.link_listener is not None:
+            try:
+                self.link_listener(nid, up, detail)
+            except Exception:
+                log.debug("link listener failed", exc_info=True)
 
     def broadcast(self, env: pb.SignedEnvelope, wait: bool = False):
         futs = [self._pool.submit(self._send, nid, env) for nid in self.stubs]

@@ -1,6 +1,8 @@
 """Read-only HTTP status endpoint (consumed by the dashboard and metrics collector).
 
-GET /status   -> agent/controller state (JSON)
+GET /status   -> agent/controller state (JSON), incl. its event log (last 300)
+               ?events_since=<seq>  only events newer than seq
+               ?events=0            omit events
 GET /metrics  -> per-incident metric summary (JSON)
 GET /healthz  -> liveness
 There is deliberately no write endpoint.
@@ -11,6 +13,7 @@ import json
 import logging
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
 
 log = logging.getLogger(__name__)
 
@@ -31,7 +34,11 @@ def serve_status(node, port: int) -> ThreadingHTTPServer:
         def do_GET(self):
             try:
                 if self.path.startswith("/status"):
-                    return self._send(200, node.status())
+                    q = parse_qs(urlparse(self.path).query)
+                    since = q.get("events_since", [None])[0]
+                    return self._send(200, node.status(
+                        events_since=int(since) if since not in (None, "") else None,
+                        include_events=q.get("events", ["1"])[0] != "0"))
                 if self.path.startswith("/metrics"):
                     return self._send(200, node.metrics_summary())
                 if self.path.startswith("/healthz"):

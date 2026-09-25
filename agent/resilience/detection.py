@@ -63,6 +63,10 @@ class Detector:
         self.th = thresholds or Thresholds()
         self._last_tx: Dict[str, Tuple[float, int, str]] = {}
         self._auth_hist: Dict[str, Deque[Tuple[float, int]]] = defaultdict(lambda: deque(maxlen=120))
+        # Observability only: the raw value, effective threshold and resulting
+        # confidence of every rule for every target, as last evaluated. Nothing
+        # reads this back into a decision.
+        self.measurements: Dict[str, dict] = {}
 
     # -- individual rules -------------------------------------------------
     def network(self, s: Snapshot, sens: float) -> Optional[Detection]:
@@ -75,6 +79,11 @@ class Detector:
         self._last_tx[s.target] = (s.time, s.tx_bytes, s.instance_id)
         conf_r = ramp(rate, self.th.tx_rate_Bps * sens, self.th.tx_rate_scale)
         conf = max(conf_c, conf_r)
+        self.measurements.setdefault(s.target, {})["network"] = {
+            "outbound_connections": s.outbound_connections,
+            "conn_threshold": self.th.outbound_conns * sens, "conn_confidence": conf_c,
+            "tx_rate_Bps": round(rate, 1), "tx_threshold": self.th.tx_rate_Bps * sens,
+            "tx_confidence": conf_r, "confidence": conf}
         if conf <= 0:
             return None
         return Detection(s.target, ObsType.NETWORK, conf,
@@ -90,6 +99,12 @@ class Detector:
             elif comm not in self.allow:
                 conf = max(conf, self.th.unknown_process_conf)
                 bad.append(comm)
+        self.measurements.setdefault(s.target, {})["process"] = {
+            "process_count": len(s.processes), "allowlist": sorted(self.allow),
+            "suspicious": sorted({p.get("comm", "") for p in s.processes
+                                  if p.get("comm", "") in SUSPICIOUS_NAMES
+                                  or (p.get("exe", "") or "").startswith(SUSPICIOUS_DIRS)}),
+            "unexpected": sorted({c for c in bad}), "confidence": conf}
         if conf <= 0:
             return None
         return Detection(s.target, ObsType.PROCESS, conf,
@@ -97,6 +112,9 @@ class Detector:
 
     def file_integrity(self, s: Snapshot, sens: float) -> Optional[Detection]:
         if not self.baseline or not s.file_hashes:
+            self.measurements.setdefault(s.target, {})["file_integrity"] = {
+                "files_checked": 0, "modified": [], "missing": [], "new": [], "confidence": 0.0,
+                "note": "no baseline or no hashes reported"}
             return None
         modified = [p for p, h in self.baseline.items() if p in s.file_hashes and s.file_hashes[p] != h]
         missing = [p for p in self.baseline if p not in s.file_hashes]
@@ -104,6 +122,9 @@ class Detector:
         conf = max(self.th.modified_file_conf if modified else 0.0,
                    self.th.missing_file_conf if missing else 0.0,
                    self.th.new_file_conf if new else 0.0)
+        self.measurements.setdefault(s.target, {})["file_integrity"] = {
+            "files_checked": len(self.baseline), "modified": modified, "missing": missing,
+            "new": new, "confidence": conf}
         if conf <= 0:
             return None
         parts = [f"{n} {lbl}" for n, lbl in ((len(modified), "modified"),
@@ -124,6 +145,10 @@ class Detector:
             hist.popleft()
         in_window = max(0, total - hist[0][1]) if hist else 0
         conf = ramp(in_window, self.th.auth_failures * sens, self.th.auth_failures_scale)
+        self.measurements.setdefault(target, {})["auth"] = {
+            "source_ip": target_ip, "failures_in_window": in_window,
+            "threshold": self.th.auth_failures * sens, "window_s": self.th.auth_window_s,
+            "confidence": conf}
         if conf <= 0:
             return None
         return Detection(target, ObsType.AUTH, conf,
@@ -136,6 +161,8 @@ class Detector:
         out: Dict[str, List[Detection]] = {}
         for target, s in snaps.items():
             sens = sensitivity.get(target, 1.0)
+            self.measurements[target] = {"reachable": s.reachable, "healthy": s.healthy,
+                                         "sensitivity": sens}
             dets: List[Detection] = []
             if s.reachable:
                 for rule in (self.network, self.process, self.file_integrity):

@@ -41,7 +41,8 @@ node. There is no leader. Each agent runs the ten modules from the spec:
 | - | Trust scores (0-100, linear decay/recovery) | `agent/resilience/trust.py` |
 | - | Metrics: TTD / TTI / TTR / trust recovery / false isolation | `agent/resilience/metrics.py` |
 | - | Centralized baseline | `agent/resilience/baseline.py` |
-| - | Dashboard (read-only) | `dashboard/` |
+| - | Observability: per-agent event log (last 300, throttled), exposed on `/status` | `agent/resilience/observability.py` |
+| - | Dashboard (read-only): node cards, live event timeline, per-agent detail panel | `dashboard/` |
 
 ### Decision rule (what feeds the quorum)
 

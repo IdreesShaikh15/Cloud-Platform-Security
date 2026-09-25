@@ -48,12 +48,18 @@ class ScoreBreakdown:
     senders_per_type: Dict[str, List[str]] = field(default_factory=dict)
     corroborated_types: List[str] = field(default_factory=list)
     evidence_ids: List[str] = field(default_factory=list)
+    # Observability only: the individual terms that produced `total`.
+    items: List[dict] = field(default_factory=list)
+    type_detail: Dict[str, dict] = field(default_factory=dict)
+    diversity_bonus: float = 0.0
 
     def to_dict(self) -> dict:
         return {"W": round(self.total, 3),
                 "type_scores": {k: round(v, 3) for k, v in self.type_scores.items()},
                 "senders": self.senders_per_type,
-                "corroborated": self.corroborated_types}
+                "corroborated": self.corroborated_types,
+                "items": self.items, "type_detail": self.type_detail,
+                "diversity_bonus": round(self.diversity_bonus, 3)}
 
 
 def weighted_score(evidence: Iterable[Evidence], trust_of: Callable[[str], float],
@@ -69,6 +75,8 @@ def weighted_score(evidence: Iterable[Evidence], trust_of: Callable[[str], float
     type_scores: Dict[str, float] = {}
     senders: Dict[str, List[str]] = {}
     corroborated: List[str] = []
+    items: List[dict] = []
+    type_detail: Dict[str, dict] = {}
     needed = params.f + 1
     for obs, per_sender in best.items():
         weights = [conf * trust_of(s) / 100.0 for s, conf in per_sender.items()]
@@ -78,11 +86,19 @@ def weighted_score(evidence: Iterable[Evidence], trust_of: Callable[[str], float
         senders[obs.value] = sorted(per_sender)
         if len(per_sender) >= needed:
             corroborated.append(obs.value)
+        for (s, conf), w in zip(per_sender.items(), weights):
+            items.append({"type": obs.value, "sender": s, "confidence": round(conf, 3),
+                          "sender_trust": round(trust_of(s), 1), "weight": round(w, 3)})
+        type_detail[obs.value] = {"mean_weight": round(mean_w, 3), "senders": len(per_sender),
+                                  "support": round(support, 3),
+                                  "score": round(mean_w * support, 3)}
 
     if not type_scores:
         return ScoreBreakdown(0.0)
-    total = max(type_scores.values()) + params.diversity_bonus * max(0, len(corroborated) - 1)
-    return ScoreBreakdown(total, type_scores, senders, sorted(corroborated), ids)
+    bonus = params.diversity_bonus * max(0, len(corroborated) - 1)
+    total = max(type_scores.values()) + bonus
+    return ScoreBreakdown(total, type_scores, senders, sorted(corroborated), ids,
+                          items=items, type_detail=type_detail, diversity_bonus=bonus)
 
 
 def should_vote_contain(local_max_conf: float, score: ScoreBreakdown,
