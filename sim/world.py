@@ -125,6 +125,7 @@ class LocalCluster:
         self.compromise: Dict[str, CompromiseSource] = {}
         self.agents: Dict[str, ResilienceAgent] = {}
         self.servers: List[PeerServer] = []
+        self.status_servers: Dict[str, object] = {}
         for n, spec in self.cfg.nodes.items():
             d = os.path.join(self.pki_dir, spec.agent_name)
             signer = Signer.from_pem_file(n, os.path.join(d, "signing.key"))
@@ -138,7 +139,7 @@ class LocalCluster:
             self.servers.append(srv)
             if with_status:
                 from resilience.status_server import serve_status
-                serve_status(agent, int(spec.status_url.split(":")[2].split("/")[0]))
+                self.status_servers[n] = serve_status(agent, int(spec.status_url.split(":")[2].split("/")[0]))
         self._stop = threading.Event()
         self._threads: List[threading.Thread] = []
         # Per-agent stop events, so a single agent can be "crashed" mid-run
@@ -166,10 +167,13 @@ class LocalCluster:
 
     def crash_agent(self, node: str) -> None:
         """Stop agent `node` entirely: it stops ticking (no monitoring, no
-        evidence, no votes) and its gRPC peer server is shut down, so peers
-        see its link go DOWN. Models a killed/partitioned resilience node."""
+        evidence, no votes), its gRPC peer server is shut down so peers see
+        its link go DOWN, and its status page (if served) stops answering, as
+        for a real killed pod. Models a killed/partitioned resilience node."""
         self._crashed[node].set()
         self._servers_by_node[node].stop(0)
+        if node in self.status_servers:          # its read-only status page dies with it
+            self.status_servers.pop(node).shutdown()
 
     def stop(self):
         self._stop.set()
@@ -202,7 +206,8 @@ class LocalCluster:
 
 
 class LocalBaseline:
-    def __init__(self, cfg: Optional[ClusterConfig] = None, with_status: bool = False):
+    def __init__(self, cfg: Optional[ClusterConfig] = None, with_status: bool = False,
+                 status_port: int = 50261):
         self.cfg = cfg or fast_config(50351)
         self.world = FakeWorld()
         self.backend = FakeBackend(recovery_delay_s=2.0, on_recover=self.world.recover_workload)
@@ -211,7 +216,7 @@ class LocalBaseline:
                                      MetricsRecorder("CENTRAL", "centralized"), self.comp)
         if with_status:
             from resilience.status_server import serve_status
-            serve_status(self.ctl, 50261)
+            self.status_server = serve_status(self.ctl, status_port)
         self._stop = threading.Event()
         self._crashed = threading.Event()
         self._thread: Optional[threading.Thread] = None

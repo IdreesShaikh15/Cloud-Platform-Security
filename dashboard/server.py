@@ -211,6 +211,7 @@ def aggregate() -> dict:
             "nodes": nodes, "decisions": uniq[:15], "rejections": rejections,
             "pending_votes": {k: v["voters"] for k, v in pending.items()},
             "pending_detail": pending, "baseline": BASELINE or None,
+            "central_compromised": (base or {}).get("compromised"),
             "last_poll": COLLECTOR.last_poll, "gseq": COLLECTOR.gseq}
 
 

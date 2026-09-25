@@ -214,8 +214,9 @@ class ResilienceAgent:
             new = self.agent_trust.get(culprit)
             self.events.emit(
                 obs.TRUST_CHANGE,
-                f"Agent {self.id} lowered its trust in {culprit} from {old:.0f} to {new:.0f} "
-                f"because {culprit} sent an invalid or forged message.",
+                (f"Agent {self.id} lowered its trust in {culprit} from {old:.0f} to {new:.0f} "
+                 if new < old else f"Agent {self.id} keeps its trust in {culprit} at {new:.0f} ")
+                + f"because {culprit} sent an invalid or forged message.",
                 culprit, {"peer": culprit, "old": round(old, 1), "new": round(new, 1),
                           "reason": "forged/invalid message", "detail": reason,
                           "penalty": self.cfg.trust.invalid_message_penalty},

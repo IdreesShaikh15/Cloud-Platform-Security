@@ -168,17 +168,19 @@ document.getElementById("nodes").onclick = e => { const c = e.target.closest("[d
 function renderState(s) {
   lastState = s;
   document.getElementById("sub").textContent = `mode: ${s.mode} · data from ${t(s.last_poll)}` + (s.baseline ? " · centralized baseline running" : "");
+  const cc = s.mode === "centralized" && s.central_compromised; if (cc) document.getElementById("sub").textContent += ` · controller compromise simulation: ${cc}`;
   document.getElementById("nodes").innerHTML = Object.entries(s.nodes).map(([id,n]) => `
     <div class="card ${n.phase}" data-node="${id}" title="Open agent ${id}'s view">
       <div class="row"><b>${nb(id)} · ${esc(n.workload)}</b><span class="tag">${n.phase}</span></div>
+      ${s.mode === "centralized" ? `<div class="mut" style="margin:6px 0">centralized mode: this node is watched only by the single central controller (no agents, no votes, no trust scores, no staged return: straight back to full access)</div>` : `
       ${stages(n)}
       <div class="row"><span>workload trust</span><span>${n.workload_trust ?? "-"}</span></div>${bar(n.workload_trust)}
       <div class="row"><span>agent trust (peers' median)</span><span>${n.agent_trust ?? "-"}
         ${n.agent_trust != null && n.agent_trust < 50 ? '<span class="tag bad">SUSPECT</span>' : ''}</span></div>${bar(n.agent_trust)}
       <div class="mut">views: ${Object.entries(n.agent_trust_views||{}).map(([p,v])=>`${p}:${v}`).join(" ")}
         ${n.agent_up ? "" : " · <b style='color:var(--bad)'>agent unreachable</b>"}
-        ${n.agent_compromised_sim ? ` · <b style='color:var(--bad)'>sim: ${esc(n.agent_compromised_sim)}</b>` : ""}</div>
-      <div class="mut">W(T)=${n.score ? n.score.W : "-"} ${(n.detections||[]).map(d=>`· ${d.type} ${d.confidence}`).join(" ")}</div>
+        ${n.agent_compromised_sim ? ` · <b style='color:var(--bad)'>sim: ${esc(n.agent_compromised_sim)}</b>` : ""}</div>`}
+      <div class="mut">${s.mode === "centralized" ? "detections:" : `W(T)=${n.score ? n.score.W : "-"}`} ${(n.detections||[]).map(d=>`· ${d.type} ${d.confidence}`).join(" ")}</div>
       <div class="mut">last decision: ${n.last_decision ? `${n.last_decision.action} ${n.last_decision.stage||""} by ${n.last_decision.voters.join(",")} @ ${t(n.last_decision.t)}` : "none"}</div>
     </div>`).join("");
 
