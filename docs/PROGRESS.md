@@ -55,4 +55,11 @@ No secrets in the diff (checked).
 * Everything classified "SIMULATOR/TESTS" or "PARTIAL" in AUDIT.md remains unproven live.
 
 ### Commit / push
-See the "Commit and push" line below, filled in after pushing.
+* Code + docs commit: **`2bbb89b`** ("Phase 1: honest audit, isolation verification script, five bug fixes").
+* Pushed (no force) to **`claude/cyber-resilience-platform-xxs3oh`** (your branch, accepted) and to
+  `claude/inspiring-thompson-ik54a3` (the branch this session was started on; same commit).
+* **Tag `pre-phase-1`: created locally (points to `6e75930`) but could NOT be pushed**; the remote
+  rejected the tag ("remote end hung up", 3 attempts) while branch pushes succeed. The tag lives only in
+  the session's container, which is temporary. `6e75930` is permanent in the branch history, so
+  you can recreate it anywhere with `git tag pre-phase-1 6e75930`. Later phases use the same mechanism
+  and will have the same limitation unless you push the tags yourself.
