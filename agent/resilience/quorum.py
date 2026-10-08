@@ -163,6 +163,10 @@ class VoteBook:
         with self._lock:
             self._votes[v.action_key][v.voter] = v
 
+    def votes_of(self, action_key: str) -> Dict[str, Vote]:
+        with self._lock:
+            return dict(self._votes.get(action_key, {}))
+
     def has_voted(self, voter: str, action_key: str) -> bool:
         with self._lock:
             return voter in self._votes.get(action_key, {})

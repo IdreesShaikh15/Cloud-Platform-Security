@@ -19,6 +19,11 @@ spec:
         env:
         - {name: RESILIENCE_CONFIG, value: /etc/resilience/config.json}
         - {name: BASELINE_URL, value: "http://central-controller.resilience.svc.cluster.local:8081"}
+        # Optional access token. Off unless you create the secret:
+        #   kubectl -n resilience create secret generic dashboard-token --from-literal=token="$(openssl rand -hex 24)"
+        # then restart the dashboard. The token is read from the secret, never written in this file.
+        - name: DASHBOARD_TOKEN
+          valueFrom: {secretKeyRef: {name: dashboard-token, key: token, optional: true}}
         ports: [{containerPort: 8090}]
         volumeMounts:
         - {name: config, mountPath: /etc/resilience/config.json, subPath: config.json}

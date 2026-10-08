@@ -54,6 +54,11 @@ class ResiliencePeerStub:
                 request_serializer=resilience__pb2.SignedEnvelope.SerializeToString,
                 response_deserializer=resilience__pb2.InvestigateResult.FromString,
                 _registered_method=True)
+        self.SubmitShare = channel.unary_unary(
+                '/resilience.v1.ResiliencePeer/SubmitShare',
+                request_serializer=resilience__pb2.SignedEnvelope.SerializeToString,
+                response_deserializer=resilience__pb2.Ack.FromString,
+                _registered_method=True)
 
 
 class ResiliencePeerServicer:
@@ -83,6 +88,12 @@ class ResiliencePeerServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def SubmitShare(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_ResiliencePeerServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -105,6 +116,11 @@ def add_ResiliencePeerServicer_to_server(servicer, server):
                     servicer.Investigate,
                     request_deserializer=resilience__pb2.SignedEnvelope.FromString,
                     response_serializer=resilience__pb2.InvestigateResult.SerializeToString,
+            ),
+            'SubmitShare': grpc.unary_unary_rpc_method_handler(
+                    servicer.SubmitShare,
+                    request_deserializer=resilience__pb2.SignedEnvelope.FromString,
+                    response_serializer=resilience__pb2.Ack.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -215,6 +231,33 @@ class ResiliencePeer:
             '/resilience.v1.ResiliencePeer/Investigate',
             resilience__pb2.SignedEnvelope.SerializeToString,
             resilience__pb2.InvestigateResult.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SubmitShare(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/resilience.v1.ResiliencePeer/SubmitShare',
+            resilience__pb2.SignedEnvelope.SerializeToString,
+            resilience__pb2.Ack.FromString,
             options,
             channel_credentials,
             insecure,

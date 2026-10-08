@@ -14,7 +14,7 @@ spec:
     metadata:
       labels: {app: central-controller}
     spec:
-      serviceAccountName: resilience-agent
+      serviceAccountName: resilience-baseline
       containers:
       - name: controller
         image: cr-agent:1.0

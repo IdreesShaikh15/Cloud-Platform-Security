@@ -129,3 +129,65 @@ No secrets in the diff (checked).
 * Commit **`91ea556`** ("Phase 2: targeted investigation before containment"), pushed (no force) to
   `claude/cyber-resilience-platform-xxs3oh` and `claude/inspiring-thompson-ik54a3`.
 * Tag `pre-phase-2` exists locally only (the remote rejects tag pushes; recreate with `git tag pre-phase-2 c03cdde`).
+
+---
+
+## Phase 3: Security hardening
+
+**Status: DONE in the simulator and tests; NOT run against a real cluster.** Safety tag `pre-phase-3` (at `7992562`; local only,
+tag pushes are rejected by the remote). Full write-up: `docs/SECURITY.md`.
+
+### What was done
+* **Quorum certificate** (`agent/resilience/certificate.py`): defined exactly (3 signatures from 3 distinct known peers, all over the same canonical
+  statement: workload, action + stage, incident epoch, evidence digest, expiry). Rejects duplicate signers, invalid signatures, unknown peers, expired,
+  replayed, wrong target/action/stage, superseded version, revoked signers, non-canonical encodings. Built leaderlessly: after a quorum each agent that voted
+  signs the identical, deterministically derived statement (new `SubmitShare` RPC). Assumptions documented: tolerates 1 compromised agent; **2 of 4 break it**.
+* **Enforcement, two independent layers:** the executor refuses to act without a verified certificate, **and** a validating admission webhook
+  (`admission.py`, `webhook.py`, `k8s/resilience/40-webhook.yaml`, certificates by `scripts/gen-certs.py`) refuses an agent's change unless it carries one:
+  isolation policies must be the platform's own policy for the stage, recovery may only touch the recovery fields and set the known-good image, stages and state
+  never go backwards, a new isolation must be exactly the next incident version. **Fails closed** (`failurePolicy: Fail`, any error = deny). The simulator's fake
+  cluster runs the *same* admission code, so the whole pipeline is tested under enforcement.
+* **Least-privilege RBAC** (`00-rbac.yaml`): removed unused pods/list/patch verbs and cluster-wide-in-namespace powers; resourceNames on the 4 workloads, the 4 isolation
+  policies and the marker ConfigMap; separate identities for agents, baseline controller and webhook. Test derives needed permissions from the real backend calls.
+* **Vote-excluded agents:** evidence rejected entirely (not down-weighted), not counted in any quorum/certificate, still watched so trust moves only through peers'
+  observations over time; nothing a sender says raises its own trust; trust state persists across a container restart.
+* **Tamper-evident decision log** (`decisionlog.py`): hash chain; `python -m resilience verify-log` reports the first broken record; dashboard chip. Tested for modified,
+  deleted, reordered, inserted records; limits (whole-chain rewrite, tail truncation) demonstrated, not hidden.
+* **Dashboard token:** optional, off by default, from env/secret file only, protects every API endpoint, session cookie not the token, rate-limited, fails closed on a bad token file.
+* **Scripts for you:** `scripts/verify-webhook.sh` (dry runs only; optional `--test-failsafe`), `scripts/verify-rbac.sh` (`kubectl auth can-i`, read-only).
+
+### Results (measured, single clean run on the final code)
+
+| Check | Result |
+|---|---|
+| `python -m pytest -q tests` | **260 passed** (552 s) = 131 (Phase 2) + 129 new; 0 failed |
+| `python sim/local_demo.py` | **9 of 9 PASS** under certificate enforcement |
+| Cost of certificates | app-compromise in the simulator: TTD 0.5 s, TTI 1.5 s, TTR 3.5 s, TTV 4.5 s, TTF 18.0 s (before this phase 0.5 / 1.0-1.5 / 3.5-4.0 / 4.5-5.0 / 18.5-19.0); other runs showed TTI up to 2.0 s, so about 0 to 0.5 s extra |
+| New tests | certificate 22, admission 23, RBAC 45, trust 8, decision log 11, dashboard auth 7, enforcement 6, verify-webhook 7 |
+
+### Bugs found and fixed while building it (each caught by a test)
+1. **Replay hole in my own design:** a still-valid CONTAIN certificate could re-create an isolation after the incident ended (a lone compromised agent could have re-isolated a healthy workload). Fixed: CREATE must be exactly `current incident version + 1` (webhook gets read-only `get` of the 4 workloads), state cannot go backwards.
+2. The platform's TLS certificates lacked Authority/Subject Key Identifier, so strict TLS clients (Python 3.13) rejected them. Fixed in `pki.py`.
+3. A deadlock in the simulator's fake backend (lock re-entered by the admission callback): fixed with a re-entrant lock.
+4. `verify-webhook.sh` exited 0 after a preflight failure (cleanup trap overwrote the status); fixed, same class as Phase 1's script bug.
+5. A dashboard token file that was set but unreadable silently left the dashboard open; now it refuses to start.
+6. My new "ignored evidence from an excluded agent" event reused the `REJECTED` category and broke an existing test that treats REJECTED as forgery; moved to `FLAG`.
+7. **Existing test changed (disclosed):** `test_genuine_compromise_full_cycle` asserted the final stage the instant all agents reported HEALTHY; HEALTHY is the agents' intent and the executor applies the last stage a moment later (the race noted in Phase 1), which the extra certificate round makes more likely. The test now waits for the cluster effect. No product behaviour changed.
+
+### Files changed
+New: `agent/resilience/{certificate,admission,webhook,decisionlog}.py`, `k8s/resilience/40-webhook.yaml`, `scripts/verify-{webhook,rbac}.sh`, `docs/SECURITY.md`, `docs/img/dashboard-*.png`,
+8 test files + `tests/fake_kubectl_webhook.py`. Modified: `proto/resilience.proto` (+stubs), `agent/resilience/{agent,config,evidence,peer,pki,quorum,response,__main__}.py`, `dashboard/{server.py,index.html}`,
+`k8s/resilience/{00-rbac,10-config,30-dashboard}.yaml`, `k8s/baseline/central-controller.yaml`, `scripts/{deploy.sh,gen-certs.py,collect-metrics.py}`, `sim/world.py`, `tests/test_integration_sim.py` (see 7), `docs/{AUDIT,PROGRESS}.md`.
+No secrets in the diff (checked).
+
+### What is NOT verified / remaining gaps
+* **Never applied to a real API server.** Run `scripts/verify-webhook.sh` and `scripts/verify-rbac.sh` on your cluster. Possible live surprises: webhook TLS/CA wiring, the real shape of objects the API server sends (the policy comparison normalises omitted empty lists, other defaults are untested), the 5 s timeout.
+* The scripts' logic is tested with fake `kubectl`s only.
+* Cluster admins are **not** held to the rule (by design); 2 of 4 compromised agents break the guarantee; a certificate proves agreement, not correctness.
+* While the webhook is down the agents cannot act (fail-closed); break-glass is documented.
+* After a stalled recovery the original CONTAIN certificate may have expired (5 min); then a human must intervene (Phase 4 adds retries and "needs human attention").
+* Trust state is lost if a pod is deleted (an `emptyDir`); the hash chain cannot stop a full-access rewrite; agents' `:8081` status endpoints stay open to pods in the cluster.
+* **To use it:** rebuild the agent image (the webhook runs from it); re-run `python3 scripts/gen-certs.py` (rotates all keys) then `scripts/deploy.sh` (applies RBAC, ConfigMap, webhook, then the webhook configuration last); restart agents and the dashboard.
+
+### Commit / push
+Filled in below after pushing.

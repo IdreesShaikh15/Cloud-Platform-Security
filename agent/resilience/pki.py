@@ -48,6 +48,7 @@ def make_ca(days: int = 365):
             .not_valid_before(now - dt.timedelta(minutes=5))
             .not_valid_after(now + dt.timedelta(days=days))
             .add_extension(x509.BasicConstraints(ca=True, path_length=0), critical=True)
+            .add_extension(x509.SubjectKeyIdentifier.from_public_key(key.public_key()), critical=False)
             .add_extension(x509.KeyUsage(digital_signature=True, key_cert_sign=True, crl_sign=True,
                                          content_commitment=False, key_encipherment=False,
                                          data_encipherment=False, key_agreement=False,
@@ -67,6 +68,8 @@ def make_leaf(ca_key, ca_cert, cn: str, dns: Iterable[str], days: int = 365):
             .not_valid_after(now + dt.timedelta(days=days))
             .add_extension(x509.SubjectAlternativeName(sans), critical=False)
             .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+            .add_extension(x509.SubjectKeyIdentifier.from_public_key(key.public_key()), critical=False)
+            .add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_cert.public_key()), critical=False)
             .add_extension(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH,
                                                   ExtendedKeyUsageOID.CLIENT_AUTH]), critical=False)
             .sign(ca_key, hashes.SHA256()))
@@ -102,3 +105,24 @@ def generate(outdir: str, agents: Dict[str, str], namespace: str = "resilience")
     with open(os.path.join(outdir, "pubkeys.json"), "w") as fh:
         json.dump(pubkeys, fh, indent=2)
     return pubkeys
+
+
+def webhook_dns_names(service: str = "quorum-webhook", namespace: str = "resilience") -> list:
+    return [service, f"{service}.{namespace}", f"{service}.{namespace}.svc",
+            f"{service}.{namespace}.svc.cluster.local", "localhost"]
+
+
+def make_webhook_cert(outdir: str, service: str = "quorum-webhook", namespace: str = "resilience") -> str:
+    """Server certificate for the admission webhook, signed by the platform CA written by generate().
+    Writes outdir/<service>/{tls.crt,tls.key}; returns the CA certificate PEM (the webhook caBundle)."""
+    with open(os.path.join(outdir, "ca.key"), "rb") as fh:
+        ca_key = serialization.load_pem_private_key(fh.read(), password=None)
+    with open(os.path.join(outdir, "ca.crt"), "rb") as fh:
+        ca_pem = fh.read()
+    ca_cert = x509.load_pem_x509_certificate(ca_pem)
+    key, cert = make_leaf(ca_key, ca_cert, service, webhook_dns_names(service, namespace))
+    d = os.path.join(outdir, service)
+    os.makedirs(d, exist_ok=True)
+    _write(os.path.join(d, "tls.crt"), cert.public_bytes(serialization.Encoding.PEM))
+    _write(os.path.join(d, "tls.key"), _pem_key(key), private=True)
+    return ca_pem.decode()

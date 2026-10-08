@@ -106,6 +106,20 @@ message InvestigateResult {
   SignedEnvelope response = 3;       // a signed InvestigateResponse when accepted
 }
 
+// ---- Quorum certificate shares (see docs/SECURITY.md) ----------------------
+// After a quorum of votes, every agent that agrees signs the SAME canonical
+// statement (target workload, action + stage, incident epoch, evidence digest,
+// expiry). Any three distinct valid signatures over one statement form the
+// certificate that the executor and the admission webhook check.
+message CertShare {
+  string share_id = 1;
+  string signer = 2;
+  bytes statement = 3;               // canonical JSON bytes of the statement
+  bytes statement_signature = 4;     // Ed25519("qc-v1" || 0x00 || statement) by `signer`
+  repeated string voters = 5;        // the three votes the statement was built from
+  double timestamp = 6;
+}
+
 message Ack {
   bool accepted = 1;
   string reason = 2;
@@ -125,4 +139,5 @@ service ResiliencePeer {
   rpc SubmitVote(SignedEnvelope) returns (Ack);
   rpc Ping(PingRequest) returns (PingReply);
   rpc Investigate(SignedEnvelope) returns (InvestigateResult);
+  rpc SubmitShare(SignedEnvelope) returns (Ack);
 }

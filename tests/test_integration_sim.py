@@ -39,6 +39,10 @@ def test_genuine_compromise_full_cycle(cluster):
     assert d["action"] == "CONTAIN" and len(d["voters"]) >= 3
     assert cluster.wait_until(lambda: all(a.states["C"].phase == "HEALTHY" and a.states["C"].epoch == 1
                                           for a in cluster.agents.values()), 90)
+    # "HEALTHY" is the agents' replicated intent and flips when the last quorum commits; the executor then
+    # applies the final stage (policy removal) a moment later, after the quorum certificate is ready.
+    assert cluster.wait_until(lambda: any(x[1] == "apply_stage" and x[2] == "records-api" and x[3] == "FULL"
+                                          for x in cluster.backend.log), 20)
     stages = [x[3] for x in cluster.backend.log if x[1] == "apply_stage" and x[2] == "records-api"]
     assert stages == ["QUARANTINE", "RESTRICTED", "MONITORED", "PEER_VALIDATED", "FULL"]
     row = cluster.agents["B"].metrics.summary()[0]

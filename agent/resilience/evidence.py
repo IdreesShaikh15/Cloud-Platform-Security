@@ -205,7 +205,7 @@ class InvestigateResponse:
 
 Claim = Union[Evidence, Vote, InvestigateRequest, InvestigateResponse]
 
-KINDS = ("evidence", "vote", "inv_request", "inv_response")
+KINDS = ("evidence", "vote", "inv_request", "inv_response", "cert_share")
 
 
 def seal(signer: Signer, claim: Claim, *, claimed_signer: Optional[str] = None) -> pb.SignedEnvelope:
@@ -259,6 +259,11 @@ def open_envelope(env: pb.SignedEnvelope, registry: KeyRegistry, *,
             m.ParseFromString(env.payload)
             claim = Vote.from_pb(m)
             author, msg_id = claim.voter, claim.vote_id
+        elif env.kind == "cert_share":
+            m = pb.CertShare()
+            m.ParseFromString(env.payload)
+            claim = m                                  # used as-is: certificate.py parses the statement
+            author, msg_id = m.signer, m.share_id
         elif env.kind == "inv_request":
             m = pb.InvestigateRequest()
             m.ParseFromString(env.payload)

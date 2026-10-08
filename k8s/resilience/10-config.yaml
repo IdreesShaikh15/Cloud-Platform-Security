@@ -41,6 +41,15 @@ data:
         "score_threshold": 0.6,
         "diversity_bonus": 0.15
       },
+      "certificates": {
+        "ttl_s": 300,
+        "max_ttl_s": 900,
+        "enforce": true,
+        "revoked_signers": [],
+        "webhook_enforced_users": [
+          "system:serviceaccount:resilience:resilience-agent"
+        ]
+      },
       "investigation": {
         "enabled": true,
         "budget_s": 10,

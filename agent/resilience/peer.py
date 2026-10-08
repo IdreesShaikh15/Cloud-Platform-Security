@@ -75,6 +75,9 @@ class _Servicer(pb_grpc.ResiliencePeerServicer):
     def SubmitVote(self, request, context):
         return self._handle(request, context, "vote")
 
+    def SubmitShare(self, request, context):
+        return self._handle(request, context, "cert_share")
+
     def Ping(self, request, context):
         return pb.PingReply(node=self.node_id, timestamp=time.time())
 
@@ -141,7 +144,8 @@ class PeerClient:
 
     def _send(self, nid: str, env: pb.SignedEnvelope):
         stub = self.stubs[nid]
-        call = stub.SubmitEvidence if env.kind == "evidence" else stub.SubmitVote
+        call = {"evidence": stub.SubmitEvidence, "vote": stub.SubmitVote,
+                "cert_share": stub.SubmitShare}[env.kind]
         try:
             ack = call(env, timeout=self.timeout)
             with self._lock:

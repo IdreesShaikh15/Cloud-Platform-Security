@@ -62,7 +62,9 @@ Everything else is not claimed live, even where it probably works.
 | 17 | **Metrics** TTD/TTI/TTR/TTV/TTF, time-to-flag, false isolation, availability | **VERIFIED LIVE** for time-to-flag and baseline false isolation; **SIMULATOR** for TTD to TTF of a genuine attack | `metrics.py` | `test_genuine_compromise_full_cycle` (ordering ttd <= tti <= ttr <= ttv <= ttf) | A genuine-attack timeline has never been measured on the cluster. |
 | 18 | **Genuine app compromise on the live cluster** | **MISSING** (deliberate: no attack injection exists; the ground rules forbid writing one) | n/a | n/a | The simulator is the only evidence for the full pipeline. |
 | 19 | Compromised-agent variants "goes silent" / "blocks a legitimate isolation" | **MISSING** | n/a | n/a | Listed as future work in the README. |
-| 20 | Admission webhook / quorum-certificate enforcement | **MISSING** | n/a | n/a | Phase 3. Today any agent's RBAC can act alone. |
+| 20 | Quorum certificates + admission webhook (added in Phase 3; see `docs/SECURITY.md`) | **VERIFIED IN SIMULATOR/TESTS**, not live | `agent/resilience/{certificate,admission,webhook}.py`; `k8s/resilience/40-webhook.yaml` | `tests/test_certificate.py` (22), `test_admission.py` (23), `test_enforcement.py` (6: whole pipeline under enforcement, lone agent refused, B fails over), `test_verify_webhook.py` (7) | Never applied to a real API server. `scripts/verify-webhook.sh` checks it safely (dry runs). Admins are exempt by design; 2 of 4 compromised agents break it. |
+| 20b | Least-privilege RBAC (Phase 3) | **VERIFIED IN SIMULATOR/TESTS** (manifest logic) | `k8s/resilience/00-rbac.yaml` | `tests/test_rbac.py` (derived from the real backend calls; 40 forbidden cases) | `scripts/verify-rbac.sh` checks a live cluster. |
+| 20c | Excluded agents rejected, trust persisted, tamper-evident decision log, dashboard token (Phase 3) | **VERIFIED IN SIMULATOR/TESTS** | `agent.py`, `decisionlog.py`, `dashboard/server.py` | `test_trust_hardening.py` (8), `test_decision_log.py` (11), `test_dashboard_auth.py` (7) | Hash chain cannot stop a full-access rewrite; trust file lost if the pod is deleted. |
 | 21 | 2-of-4 compromised experiment | **MISSING** | n/a | n/a | Phase 5. |
 | 22 | **Targeted investigation** (added in Phase 2; see `docs/INVESTIGATION.md`) | **VERIFIED IN SIMULATOR/TESTS**, not live | `agent/resilience/investigation.py`; `Investigate` RPC in `proto/resilience.proto` | `tests/test_investigation.py` (35), `tests/test_investigation_scenarios.py` (9), `tests/test_dashboard_investigations.py` (3); scenarios `transient-blip`, `slow-burn`, `ambiguous` | Never run on the real cluster; sampling rates and thresholds are untuned against real telemetry. |
 
@@ -169,8 +171,9 @@ Other privilege notes:
 * The service-account token is mounted in every agent container; whoever owns an agent container owns these permissions. Four agents share one identity, so one compromised agent holds the powers of all.
 * Nothing protects the `resilience` namespace with a NetworkPolicy; any pod can reach the agents' unauthenticated read-only status port 8081 and the dashboard (port 8090). The gRPC port needs a client certificate.
 
-Least-privilege changes are deliberately left to **Phase 3**, where they are tested together with the
-certificate checks. Planned: drop the unused verbs/resources; `resourceNames` on deployments (the 4
+**Update (Phase 3): done.** The least-privilege changes below were made and tested (`docs/SECURITY.md` section 4,
+`tests/test_rbac.py`, `scripts/verify-rbac.sh`); the table above describes the state *before* them. Planned then,
+implemented now: drop the unused verbs/resources; `resourceNames` on deployments (the 4
 workloads) and on networkpolicy get/update/delete (`resilience-isolate-*`); one `resourceNames` rule for
 the marker ConfigMap; a separate, smaller identity for the baseline controller.
 
@@ -200,10 +203,10 @@ the marker ConfigMap; a separate, smaller identity for the baseline controller.
 2. **Simulator numbers are not real-cluster numbers.** Timers are accelerated and the "cluster" is in memory.
 3. **Calico enforcement is unproven** from my side. `verify-isolation.sh` exists so you can prove it.
 4. **Threshold detection only**, with limits never calibrated against real load. Possible false alarms or misses on a busy cluster.
-5. **One agent's RBAC can act alone.** The 3-of-4 rule is enforced by agent code, not by Kubernetes; a fully compromised agent could bypass its own code (Phase 3 addresses this).
-6. **An excluded agent's evidence still counts** (down-weighted); trust is not restored from peers only, and a restarted agent starts with everyone at 100 (Phase 3).
+5. ~~**One agent's RBAC can act alone.**~~ *Addressed in Phase 3:* an admission webhook now refuses an agent's changes without a valid 3-signature certificate (not yet run on the real cluster; admins are exempt; 2 of 4 compromised agents break it).
+6. ~~**An excluded agent's evidence still counts**~~ *Addressed in Phase 3:* it is rejected entirely, trust returns only over time through peers' observations, and a restart no longer wipes an exclusion (container restart; a deleted pod still loses the state file).
 7. **Agent restart loses memory:** trust scores, pending votes, queued tasks. Only phase/epoch/stage are restored from Deployment annotations.
-8. **Unauthenticated status endpoints** (agents :8081, dashboard :8090) reachable by any pod.
+8. **Unauthenticated status endpoints:** the agents' :8081 remain open to any pod. The dashboard :8090 now supports an optional access token (Phase 3, off by default).
 9. **The compromise switch is a file** (`/tmp/cr-sim/compromise.json`) writable via `kubectl exec`. It exists to demonstrate a lying agent and must not ship in a real deployment.
 10. **Isolation does not stop** node-originated traffic (kubelet probes, port-forward).
 11. **No network-partition testing**, no "goes silent" / "blocks isolation" attacker variants, no 2-of-4 compromise run.

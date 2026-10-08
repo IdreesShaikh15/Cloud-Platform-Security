@@ -1,9 +1,25 @@
-# Least-privilege identity for agents and the baseline controller.
-# They may only: manage NetworkPolicies + patch Deployments in `healthcare`,
-# and read ConfigMaps (the attack marker) in `resilience`.
+# Least-privilege identities (Phase 3; see docs/AUDIT.md section 4 for what was removed and why).
+#
+#   resilience-agent     the four agents. THE ADMISSION WEBHOOK HOLDS THIS IDENTITY TO THE
+#                        QUORUM-CERTIFICATE RULE (k8s/resilience/40-webhook.yaml).
+#   resilience-baseline  the centralized baseline controller (a comparison, deliberately unprotected
+#                        by certificates). Same Kubernetes permissions, separate identity.
+#
+# What they may do, and nothing more (all verbs below are actually used by agent/resilience/response.py;
+# tests/test_rbac.py derives the needed calls from that code and checks every one is allowed):
+#   healthcare ns   NetworkPolicy: create; get/update/delete ONLY resilience-isolate-<the 4 workloads>
+#                   Deployment:    get/patch ONLY the 4 workloads
+#   resilience ns   ConfigMap:     get ONLY cr-attack-marker
+#   quorum-webhook       the admission webhook: read-only `get` of the 4 workload Deployments, only to read
+#                        each one's incident version (stops a replayed certificate creating a new isolation).
+# No pods, no secrets, no list/watch, no cluster-wide rights, no other namespace.
 apiVersion: v1
 kind: ServiceAccount
 metadata: {name: resilience-agent, namespace: resilience}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: resilience-baseline, namespace: resilience}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -11,18 +27,23 @@ metadata: {name: resilience-actuator, namespace: healthcare}
 rules:
 - apiGroups: ["networking.k8s.io"]
   resources: ["networkpolicies"]
-  verbs: ["get", "list", "create", "update", "patch", "delete"]
+  verbs: ["create"]                       # create cannot be limited by name; the webhook limits what may be created
+- apiGroups: ["networking.k8s.io"]
+  resources: ["networkpolicies"]
+  resourceNames: ["resilience-isolate-patient-portal", "resilience-isolate-auth-service",
+                  "resilience-isolate-records-api", "resilience-isolate-database"]
+  verbs: ["get", "update", "delete"]
 - apiGroups: ["apps"]
   resources: ["deployments"]
-  verbs: ["get", "list", "patch"]
-- apiGroups: [""]
-  resources: ["pods"]
-  verbs: ["get", "list"]
+  resourceNames: ["patient-portal", "auth-service", "records-api", "database"]
+  verbs: ["get", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata: {name: resilience-actuator, namespace: healthcare}
-subjects: [{kind: ServiceAccount, name: resilience-agent, namespace: resilience}]
+subjects:
+- {kind: ServiceAccount, name: resilience-agent, namespace: resilience}
+- {kind: ServiceAccount, name: resilience-baseline, namespace: resilience}
 roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: resilience-actuator}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -31,10 +52,32 @@ metadata: {name: resilience-reader, namespace: resilience}
 rules:
 - apiGroups: [""]
   resources: ["configmaps"]
+  resourceNames: ["cr-attack-marker"]
   verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata: {name: resilience-reader, namespace: resilience}
-subjects: [{kind: ServiceAccount, name: resilience-agent, namespace: resilience}]
+subjects:
+- {kind: ServiceAccount, name: resilience-agent, namespace: resilience}
+- {kind: ServiceAccount, name: resilience-baseline, namespace: resilience}
 roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: resilience-reader}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: quorum-webhook, namespace: resilience}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: quorum-webhook-reader, namespace: healthcare}
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  resourceNames: ["patient-portal", "auth-service", "records-api", "database"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: quorum-webhook-reader, namespace: healthcare}
+subjects: [{kind: ServiceAccount, name: quorum-webhook, namespace: resilience}]
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: quorum-webhook-reader}

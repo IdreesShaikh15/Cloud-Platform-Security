@@ -1,0 +1,50 @@
+# Quorum-certificate validating admission webhook (Phase 3; docs/SECURITY.md).
+# Runs the same image as the agents (no new image). Its only Kubernetes access: read-only get of the
+# 4 workload Deployments (service account quorum-webhook, see 00-rbac.yaml).
+# Secret webhook-tls is created by scripts/gen-certs.py. The ValidatingWebhookConfiguration is
+# generated into k8s/generated/webhook-config.json (it embeds the CA) and applied LAST by deploy.sh.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: quorum-webhook
+  namespace: resilience
+  labels: {app: quorum-webhook}
+spec:
+  replicas: 2                              # two copies: one pod restarting must not block the agents
+  selector: {matchLabels: {app: quorum-webhook}}
+  template:
+    metadata:
+      labels: {app: quorum-webhook}
+    spec:
+      serviceAccountName: quorum-webhook
+      containers:
+      - name: webhook
+        image: cr-agent:1.0
+        imagePullPolicy: IfNotPresent
+        args: ["webhook"]
+        env:
+        - {name: WEBHOOK_PORT, value: "8443"}
+        - {name: WEBHOOK_TLS_DIR, value: /etc/resilience/webhook-tls}
+        ports: [{containerPort: 8443, name: https}]
+        readinessProbe:
+          httpGet: {path: /healthz, port: 8443, scheme: HTTPS}
+          periodSeconds: 3
+        volumeMounts:
+        - {name: config, mountPath: /etc/resilience/config.json, subPath: config.json}
+        - {name: pubkeys, mountPath: /etc/resilience/pubkeys}
+        - {name: tls, mountPath: /etc/resilience/webhook-tls}
+        resources:
+          requests: {cpu: 20m, memory: 64Mi}
+          limits: {cpu: 200m, memory: 128Mi}
+        securityContext: {readOnlyRootFilesystem: true, allowPrivilegeEscalation: false}
+      volumes:
+      - {name: config, configMap: {name: resilience-config}}
+      - {name: pubkeys, configMap: {name: peer-pubkeys}}
+      - {name: tls, secret: {secretName: webhook-tls}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: quorum-webhook, namespace: resilience}
+spec:
+  selector: {app: quorum-webhook}
+  ports: [{name: https, port: 443, targetPort: 8443}]

@@ -22,8 +22,13 @@ KEYS = ["ttd_s", "tti_s", "ttr_s", "ttv_s", "ttf_s", "trust_recovery_s", "time_t
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", default="http://localhost:8090")
+    ap.add_argument("--token", default=os.environ.get("DASHBOARD_TOKEN", ""),
+                    help="dashboard access token (prefer the DASHBOARD_TOKEN environment variable: "
+                         "command-line arguments are visible to other users in `ps`)")
     a = ap.parse_args()
-    with urllib.request.urlopen(f"{a.url.rstrip('/')}/api/metrics", timeout=5) as r:
+    req = urllib.request.Request(f"{a.url.rstrip('/')}/api/metrics",
+                                 headers={"Authorization": f"Bearer {a.token}"} if a.token else {})
+    with urllib.request.urlopen(req, timeout=5) as r:
         rows = json.loads(r.read())
     by = {}
     for row in rows:

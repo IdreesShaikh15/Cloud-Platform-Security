@@ -17,8 +17,10 @@ certificates):
 """
 from __future__ import annotations
 
+import json
 import logging
 import math
+import os
 import threading
 import time
 from collections import defaultdict, deque
@@ -27,8 +29,11 @@ from typing import Callable, Deque, Dict, List, Optional, Tuple
 
 from .config import ClusterConfig
 from .crypto import KeyRegistry, Signer
+from .decisionlog import DecisionLog, digest_of
 from .detection import Detection, Detector, max_confidence
 from .evidence import Action, Evidence, ObsType, ReplayCache, Vote, open_envelope, seal
+from .certificate import (ANNOTATION as QC_ANNOTATION, ActionPending, CertificateInvalid,
+                          CertificateManager, CertificatePending, Expect, verify_certificate)
 from .investigation import InvestigationManager
 from .metrics import MetricsRecorder
 from .monitoring import Snapshot, TelemetrySource, fetch_availability
@@ -76,7 +81,8 @@ class ResilienceAgent:
                  registry: KeyRegistry, telemetry: TelemetrySource,
                  backend: ResponseBackend, metrics: Optional[MetricsRecorder] = None,
                  compromise: Optional[CompromiseSource] = None,
-                 clock: Callable[[], float] = time.time):
+                 clock: Callable[[], float] = time.time,
+                 decision_log_path: Optional[str] = None, trust_state_path: Optional[str] = None):
         self.cfg = cfg
         self.id = node_id
         self.signer = signer
@@ -113,6 +119,16 @@ class ResilienceAgent:
         self._flags: Dict[str, Tuple[bool, bool]] = {n: (False, False) for n in cfg.nodes}
         self._score_seen: Dict[str, bool] = {}
         self.inv = InvestigationManager(self)       # targeted investigation (docs/INVESTIGATION.md)
+        self.certs = CertificateManager(self)       # quorum certificates (docs/SECURITY.md)
+        # Evidence from vote-excluded agents is NOT counted, but still watched: it is how
+        # peers keep judging whether such an agent is still lying (trust moves only through
+        # what peers observe, never through what the agent says about itself).
+        self.excluded_pool = EvidencePool()
+        self.decision_log = DecisionLog(decision_log_path)       # tamper-evident (docs/SECURITY.md)
+        self._trust_path = trust_state_path
+        self._trust_saved: Optional[str] = None
+        self._trust_saved_at = 0.0
+        self._load_trust()
 
     # ------------------------------------------------------------------ transport
     @property
@@ -190,9 +206,26 @@ class ResilienceAgent:
         if claim is None:
             self._reject_envelope(env, transport_identity, reason, now)
             return False, reason
+        if isinstance(claim, pb.CertShare):
+            ok, why, penalise = self.certs.on_share(claim, transport_identity, now)
+            if not ok and penalise:
+                self._reject_envelope(env, transport_identity, why, now)
+            return ok, why
         if not isinstance(claim, (Evidence, Vote)):         # investigation kinds have their own RPC
             return False, f"unexpected {env.kind} on this channel"
         if isinstance(claim, Evidence):
+            if claim.origin != self.id and not self.eligible_voter(claim.origin):
+                # A vote-excluded agent's evidence is rejected entirely (not merely down-weighted).
+                self.excluded_pool.add(claim)
+                self.events.emit(
+                    obs.FLAG,
+                    f"Agent {self.id} ignored {claim.observation.value.lower()} evidence from {claim.origin}: "
+                    f"{claim.origin} is vote-excluded (trust {self.agent_trust.get(claim.origin):.0f} < "
+                    f"{self.cfg.trust.vote_min_trust:g}), so nothing it says counts toward any score or quorum.",
+                    claim.origin, {"peer": claim.origin, "flag": "EVIDENCE_REJECTED", "about": claim.target,
+                                   "reason": "sender is vote-excluded", "type": claim.observation.value},
+                    key=("excl-ev", claim.origin, claim.target), every=10.0)
+                return False, "sender is vote-excluded: evidence not counted"
             self.pool.add(claim)
             self.events.emit(
                 obs.EVIDENCE_RECEIVED,
@@ -300,6 +333,8 @@ class ResilienceAgent:
             self._track_cluster(now)
             self._run_tasks(now)
             self.inv.tick(now)
+            self.certs.tick(now)
+            self._save_trust(now)
 
     def _observe(self, now: float) -> None:
         self.snaps = self.telemetry.collect()
@@ -361,7 +396,8 @@ class ResilienceAgent:
     def _update_trust(self, now: float, dt: float) -> None:
         tp, tm, q = self.cfg.trust, self.cfg.timers, self.cfg.quorum
         # --- agent (evidence-source) trust
-        recent = self.pool.recent(now, tm.evidence_window_s, min_conf=q.local_min_conf)
+        recent = (self.pool.recent(now, tm.evidence_window_s, min_conf=q.local_min_conf)
+                  + self.excluded_pool.recent(now, tm.evidence_window_s, min_conf=q.local_min_conf))
         contradicted = set()
         example: Dict[str, Evidence] = {}          # observability only
         for e in recent:
@@ -394,6 +430,37 @@ class ResilienceAgent:
         self.agent_trust.record(now)
         self.workload_trust.record(now)
         self._check_flags()
+
+    # ---- persisted trust: a restart must not wipe a vote-exclusion
+    def _load_trust(self) -> None:
+        if not self._trust_path or not os.path.exists(self._trust_path):
+            return
+        try:
+            with open(self._trust_path) as fh:
+                saved = json.load(fh).get("agent_trust", {})
+            for nid, v in saved.items():
+                if nid in self.cfg.nodes and nid != self.id:
+                    self.agent_trust.set(nid, float(v))
+            log.info("restored peer trust from %s: %s", self._trust_path, saved)
+        except (OSError, ValueError, TypeError) as exc:
+            log.warning("could not read trust state %s: %s (starting from defaults)", self._trust_path, exc)
+
+    def _save_trust(self, now: float) -> None:
+        if not self._trust_path or now - self._trust_saved_at < 3.0:
+            return
+        snap = {n: round(v, 1) for n, v in self.agent_trust.all().items() if n != self.id}
+        blob = json.dumps(snap, sort_keys=True)
+        if blob == self._trust_saved:
+            return
+        try:
+            os.makedirs(os.path.dirname(self._trust_path) or ".", exist_ok=True)
+            tmp = self._trust_path + ".tmp"
+            with open(tmp, "w") as fh:
+                json.dump({"saved_at": now, "agent_trust": snap}, fh)
+            os.replace(tmp, self._trust_path)
+            self._trust_saved, self._trust_saved_at = blob, now
+        except OSError as exc:
+            log.warning("could not save trust state: %s", exc)
 
     def _trust_band(self, v: float) -> int:
         tp = self.cfg.trust
@@ -609,6 +676,10 @@ class ResilienceAgent:
              "stage": v.stage, "voters": c.voters, "note": note,
              "justification": justification or {}}
         self.decisions.append(d)
+        self.decision_log.append({"t": now, "action": v.action.value, "target": v.target,
+                                  "workload": self.workload(v.target), "epoch": v.epoch, "stage": v.stage,
+                                  "voters": c.voters, "note": note, "proposal": c.action_key,
+                                  "justification_digest": digest_of(justification or {})})
         self.states[v.target].last_decision = d
         log.info("QUORUM %s on %s (epoch %d%s) by %s", v.action.value, v.target, v.epoch,
                  f", stage {v.stage}" if v.stage else "", ",".join(c.voters))
@@ -668,10 +739,14 @@ class ResilienceAgent:
             self.metrics.event("contain_committed", now, v.target, voters=c.voters)
             ann, epoch = self._qc_annotations(c), v.epoch
 
+            key = c.action_key
+            self.certs.on_commit(c, now)
+
             def isolate():
-                self.backend.apply_stage(w, "QUARANTINE", ann)
+                qc = self._qc(key, "CONTAIN", v.target, epoch, "")
+                self.backend.apply_stage(w, "QUARANTINE", {**ann, QC_ANNOTATION: qc} if qc else ann)
                 self.backend.write_state(w, {"epoch": epoch, "phase": ISOLATED, "stage": "QUARANTINE",
-                                             "isolated-epoch": epoch})
+                                             "isolated-epoch": epoch}, qc)
                 self.metrics.event("isolation_applied", self.clock(), v.target, executor=self.id)
                 self.events.emit(obs.ACTION, f"Agent {self.id} isolated {w} ({v.target}): quarantine "
                                  f"NetworkPolicy applied, signed off by {', '.join(c.voters)}.",
@@ -683,8 +758,8 @@ class ResilienceAgent:
                 # confirmed in the cluster, or the new pod would come up un-quarantined and
                 # un-validated. Raising makes the executor retry in 2 s (see _run_tasks).
                 if int(self.backend.read_state(w).get("isolated-epoch", -1)) < epoch:
-                    raise RuntimeError("isolation not confirmed yet; recovery waits for it")
-                self.backend.recover(w, epoch)
+                    raise ActionPending("isolation is not confirmed in the cluster yet")
+                self.backend.recover(w, epoch, self._qc(key, "CONTAIN", v.target, epoch, ""))
                 self.events.emit(obs.ACTION, f"Agent {self.id} started recovery of {w} "
                                  f"({v.target}): redeploying it from the known-good image.",
                                  v.target, {"action": "recover", "workload": w, "result": "ok",
@@ -702,11 +777,14 @@ class ResilienceAgent:
             self._record_decision(c, now, "validated; start staged reintegration", just)
             self.metrics.event("validated", now, v.target, voters=c.voters)
             self.metrics.event("stage:QUARANTINE", now, v.target)
-            epoch = v.epoch
+            epoch, key = v.epoch, c.action_key
+            self.certs.on_commit(c, now)
             self._schedule(now, v.target, f"validated:{v.target}:{epoch}",
                            lambda: self.backend.read_state(w).get("phase") == REINTEGRATING
                            and int(self.backend.read_state(w).get("epoch", -1)) >= epoch,
-                           lambda: self.backend.write_state(w, {"phase": REINTEGRATING, "stage": "QUARANTINE"}),
+                           lambda: self.backend.write_state(
+                               w, {"phase": REINTEGRATING, "stage": "QUARANTINE"},
+                               self._qc(key, "VALIDATE", v.target, epoch, "")),
                            f"mark {w} validated")
 
         elif (v.action == Action.ADVANCE_STAGE and v.epoch == st.epoch and st.phase == REINTEGRATING
@@ -718,6 +796,8 @@ class ResilienceAgent:
                 self.metrics.event("reintegrated", now, v.target)
             self._record_decision(c, now, f"advance to {v.stage}", just)
             ann, stage, phase = self._qc_annotations(c), v.stage, st.phase
+            key, epoch = c.action_key, v.epoch
+            self.certs.on_commit(c, now)
 
             def expected_stage():
                 # Monotonic: a fail-over executor must never roll a target back
@@ -729,8 +809,9 @@ class ResilienceAgent:
                 return cur_i >= STAGES.index(stage)
 
             def apply():
-                self.backend.apply_stage(w, stage, ann)
-                self.backend.write_state(w, {"phase": phase, "stage": stage})
+                qc = self._qc(key, "ADVANCE_STAGE", v.target, epoch, stage)
+                self.backend.apply_stage(w, stage, {**ann, QC_ANNOTATION: qc} if qc else ann)
+                self.backend.write_state(w, {"phase": phase, "stage": stage}, qc)
                 self.events.emit(obs.ACTION, f"Agent {self.id} moved {w} ({v.target}) to stage "
                                  f"{stage}" + (": isolation removed, full access restored."
                                                if stage == "FULL" else "."),
@@ -747,6 +828,25 @@ class ResilienceAgent:
                 f"{', '.join(c.voters)}: it no longer matches its state ({st.phase}, epoch {st.epoch}).",
                 v.target, {"proposal": c.action_key, "signers": c.voters, "ignored": True,
                            "local_phase": st.phase, "local_epoch": st.epoch})
+
+    # ------------------------------------------------------------------ certificates (executor side)
+    def _qc(self, action_key: str, action: str, target: str, epoch: int, stage: str) -> str:
+        """The verified quorum certificate (base64) the executor attaches to its Kubernetes call.
+        Raises CertificatePending (not complete yet: retry next tick) or CertificateInvalid
+        (the action must NOT be performed)."""
+        cp = self.cfg.certificates
+        if not cp.enforce:
+            return ""
+        cert = self.certs.get(action_key, wait_s=0.3)
+        if cert is None:
+            raise CertificatePending(f"waiting for 3 signatures on {action_key}")
+        ok, why = verify_certificate(cert, self.registry, self.clock(), quorum=self.cfg.quorum.quorum,
+                                     expect=Expect(self.workload(target), action, stage, epoch),
+                                     revoked=cp.revoked_signers, current_epoch=self.states[target].epoch,
+                                     max_ttl_s=cp.max_ttl_s)
+        if not ok:
+            raise CertificateInvalid(why)
+        return cert.to_b64()
 
     # ------------------------------------------------------------------ executor
     def executor_rank(self) -> int:
@@ -785,6 +885,18 @@ class ResilienceAgent:
                     continue
                 log.info("EXECUTOR %s: %s", self.id, t.desc)
                 t.run()
+            except ActionPending as exc:                  # a prerequisite is not met yet: retry next tick
+                self.events.emit(obs.ACTION, f"Agent {self.id} is holding back '{t.desc}': {exc}.", t.target,
+                                 {"action": "waiting", "task": t.key, "detail": str(exc)},
+                                 key=("certwait", t.key), every=5.0)
+                t.due = now
+                remaining.append(t)
+            except CertificateInvalid as exc:             # never act on a bad certificate
+                log.error("executor REFUSED %s: invalid certificate: %s", t.key, exc)
+                self.events.emit(obs.ACTION, f"Agent {self.id} REFUSED to '{t.desc}': the quorum certificate "
+                                 f"is not valid ({exc}). Nothing was changed.", t.target,
+                                 {"action": "refused", "task": t.key, "desc": t.desc,
+                                  "result": f"invalid certificate: {exc}"})
             except Exception as exc:
                 log.error("executor task %s failed: %s (retrying)", t.key, exc)
                 self.events.emit(obs.ACTION, f"Agent {self.id} failed to '{t.desc}' ({exc}); "
@@ -821,7 +933,9 @@ class ResilienceAgent:
                                            "result": self.validation_check(nid)[1]})
                     st.phase_entered = now
                     self._schedule(now, nid, f"re-recover:{nid}:{st.epoch}:{int(now)}",
-                                   lambda: False, lambda w=w, e=st.epoch: self.backend.recover(w, e),
+                                   lambda: False,
+                                   lambda w=w, e=st.epoch, n=nid: self.backend.recover(
+                                       w, e, self._qc(f"CONTAIN:{n}:{e}:", "CONTAIN", n, e, "")),
                                    f"re-redeploy {w}")
             except Exception as exc:
                 # Not silent: a persistent failure here leaves the target stuck in its
@@ -880,6 +994,8 @@ class ResilienceAgent:
                 "flags": {n: {"suspect": f[0], "vote_excluded": f[1]}
                           for n, f in self._flags.items() if n != self.id},
                 "investigations": self.inv.status(),
+                "certificates": self.certs.status(),
+                "decision_log": self.decision_log.status(),
                 "event_boot": self.events.boot,
                 "event_seq": self.events.seq,
                 "events": self.events.recent(since=events_since) if include_events else [],

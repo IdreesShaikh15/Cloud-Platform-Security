@@ -93,6 +93,17 @@ class InvestigationParams:
 
 
 @dataclass
+class CertParams:
+    """Quorum certificates and the admission webhook (docs/SECURITY.md)."""
+    ttl_s: float = 300.0               # a certificate is void this long after its newest vote
+    max_ttl_s: float = 900.0           # a statement claiming a longer life is rejected
+    enforce: bool = True               # the executor refuses to act without a verified certificate
+    revoked_signers: List[str] = field(default_factory=list)   # agents a human has revoked
+    webhook_enforced_users: List[str] = field(default_factory=lambda: [
+        "system:serviceaccount:resilience:resilience-agent"])  # who the webhook holds to the rule
+
+
+@dataclass
 class ClusterConfig:
     nodes: Dict[str, NodeSpec]
     healthcare_namespace: str = "healthcare"
@@ -104,6 +115,7 @@ class ClusterConfig:
     trust: TrustParams = field(default_factory=TrustParams)
     quorum: QuorumParams = field(default_factory=QuorumParams)
     investigation: InvestigationParams = field(default_factory=InvestigationParams)
+    certificates: CertParams = field(default_factory=CertParams)
     client_stats_url: Optional[str] = None  # synthetic client (availability probe)
 
     def workload_of(self, node_id: str) -> str:
@@ -143,6 +155,7 @@ def load_cluster_config(path: Optional[str] = None) -> ClusterConfig:
         trust=_dc(TrustParams, raw.get("trust")),
         quorum=_dc(QuorumParams, raw.get("quorum")),
         investigation=_dc(InvestigationParams, raw.get("investigation")),
+        certificates=_dc(CertParams, raw.get("certificates")),
         client_stats_url=raw.get("client_stats_url"),
     )
     hashes_path = raw.get("baseline_hashes_path") or os.environ.get(

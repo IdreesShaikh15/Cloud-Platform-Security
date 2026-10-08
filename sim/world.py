@@ -29,6 +29,7 @@ from resilience.metrics import MetricsRecorder  # noqa: E402
 from resilience.monitoring import Snapshot  # noqa: E402
 from resilience.peer import PeerClient, PeerServer, TlsMaterial  # noqa: E402
 from resilience.pki import generate  # noqa: E402
+from resilience.admission import AdmissionPolicy  # noqa: E402
 from resilience.response import FakeBackend  # noqa: E402
 from resilience.simhooks import Compromise, CompromiseSource  # noqa: E402
 
@@ -166,13 +167,24 @@ def fast_config(base_port: int, investigation: Optional[InvestigationParams] = N
 class LocalCluster:
     """Four agents with real gRPC/mTLS peers on localhost."""
 
-    def __init__(self, base_port: int = 50151, with_status: bool = False, cfg: Optional[ClusterConfig] = None):
+    def __init__(self, base_port: int = 50151, with_status: bool = False, cfg: Optional[ClusterConfig] = None,
+                 enforce_admission: bool = True, state_dir: Optional[str] = None):
         self.cfg = cfg or fast_config(base_port)
         self.world = FakeWorld()
-        self.backend = FakeBackend(recovery_delay_s=2.0, on_recover=self.world.recover_workload)
         self.pki_dir = tempfile.mkdtemp(prefix="cr-pki-")
         pubkeys = generate(self.pki_dir, {n: s.agent_name for n, s in self.cfg.nodes.items()})
         registry = KeyRegistry.from_b64_map(pubkeys)
+        self.registry = registry
+        # The simulated cluster runs the SAME admission policy as the real webhook: every change an
+        # agent makes must carry a valid 3-signature quorum certificate or it is refused.
+        self.backend = FakeBackend(recovery_delay_s=2.0, on_recover=self.world.recover_workload,
+                                   known_good_image=self.cfg.known_good_image)
+        if enforce_admission:
+            self.admission = AdmissionPolicy.from_config(self.cfg, registry,
+                                                         epoch_source=self.backend.incident_epoch)
+            self.backend.admission = self.admission.review
+        else:
+            self.admission = None
         self.compromise: Dict[str, CompromiseSource] = {}
         self.agents: Dict[str, ResilienceAgent] = {}
         self.servers: List[PeerServer] = []
@@ -183,7 +195,11 @@ class LocalCluster:
             tls = TlsMaterial.from_dir(d)
             comp = CompromiseSource(path=None)
             agent = ResilienceAgent(self.cfg, n, signer, registry, FakeTelemetry(self.world, n),
-                                    self.backend, MetricsRecorder(n), comp)
+                                    self.backend, MetricsRecorder(n), comp,
+                                    decision_log_path=(os.path.join(state_dir, f"decisions-{n}.jsonl")
+                                                       if state_dir else None),
+                                    trust_state_path=(os.path.join(state_dir, f"trust-{n}.json")
+                                                      if state_dir else None))
             srv = PeerServer(n, spec.agent_addr, tls, self.cfg.node_of_agent, agent.on_envelope,
                              agent.on_investigate).start()
             agent.transport = PeerClient(n, self.cfg.nodes, tls)

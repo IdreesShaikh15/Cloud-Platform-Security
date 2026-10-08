@@ -18,14 +18,17 @@ Local use (against the simulator):
 """
 from __future__ import annotations
 
+import hmac
 import json
 import os
+import secrets
 import statistics
 import threading
 import time
 import urllib.request
 from collections import Counter, deque
 from concurrent.futures import ThreadPoolExecutor
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -132,6 +135,107 @@ class Collector:
 COLLECTOR = Collector()
 
 
+# --------------------------------------------------------------------------- access control
+class Auth:
+    """Optional shared-token login. OFF unless a token is configured, so local demos stay open.
+
+    The token comes from the environment (DASHBOARD_TOKEN) or a file (DASHBOARD_TOKEN_FILE, e.g. a
+    mounted Kubernetes Secret). It is never hardcoded, never logged and never sent back. A browser
+    logs in once (POST /login) and gets a random, expiring, HttpOnly session cookie; scripts send
+    `Authorization: Bearer <token>`. EVERY endpoint except /healthz and the login page itself
+    requires it, including all of /api/*.
+    """
+    SESSION_TTL_S = 8 * 3600
+    MAX_FAILS, FAIL_WINDOW_S = 5, 60.0
+
+    def __init__(self, token: str = ""):
+        self._token = token or ""
+        self._sessions: dict = {}
+        self._fails: dict = {}
+        self._lock = threading.Lock()
+
+    @classmethod
+    def from_env(cls) -> "Auth":
+        tok = os.environ.get("DASHBOARD_TOKEN", "")
+        path = os.environ.get("DASHBOARD_TOKEN_FILE", "")
+        if not tok and path:
+            # A token file was asked for. If it cannot be read, FAIL CLOSED: never fall back to an
+            # open dashboard because of a misconfigured secret mount.
+            try:
+                with open(path) as fh:
+                    tok = fh.read().strip()
+            except OSError as exc:
+                raise RuntimeError(f"DASHBOARD_TOKEN_FILE is set but unreadable ({exc.strerror}); "
+                                   f"refusing to start without access control") from exc
+            if not tok:
+                raise RuntimeError("DASHBOARD_TOKEN_FILE is empty; refusing to start without access control")
+        return cls(tok)
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self._token)
+
+    def token_ok(self, candidate: str) -> bool:
+        return self.enabled and hmac.compare_digest(candidate.encode(), self._token.encode())
+
+    def locked_out(self, ip: str, now: float = None) -> bool:
+        now = now or time.time()
+        with self._lock:
+            recent = [t for t in self._fails.get(ip, []) if now - t < self.FAIL_WINDOW_S]
+            self._fails[ip] = recent
+            return len(recent) >= self.MAX_FAILS
+
+    def record_fail(self, ip: str) -> None:
+        with self._lock:
+            self._fails.setdefault(ip, []).append(time.time())
+
+    def new_session(self) -> str:
+        sid = secrets.token_urlsafe(32)
+        with self._lock:
+            self._sessions = {k: v for k, v in self._sessions.items() if v > time.time()}
+            self._sessions[sid] = time.time() + self.SESSION_TTL_S
+        return sid
+
+    def session_ok(self, sid: str) -> bool:
+        with self._lock:
+            return self._sessions.get(sid, 0) > time.time()
+
+    def drop_session(self, sid: str) -> None:
+        with self._lock:
+            self._sessions.pop(sid, None)
+
+    def request_ok(self, headers) -> bool:
+        """True if auth is off, or the request carries a valid bearer token or session cookie."""
+        if not self.enabled:
+            return True
+        m = headers.get("Authorization", "")
+        if m.startswith("Bearer ") and self.token_ok(m[7:].strip()):
+            return True
+        raw = headers.get("Cookie", "")
+        if raw:
+            try:
+                c = SimpleCookie(raw)
+                if "cr_session" in c and self.session_ok(c["cr_session"].value):
+                    return True
+            except Exception:
+                return False
+        return False
+
+
+AUTH = Auth.from_env()
+
+LOGIN_PAGE = b"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Resilience Status - sign in</title><style>
+body{margin:0;display:grid;place-items:center;min-height:100vh;background:#0f1419;color:#e6edf3;font:14px system-ui,sans-serif}
+form{background:#1a2129;padding:24px;border-radius:8px;width:min(340px,90vw)}h1{font-size:16px;margin:0 0 12px}
+input,button{width:100%;box-sizing:border-box;padding:8px;margin-top:8px;border-radius:6px;border:1px solid #30363d;background:#0f1419;color:#e6edf3;font:inherit}
+button{background:#58a6ff;color:#000;border:0;cursor:pointer}.m{color:#8b949e;font-size:12px;margin-top:8px}.e{color:#f85149}
+</style></head><body><form method="post" action="login"><h1>Distributed Cyber-Resilience Platform</h1>
+<div class="m">This dashboard needs an access token.</div>
+<input type="password" name="token" placeholder="access token" autocomplete="current-password" autofocus>
+<button type="submit">Sign in</button>__ERR__</form></body></html>"""
+
+
 # --------------------------------------------------------------------------- aggregation
 def _vote_view(key: str, statuses: dict, ids: list) -> dict:
     """Who voted for proposal `key`, who didn't and why, who excludes whom."""
@@ -210,6 +314,14 @@ def investigations_view(live: dict) -> dict:
     return {"enabled": enabled, "rows": out[:12], "watch": list(watch.values())}
 
 
+def decision_logs_view(live: dict) -> dict:
+    """Is every agent's tamper-evident decision log intact? (hash chain, see decisionlog.py)"""
+    per = {sid: s["decision_log"] for sid, s in live.items() if s.get("decision_log")}
+    broken = sorted(sid for sid, d in per.items() if not d.get("ok"))
+    return {"agents": per, "broken": broken, "checked": len(per),
+            "ok": (not broken) if per else None}
+
+
 def aggregate() -> dict:
     statuses = COLLECTOR.snapshot()
     if not statuses:                             # poller not warmed up yet
@@ -261,6 +373,7 @@ def aggregate() -> dict:
     return {"mode": "centralized" if base and not live else "distributed",
             "nodes": nodes, "decisions": uniq[:15], "rejections": rejections,
             "investigations": investigations_view(live),
+            "decision_logs": decision_logs_view(live),
             "pending_votes": {k: v["voters"] for k, v in pending.items()},
             "pending_detail": pending, "baseline": BASELINE or None,
             "central_compromised": (base or {}).get("compromised"),
@@ -292,6 +405,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
         for k, v in (extra or {}).items():
             self.send_header(k, v)
         self.end_headers()
@@ -300,10 +414,46 @@ class Handler(BaseHTTPRequestHandler):
     def _json(self, obj, extra=None):
         return self._send(200, json.dumps(obj, default=str).encode(), "application/json", extra)
 
+    def _ip(self) -> str:
+        return self.client_address[0]
+
+    def _login_page(self, code: int = 200, err: str = ""):
+        body = LOGIN_PAGE.replace(b"__ERR__", (b'<div class="m e">' + err.encode() + b"</div>") if err else b"")
+        return self._send(code, body, "text/html; charset=utf-8")
+
+    def do_POST(self):
+        url = urlparse(self.path)
+        if url.path != "/login" or not AUTH.enabled:
+            return self._send(404, b"not found", "text/plain")
+        if AUTH.locked_out(self._ip()):
+            return self._login_page(429, "Too many attempts. Wait a minute and try again.")
+        n = min(int(self.headers.get("Content-Length") or 0), 4096)
+        form = parse_qs(self.rfile.read(n).decode(errors="replace"))
+        if AUTH.token_ok((form.get("token", [""])[0])):
+            sid = AUTH.new_session()
+            secure = "; Secure" if os.environ.get("DASHBOARD_COOKIE_SECURE") == "1" else ""
+            return self._send(303, b"", "text/plain", {
+                "Location": "./", "Set-Cookie": f"cr_session={sid}; HttpOnly; SameSite=Strict; Path=/{secure}"})
+        AUTH.record_fail(self._ip())
+        return self._login_page(401, "Wrong token.")
+
     def do_GET(self):
         url = urlparse(self.path)
         q = parse_qs(url.query)
         p = url.path
+        if p == "/healthz":                      # liveness only: no data
+            return self._json({"ok": True})
+        if p == "/logout":
+            m = SimpleCookie(self.headers.get("Cookie", ""))
+            if "cr_session" in m:
+                AUTH.drop_session(m["cr_session"].value)
+            return self._send(303, b"", "text/plain", {"Location": "./",
+                                                      "Set-Cookie": "cr_session=; Max-Age=0; Path=/"})
+        if not AUTH.request_ok(self.headers):
+            if p in ("/", "/index.html"):
+                return self._login_page()
+            return self._send(401, b'{"error":"authentication required"}', "application/json",
+                              {"WWW-Authenticate": "Bearer"})
         if p == "/api/state":
             return self._json(aggregate())
         if p == "/api/events":
@@ -326,6 +476,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    print(f"dashboard on :{PORT}, agents={URLS}, baseline={BASELINE or '-'}", flush=True)
+    print(f"dashboard on :{PORT}, agents={URLS}, baseline={BASELINE or '-'}, "
+          f"access token: {'REQUIRED' if AUTH.enabled else 'off (open)'}", flush=True)
     threading.Thread(target=COLLECTOR.run, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

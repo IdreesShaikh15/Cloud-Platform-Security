@@ -74,6 +74,7 @@
     <div class="mut" id="sub">loading...</div>
   </div>
   <div class="toolbar">
+    <span class="tag" id="dlog" title="Each agent keeps a hash-chained log of the quorum decisions it saw; a changed, deleted or re-ordered record breaks the chain."></span>
     <span class="live running" id="live">● LIVE</span>
     <button id="pause" title="Freeze the whole screen (data keeps being collected in the background)">Pause</button>
     <a class="btn" id="export" href="api/export" download>Export events</a>
@@ -106,6 +107,10 @@
 <aside id="drawer" aria-label="Agent detail"></aside>
 
 <script>
+// If the dashboard needs a token and our session ended, any API call answers 401: show the login page.
+const _fetch = window.fetch.bind(window);
+window.fetch = async (...a) => { const r = await _fetch(...a); if (r.status === 401) location.reload(); return r; };
+const DLOG_HELP = "Each agent keeps a hash-chained log of the quorum decisions it saw; a changed, deleted or re-ordered record breaks the chain.";
 const STAGES = ["QUARANTINE","RESTRICTED","MONITORED","PEER_VALIDATED","FULL"];
 const CATS = ["OBSERVE","EVIDENCE_SENT","EVIDENCE_RECEIVED","REJECTED","SCORE","VOTE_CAST","VOTE_WITHHELD","TRUST_CHANGE","FLAG","QUORUM","ACTION","PEER_LINK","INVESTIGATION"];
 const ICON = {OBSERVE:"👁", EVIDENCE_SENT:"➚", EVIDENCE_RECEIVED:"➘", REJECTED:"⛔", SCORE:"Σ", VOTE_CAST:"✔", VOTE_WITHHELD:"✋",
@@ -213,6 +218,12 @@ function renderState(s) {
     </div>`).join("");
 
   renderInvestigations(s.investigations);
+  const dl = s.decision_logs, de = document.getElementById("dlog");
+  if (dl && dl.checked) {
+    de.className = "tag " + (dl.ok ? "ok" : "bad");
+    de.textContent = dl.ok ? `decision logs ✔ intact (${dl.checked} agents)` : `decision log BROKEN: ${dl.broken.join(", ")}`;
+    de.title = DLOG_HELP + " " + Object.entries(dl.agents).map(([a, d]) => `${a}: ${d.length} records` + (d.ok ? "" : ` — first broken record #${d.first_broken}: ${d.reason}`)).join(" | ");
+  } else { de.textContent = ""; }
 
   // decisions (expandable)
   document.getElementById("dec").innerHTML = "<tr><th>time</th><th>action</th><th>target</th><th>epoch</th><th>stage</th><th>signed by</th><th></th></tr>" +
