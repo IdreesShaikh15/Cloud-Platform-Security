@@ -190,4 +190,5 @@ No secrets in the diff (checked).
 * **To use it:** rebuild the agent image (the webhook runs from it); re-run `python3 scripts/gen-certs.py` (rotates all keys) then `scripts/deploy.sh` (applies RBAC, ConfigMap, webhook, then the webhook configuration last); restart agents and the dashboard.
 
 ### Commit / push
-Filled in below after pushing.
+* Commit **`dc50f4e`** ("Phase 3: security hardening ..."), pushed (no force) to `claude/cyber-resilience-platform-xxs3oh` and `claude/inspiring-thompson-ik54a3`.
+* Tag `pre-phase-3` exists locally only (recreate with `git tag pre-phase-3 7992562`).
