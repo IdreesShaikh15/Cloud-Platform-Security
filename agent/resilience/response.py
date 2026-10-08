@@ -34,8 +34,17 @@ class ResponseBackend(Protocol):
 
 
 # --------------------------------------------------------------------------- Kubernetes
+# Every Kubernetes API call is bounded: (connect, read) seconds. Without this the
+# python client waits forever on a hung API server, and because the agent's tick
+# loop (and its status page) share one lock, a single hung call froze the whole
+# agent. A timeout does NOT mean the call failed - the request may still have been
+# applied - so every actuator below is written to be safe to repeat.
+API_TIMEOUT_S = (3.0, 10.0)
+
+
 class K8sBackend:
-    def __init__(self, healthcare_ns: str, resilience_ns: str, known_good_image: str):
+    def __init__(self, healthcare_ns: str, resilience_ns: str, known_good_image: str,
+                 api_timeout_s: tuple = API_TIMEOUT_S):
         from kubernetes import client, config  # imported lazily: not needed for local sim
         try:
             config.load_incluster_config()
@@ -48,6 +57,7 @@ class K8sBackend:
         self.hc_ns = healthcare_ns
         self.res_ns = resilience_ns
         self.image = known_good_image
+        self.t = {"_request_timeout": api_timeout_s}
 
     def _policy_name(self, workload: str) -> str:
         return POLICY_NAME_FMT.format(workload=workload)
@@ -58,22 +68,23 @@ class K8sBackend:
         body = network_policy(workload, stage, self.hc_ns, self.res_ns, annotations)
         if body is None:  # FULL -> remove restriction
             try:
-                self.net.delete_namespaced_network_policy(name, self.hc_ns)
+                self.net.delete_namespaced_network_policy(name, self.hc_ns, **self.t)
             except ApiException as exc:
                 if exc.status != 404:
                     raise
             return
         try:
-            self.net.replace_namespaced_network_policy(name, self.hc_ns, body)
+            self.net.replace_namespaced_network_policy(name, self.hc_ns, body, **self.t)
         except ApiException as exc:
             if exc.status != 404:
                 raise
-            self.net.create_namespaced_network_policy(self.hc_ns, body)
+            self.net.create_namespaced_network_policy(self.hc_ns, body, **self.t)
 
     def current_stage(self, workload: str) -> Optional[str]:
         from kubernetes.client.rest import ApiException
         try:
-            pol = self.net.read_namespaced_network_policy(self._policy_name(workload), self.hc_ns)
+            pol = self.net.read_namespaced_network_policy(self._policy_name(workload), self.hc_ns,
+                                                        **self.t)
         except ApiException as exc:
             if exc.status == 404:
                 return None
@@ -91,10 +102,10 @@ class K8sBackend:
                 "metadata": {"annotations": {"resilience.io/recovered-at": ts}},
                 "spec": {"containers": [{"name": "app", "image": self.image}]}}},
         }
-        self.apps.patch_namespaced_deployment(workload, self.hc_ns, patch)
+        self.apps.patch_namespaced_deployment(workload, self.hc_ns, patch, **self.t)
 
     def recovery_done(self, workload: str, epoch: int) -> bool:
-        d = self.apps.read_namespaced_deployment(workload, self.hc_ns)
+        d = self.apps.read_namespaced_deployment(workload, self.hc_ns, **self.t)
         ann = d.metadata.annotations or {}
         if int(ann.get("resilience.io/recovered-epoch", "-1")) < epoch:
             return False
@@ -106,11 +117,12 @@ class K8sBackend:
 
     def write_state(self, workload: str, state: Dict[str, str]) -> None:
         ann = {f"resilience.io/{k}": str(v) for k, v in state.items()}
-        self.apps.patch_namespaced_deployment(workload, self.hc_ns, {"metadata": {"annotations": ann}})
+        self.apps.patch_namespaced_deployment(workload, self.hc_ns,
+                                              {"metadata": {"annotations": ann}}, **self.t)
 
     def read_state(self, workload: str) -> Dict[str, str]:
         try:
-            d = self.apps.read_namespaced_deployment(workload, self.hc_ns)
+            d = self.apps.read_namespaced_deployment(workload, self.hc_ns, **self.t)
         except Exception:
             return {}
         return {k.split("/", 1)[1]: v for k, v in (d.metadata.annotations or {}).items()
@@ -118,7 +130,7 @@ class K8sBackend:
 
     def read_marker(self) -> Optional[dict]:
         try:
-            cm = self.core.read_namespaced_config_map(MARKER_CONFIGMAP, self.res_ns)
+            cm = self.core.read_namespaced_config_map(MARKER_CONFIGMAP, self.res_ns, **self.t)
         except Exception:
             return None
         raw = (cm.data or {}).get("marker")

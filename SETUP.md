@@ -41,8 +41,8 @@ Every later `python3 ...` command in `demo.md` assumes this venv is active.
 ## 3. Sanity check without Kubernetes (≈ 2 minutes)
 
 ```bash
-python3 -m pytest -q tests            # expect: 35 passed
-python3 sim/local_demo.py             # expect: 4 × PASS
+python3 -m pytest -q tests            # expect: all pass (84 after Phase 1; takes ~4 minutes)
+python3 sim/local_demo.py             # expect: 6 × PASS (~1.5 minutes)
 ```
 
 If both pass, the core logic (signatures, mTLS, trust, quorum, the pipeline) works on your machine.

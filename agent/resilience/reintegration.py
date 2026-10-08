@@ -11,12 +11,19 @@ next stage's threshold, and (c) it currently observes no anomaly.
 
 Network exposure per stage (enforced by Calico via NetworkPolicy):
 
-  stage           ingress allowed from            egress allowed to
-  QUARANTINE      resilience ns (agents) only     nothing
-  RESTRICTED      resilience ns only              healthcare ns + DNS
-  MONITORED       resilience + healthcare ns      healthcare ns + DNS    (detection thresholds x0.7)
-  PEER_VALIDATED  resilience + healthcare ns      healthcare ns + DNS
-  FULL            (policy removed)                (policy removed)
+  stage           ingress allowed from                      egress allowed to
+  QUARANTINE      agent / controller pods, TCP 8080 only    nothing (not even DNS)
+  RESTRICTED      agent / controller pods, TCP 8080 only    healthcare ns + DNS
+  MONITORED       agents + healthcare ns                    healthcare ns + DNS  (detection thresholds x0.7)
+  PEER_VALIDATED  agents + healthcare ns                    healthcare ns + DNS
+  FULL            (policy removed)                          (policy removed)
+
+"Agent / controller pods" means pods labelled app=resilience-agent (the four agents)
+or app=central-controller (the centralized baseline) in the resilience namespace -
+NOT the whole namespace, so e.g. the dashboard pod cannot reach a quarantined
+workload. Replies to the allowed inbound connections are not blocked by the egress
+rule (NetworkPolicy is stateful), which is how the agents keep monitoring, validating
+and judging a workload that is otherwise cut off. See docs/AUDIT.md section 3.
 """
 from __future__ import annotations
 
@@ -37,6 +44,12 @@ STAGE_THRESHOLDS: Dict[str, float] = {
 STAGE_SENSITIVITY: Dict[str, float] = {"MONITORED": 0.7}
 
 POLICY_NAME_FMT = "resilience-isolate-{workload}"
+
+# The only port the healthcare workloads serve on (Service port == container port == 8080).
+WORKLOAD_PORT = 8080
+# Pod labels (app=...) of the only resilience-namespace pods that may talk to an
+# isolated workload: the 4 agents and, in baseline mode, the central controller.
+AGENT_APP_LABELS = ["resilience-agent", "central-controller"]
 
 
 def next_stage(stage: str) -> Optional[str]:
@@ -78,7 +91,10 @@ def network_policy(workload: str, stage: str, healthcare_ns: str, resilience_ns:
     """NetworkPolicy manifest for a stage (None for FULL = no restriction)."""
     if stage == "FULL":
         return None
-    ingress = [{"from": [_ns_peer(resilience_ns)]}]
+    agents = {"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": resilience_ns}},
+              "podSelector": {"matchExpressions": [
+                  {"key": "app", "operator": "In", "values": list(AGENT_APP_LABELS)}]}}
+    ingress = [{"from": [agents], "ports": [{"protocol": "TCP", "port": WORKLOAD_PORT}]}]
     egress: List[dict] = []
     if stage in ("MONITORED", "PEER_VALIDATED"):
         ingress.append({"from": [_ns_peer(healthcare_ns)]})

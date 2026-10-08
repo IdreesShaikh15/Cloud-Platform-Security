@@ -641,6 +641,11 @@ class ResilienceAgent:
                                             "stage": "QUARANTINE", "authorized_by": c.voters})
 
             def recover():
+                # Isolation first: never replace the pod while the quarantine policy is not
+                # confirmed in the cluster, or the new pod would come up un-quarantined and
+                # un-validated. Raising makes the executor retry in 2 s (see _run_tasks).
+                if int(self.backend.read_state(w).get("isolated-epoch", -1)) < epoch:
+                    raise RuntimeError("isolation not confirmed yet; recovery waits for it")
                 self.backend.recover(w, epoch)
                 self.events.emit(obs.ACTION, f"Agent {self.id} started recovery of {w} "
                                  f"({v.target}): redeploying it from the known-good image.",
@@ -781,7 +786,14 @@ class ResilienceAgent:
                                    lambda: False, lambda w=w, e=st.epoch: self.backend.recover(w, e),
                                    f"re-redeploy {w}")
             except Exception as exc:
-                log.debug("cluster tracking for %s failed: %s", w, exc)
+                # Not silent: a persistent failure here leaves the target stuck in its
+                # current phase, so say so (throttled, once per 10 s per target).
+                if self.events.emit(
+                        obs.ACTION, f"Agent {self.id} could not read the cluster state of {w} "
+                        f"({nid}) while it is {st.phase}: {exc}. It will keep retrying.", nid,
+                        {"action": "cluster_read_failed", "workload": w, "phase": st.phase,
+                         "result": f"error: {exc}"}, key=("trackfail", nid), every=10.0):
+                    log.warning("cluster tracking for %s failed: %s", w, exc)
 
     # ------------------------------------------------------------------ status
     def status(self, events_since: Optional[int] = None, include_events: bool = True) -> dict:

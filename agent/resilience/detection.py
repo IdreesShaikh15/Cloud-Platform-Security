@@ -63,6 +63,7 @@ class Detector:
         self.th = thresholds or Thresholds()
         self._last_tx: Dict[str, Tuple[float, int, str]] = {}
         self._auth_hist: Dict[str, Deque[Tuple[float, int]]] = defaultdict(lambda: deque(maxlen=120))
+        self._auth_ip: Dict[str, str] = {}   # target -> pod ip the history above belongs to
         # Observability only: the raw value, effective threshold and resulting
         # confidence of every rule for every target, as last evaluated. Nothing
         # reads this back into a decision.
@@ -140,6 +141,13 @@ class Detector:
             return None
         total = sum(s.auth_failures_by_ip.get(target_ip, 0) for s in snaps.values() if s.reachable)
         hist = self._auth_hist[target]
+        if self._auth_ip.get(target) != target_ip:
+            # The target is a different pod now (recovery gave it a new IP). The failure
+            # counters are cumulative per IP, so an IP that was used by an older pod
+            # could carry a large old total; comparing it with the previous pod's
+            # history would look like a burst of failures. Start a fresh window.
+            hist.clear()
+            self._auth_ip[target] = target_ip
         hist.append((now, total))
         while hist and now - hist[0][0] > self.th.auth_window_s:
             hist.popleft()
