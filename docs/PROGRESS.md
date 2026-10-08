@@ -126,4 +126,6 @@ No secrets in the diff (checked).
 * To use it on the cluster: rebuild the **agent** and **dashboard** images, re-apply the ConfigMap, restart the agents (protocol change; mixed old/new agents degrade safely: an old agent simply never answers, which counts as "unknown").
 
 ### Commit / push
-Filled in below after pushing.
+* Commit **`91ea556`** ("Phase 2: targeted investigation before containment"), pushed (no force) to
+  `claude/cyber-resilience-platform-xxs3oh` and `claude/inspiring-thompson-ik54a3`.
+* Tag `pre-phase-2` exists locally only (the remote rejects tag pushes; recreate with `git tag pre-phase-2 c03cdde`).
