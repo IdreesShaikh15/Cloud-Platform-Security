@@ -27,6 +27,11 @@ from typing import Dict, List, Optional
 
 log = logging.getLogger(__name__)
 
+# Scenarios in which the target is in truth healthy: containing it is a FALSE ISOLATION.
+BENIGN_SCENARIOS = ("false-accusation", "forge-evidence", "transient-blip", "ambiguous")
+# Outcomes that leave a human-review flag behind (see investigation.py).
+REVIEW_OUTCOMES = ("AMBIGUOUS", "UNCERTAIN")
+
 DURATIONS = {
     "ttd_s": "first_detection",
     "tti_s": "isolation_applied",
@@ -34,6 +39,8 @@ DURATIONS = {
     "ttv_s": "validated",
     "ttf_s": "reintegrated",
     "time_to_flag_s": "attacker_flagged",
+    "inv_start_s": "investigation_started",
+    "inv_end_s": "investigation_closed",
 }
 
 
@@ -64,7 +71,7 @@ class MetricsRecorder:
             if marker["id"] in self.incidents:
                 return
             inc = {k: marker.get(k) for k in ("id", "scenario", "target", "attacker", "injected_at")}
-            inc.update({"events": {}, "false_isolation": False})
+            inc.update({"events": {}, "false_isolation": False, "inv_count": 0, "inv_outcomes": []})
             self.incidents[marker["id"]] = inc
             self._write({"node": self.node_id, "mode": self.mode, "event": "incident_opened", **inc,
                          "events": None})
@@ -81,9 +88,13 @@ class MetricsRecorder:
             for inc in self._active_for(target, as_agent):
                 if inc["injected_at"] and t < inc["injected_at"]:
                     continue
-                if name == "contain_committed" and inc["scenario"] in (
-                        "false-accusation", "forge-evidence") and target == inc["target"]:
+                if name == "contain_committed" and inc["scenario"] in BENIGN_SCENARIOS \
+                        and target == inc["target"]:
                     inc["false_isolation"] = True
+                if name == "investigation_started":
+                    inc["inv_count"] += 1
+                if name == "investigation_closed":
+                    inc["inv_outcomes"].append(extra.get("outcome"))
                 if name not in inc["events"]:
                     inc["events"][name] = t
                     self._write({"node": self.node_id, "mode": self.mode, "incident": inc["id"],
@@ -106,6 +117,9 @@ class MetricsRecorder:
                     row["trust_recovery_s"] = round(ev["reintegrated"] - ev["validated"], 3)
                 else:
                     row["trust_recovery_s"] = None
+                row["investigations"] = inc["inv_count"]
+                row["investigation_outcome"] = inc["inv_outcomes"][-1] if inc["inv_outcomes"] else None
+                row["human_review"] = any(o in REVIEW_OUTCOMES for o in inc["inv_outcomes"])
                 row["stages"] = {k: round(v - inc["injected_at"], 3)
                                  for k, v in ev.items() if k.startswith("stage:")}
                 if availability and availability.get("samples"):

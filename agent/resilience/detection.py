@@ -162,6 +162,26 @@ class Detector:
         return Detection(target, ObsType.AUTH, conf,
                          f"{in_window} failed auths from {target_ip} in {self.th.auth_window_s:.0f}s")
 
+    # -- re-measure only some signals (investigations) ---------------------
+    def measure(self, target: str, snaps: Dict[str, Snapshot], now: float,
+                signals, sens: float = 1.0) -> Dict[ObsType, Tuple[float, str]]:
+        """Evaluate ONLY the given signal types for one target. Returns
+        {type: (confidence, summary)} with confidence 0.0 = looks normal. Use a
+        separate Detector instance for this, so the rate / window state of the
+        regular per-tick detector is not disturbed."""
+        s = snaps.get(target)
+        out: Dict[ObsType, Tuple[float, str]] = {}
+        for sig in signals:
+            d: Optional[Detection] = None
+            if sig == ObsType.AUTH:
+                d = self.auth(target, s.pod_ip if s else "", snaps, now, sens)
+            elif s is not None and s.reachable:
+                rule = {ObsType.NETWORK: self.network, ObsType.PROCESS: self.process,
+                        ObsType.FILE_INTEGRITY: self.file_integrity}.get(sig)
+                d = rule(s, sens) if rule else None
+            out[sig] = (d.confidence, d.summary) if d else (0.0, "normal")
+        return out
+
     # -- all rules ---------------------------------------------------------
     def analyze(self, snaps: Dict[str, Snapshot], now: float,
                 sensitivity: Optional[Dict[str, float]] = None) -> Dict[str, List[Detection]]:

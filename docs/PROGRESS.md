@@ -63,3 +63,67 @@ No secrets in the diff (checked).
   the session's container, which is temporary. `6e75930` is permanent in the branch history, so
   you can recreate it anywhere with `git tag pre-phase-1 6e75930`. Later phases use the same mechanism
   and will have the same limitation unless you push the tags yourself.
+
+---
+
+## Phase 2: Targeted investigation before containment
+
+**Status: DONE** (one optional item deliberately not built, see "Not done"). Safety tag: `pre-phase-2`
+(at `c03cdde`, the end of Phase 1; local only, tag pushes are rejected by the remote).
+
+### What was done
+* **Investigation step** carried out by the same 4 identical peer agents (no specialised agents, still threshold-based, no ML, no database):
+  triggers (uncertain W(T) band, split view, single sender), bounded time budget, each agent re-measures only the
+  disputed signals at a higher bounded rate, agents request fresh **signed** observations from peers over the existing
+  gRPC/mTLS channel (new `Investigate` RPC with `InvestigateRequest` / `InvestigateResponse`), four outcomes
+  (CORROBORATED, FALSE_POSITIVE, AMBIGUOUS/watch + human review, UNCERTAIN). Code: `agent/resilience/investigation.py`.
+* **Race safety** for every case in the specification (unique id/target/epoch/deadline, dedupe with earliest-id-wins merge,
+  idempotent duplicate/late answers, silent peers, invalid signatures, mid-way vote exclusion, incident resolving first,
+  stale results bound to epoch + workload instance + expiry, restart, concurrency and cooldown limits).
+* **Visibility:** new `INVESTIGATION` timeline category; dashboard "Investigations" panel (question, time left, outcome,
+  per-agent verdicts), `WATCH · review` node tag and a HUMAN REVIEW banner; investigation fields in incident metrics
+  (`investigations`, `investigation_outcome`, `inv_start_s`, `inv_end_s`, `human_review`) and in `scripts/collect-metrics.py`.
+  Verified visually in a real browser against the running simulator (screenshots in `docs/img/`).
+* **Simulator scenarios** (simulated telemetry only): `transient-blip`, `slow-burn`, `ambiguous`; `--no-investigation` switches the feature
+  off for any scenario. Added `world.inject_connections` (observer-specific, brief or growing simulated network signal).
+* **Config switch** `investigation.enabled` (default on) and all parameters in `k8s/resilience/10-config.yaml`.
+* **`docs/INVESTIGATION.md`**: plain-English explanation, rules, race table, settings, comparison with majority vote /
+  fixed threshold / SOAR playbook, and an honest statement of what is established vs what is specific to this setting.
+* Two issues found and fixed while building it: an early-finishing agent refused its peers' later requests (so they ran to the
+  deadline) and now serves its signed final answer; a merged duplicate must not start a cooldown.
+
+### Results (measured)
+
+| Check | Result |
+|---|---|
+| `python -m pytest -q tests` | **131 passed** (406 s) = 84 (Phase 1) + 47 new (35 + 9 + 3); 0 failed |
+| `python sim/local_demo.py` | **9 of 9 PASS** (the original 6 + transient-blip, slow-burn, ambiguous) |
+| `python sim/local_demo.py --no-investigation` (all 9) | **9 of 9 PASS**; original app-compromise timings unchanged (TTD 0.5 s, TTI 1.5 s, TTR 4.0 s, TTV 5.0 s, TTF 19.0 s) |
+| Regression introduced? | none; the 84 earlier tests and the 6 original scenarios passed with investigation ON before the new tests were added |
+
+Scenario comparison (single simulator runs, accelerated timers; statistics come in Phase 5):
+
+| Scenario | Investigation ON | OFF |
+|---|---|---|
+| transient-blip | closed FALSE POSITIVE 3.0 s after opening, all 4 agents, no isolation | no isolation, two votes stay pending, never resolved |
+| slow-burn | confirmed at 7.5 s, **contained at 8.5 s** | contained at **20.5 s** |
+| ambiguous | AMBIGUOUS at 9.0 s, watch + human review, no isolation | nothing flagged |
+| genuine attack (app-compromise) | **no investigation started**, TTI 1.5 s (not delayed) | same |
+
+### Files changed
+New: `agent/resilience/investigation.py`, `docs/INVESTIGATION.md`, `docs/img/*.png`, `tests/test_investigation.py` (35),
+`tests/test_investigation_scenarios.py` (9), `tests/test_dashboard_investigations.py` (3).
+Modified: `proto/resilience.proto` + regenerated stubs, `agent/resilience/{agent,config,detection,evidence,metrics,monitoring,observability,peer,__main__}.py`,
+`dashboard/{server.py,index.html}`, `k8s/resilience/10-config.yaml`, `scripts/collect-metrics.py`, `sim/{world,local_demo}.py`, `docs/{AUDIT,PROGRESS}.md`.
+No secrets in the diff (checked).
+
+### Not done / not verified
+* **Not done (deliberate, documented):** the optional "apply the existing RESTRICTED NetworkPolicy while watching". It blocks
+  all user traffic, so it would have to be its own signed quorum action; the safe partial version (heightened monitoring + human-review flag) is implemented.
+* **Not verified on the real cluster.** Everything here is simulator/tests. The sampling rate (4/s for up to 10 s) and the thresholds are untuned against real telemetry; `HttpTelemetrySource.collect_target` is covered only by the existing HTTP test, not by a live run.
+* The investigation does not change the trust rule: agents that honestly saw a vantage-limited anomaly still lose some trust when the others do not corroborate it (visible in the "ambiguous" scenario). Documented as a limitation.
+* A lying agent can still waste effort by requesting investigations (bounded by max 2 concurrent, 60 s per-target cooldown, refusal of vote-excluded requesters).
+* To use it on the cluster: rebuild the **agent** and **dashboard** images, re-apply the ConfigMap, restart the agents (protocol change; mixed old/new agents degrade safely: an old agent simply never answers, which counts as "unknown").
+
+### Commit / push
+Filled in below after pushing.

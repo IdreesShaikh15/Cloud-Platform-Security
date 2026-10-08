@@ -27,6 +27,9 @@ log = logging.getLogger(__name__)
 
 # (envelope, transport node id or None) -> (accepted, reason)
 EnvelopeHandler = Callable[[pb.SignedEnvelope, Optional[str]], Tuple[bool, str]]
+# (signed investigate request, transport node id) -> (accepted, reason, signed response or None)
+InvestigateHandler = Callable[[pb.SignedEnvelope, Optional[str]],
+                              Tuple[bool, str, Optional[pb.SignedEnvelope]]]
 
 
 @dataclass
@@ -45,10 +48,11 @@ class TlsMaterial:
 
 class _Servicer(pb_grpc.ResiliencePeerServicer):
     def __init__(self, node_id: str, cn_to_node: Callable[[str], Optional[str]],
-                 on_envelope: EnvelopeHandler):
+                 on_envelope: EnvelopeHandler, on_investigate: Optional[InvestigateHandler] = None):
         self.node_id = node_id
         self.cn_to_node = cn_to_node
         self.on_envelope = on_envelope
+        self.on_investigate = on_investigate
 
     def _identity(self, context) -> Optional[str]:
         cns = context.auth_context().get("x509_common_name") or []
@@ -74,13 +78,29 @@ class _Servicer(pb_grpc.ResiliencePeerServicer):
     def Ping(self, request, context):
         return pb.PingReply(node=self.node_id, timestamp=time.time())
 
+    def Investigate(self, request, context):
+        ident = self._identity(context)
+        if ident is None:
+            return pb.InvestigateResult(accepted=False, reason="unauthenticated peer")
+        if request.kind != "inv_request":
+            return pb.InvestigateResult(accepted=False, reason=f"expected inv_request, got {request.kind}")
+        if self.on_investigate is None:
+            return pb.InvestigateResult(accepted=False, reason="investigation not supported")
+        try:
+            ok, reason, resp = self.on_investigate(request, ident)
+        except Exception as exc:          # a bug in the handler must not crash the peer server
+            log.exception("investigate handler failed")
+            return pb.InvestigateResult(accepted=False, reason=f"internal error: {exc}")
+        return pb.InvestigateResult(accepted=ok, reason=reason, response=resp)
+
 
 class PeerServer:
     def __init__(self, node_id: str, bind: str, tls: TlsMaterial,
-                 cn_to_node: Callable[[str], Optional[str]], on_envelope: EnvelopeHandler):
+                 cn_to_node: Callable[[str], Optional[str]], on_envelope: EnvelopeHandler,
+                 on_investigate: Optional[InvestigateHandler] = None):
         self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=16))
         pb_grpc.add_ResiliencePeerServicer_to_server(
-            _Servicer(node_id, cn_to_node, on_envelope), self.server)
+            _Servicer(node_id, cn_to_node, on_envelope, on_investigate), self.server)
         creds = grpc.ssl_server_credentials([(tls.key, tls.cert)], root_certificates=tls.ca,
                                             require_client_auth=True)
         self.port = self.server.add_secure_port(bind, creds)
@@ -144,6 +164,27 @@ class PeerClient:
                 log.warning("peer link to %s DOWN (%s): %s", nid, env.kind, self.last_err[nid])
                 self._notify(nid, False, self.last_err[nid])
             return None
+
+    def investigate(self, nid: str, env: pb.SignedEnvelope, timeout_s: Optional[float] = None
+                    ) -> Optional[pb.InvestigateResult]:
+        """Ask peer `nid` for fresh signed observations. None = no answer (peer down,
+        timeout): the caller must treat that as *unknown*, never as normal or as an attack."""
+        try:
+            res = self.stubs[nid].Investigate(env, timeout=timeout_s or self.timeout)
+        except grpc.RpcError as exc:
+            with self._lock:
+                self.last_err[nid] = f"{exc.code().name}: {exc.details()}"
+            return None
+        with self._lock:
+            self.last_ok[nid] = time.time()
+        return res
+
+    def investigate_async(self, nid: str, env: pb.SignedEnvelope, callback,
+                          timeout_s: Optional[float] = None):
+        """Run investigate() on the client's thread pool; callback(nid, result_or_None)."""
+        def run():
+            callback(nid, self.investigate(nid, env, timeout_s))
+        return self._pool.submit(run)
 
     def _notify(self, nid: str, up: bool, detail: str) -> None:
         if self.link_listener is not None:

@@ -43,6 +43,7 @@ class Snapshot:
 
 class TelemetrySource(Protocol):
     def collect(self) -> Dict[str, Snapshot]: ...
+    def collect_target(self, target: str) -> Snapshot: ...   # one workload only (investigations)
 
 
 def _get_json(url: str, timeout: float) -> tuple:
@@ -69,6 +70,9 @@ class HttpTelemetrySource:
         except Exception:
             return Snapshot(target=node_id, time=now, reachable=False)
         return Snapshot.from_telemetry(node_id, now, healthy, tel)
+
+    def collect_target(self, target: str) -> Snapshot:
+        return self._one(target)
 
     def collect(self) -> Dict[str, Snapshot]:
         ids = list(self.cfg.nodes)

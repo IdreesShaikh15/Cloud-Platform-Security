@@ -22,8 +22,8 @@ sys.path.insert(0, os.path.join(ROOT, "agent"))
 
 from resilience.agent import ResilienceAgent  # noqa: E402
 from resilience.baseline import CentralController  # noqa: E402
-from resilience.config import (NODE_IDS, ClusterConfig, NodeSpec, QuorumParams,  # noqa: E402
-                               Timers, TrustParams)
+from resilience.config import (NODE_IDS, ClusterConfig, InvestigationParams, NodeSpec,  # noqa: E402
+                               QuorumParams, Timers, TrustParams)
 from resilience.crypto import KeyRegistry, Signer  # noqa: E402
 from resilience.metrics import MetricsRecorder  # noqa: E402
 from resilience.monitoring import Snapshot  # noqa: E402
@@ -47,10 +47,36 @@ class FakeApp:
     healthy: bool = True
 
 
+@dataclass
+class Overlay:
+    """A simulated, observer-specific disturbance of ONE telemetry signal (outbound
+    connections) of a simulated workload. Pure simulated telemetry: nothing real is touched.
+    `level_fn(seconds_since_start)` gives the connection count; `observers` limits which
+    agents' vantage sees it (None = all); `duration` makes it a transient blip."""
+    target: str
+    t0: float
+    level_fn: object
+    observers: Optional[Set[str]] = None
+    duration: Optional[float] = None
+
+
 class FakeWorld:
     def __init__(self):
         self.lock = threading.Lock()
         self.apps = {n: FakeApp(n, f"10.244.0.{10 + i}") for i, n in enumerate(NODE_IDS)}
+        self.overlays: List[Overlay] = []
+
+    def inject_connections(self, target: str, level_fn, observers=None, duration=None,
+                           start_after: float = 0.0) -> None:
+        """Simulated network-signal disturbance (see Overlay). Uses the same telemetry path
+        as world.attack, so agents measure it exactly like any other reading."""
+        with self.lock:
+            self.overlays.append(Overlay(target, time.time() + start_after, level_fn,
+                                         set(observers) if observers else None, duration))
+
+    def clear_overlays(self) -> None:
+        with self.lock:
+            self.overlays.clear()
 
     def attack(self, target: str, kinds=ATTACK_KINDS) -> None:
         with self.lock:
@@ -63,8 +89,9 @@ class FakeWorld:
         with self.lock:
             old = self.apps[node]
             self.apps[node] = FakeApp(node, old.ip)  # fresh instance, clean state
+            self.overlays = [o for o in self.overlays if o.target != node]   # a clean pod has none
 
-    def snapshot(self, nid: str, now: float) -> Snapshot:
+    def snapshot(self, nid: str, now: float, observer: Optional[str] = None) -> Snapshot:
         with self.lock:
             a = self.apps[nid]
             el = max(0.0, now - a.attack_started) if a.attacks else 0.0
@@ -75,6 +102,14 @@ class FakeWorld:
                 conns = 40
                 tx += int(2_000_000 * el)
                 procs.append({"pid": 77, "comm": "xmrig", "exe": "/tmp/xmrig"})
+            for ov in self.overlays:
+                if ov.target != nid or now < ov.t0:
+                    continue
+                if ov.duration is not None and now - ov.t0 > ov.duration:
+                    continue
+                if ov.observers is not None and observer not in ov.observers:
+                    continue
+                conns = max(conns, int(ov.level_fn(now - ov.t0)))
             if "tamper" in a.attacks:
                 hashes["static/index.html"] = "f" * 64
             auth = {}
@@ -89,15 +124,31 @@ class FakeWorld:
 
 
 class FakeTelemetry:
-    def __init__(self, world: FakeWorld):
+    """What one agent (`observer`) measures. Observers share one world, but an Overlay may
+    be visible from only some vantage points (models partial / noisy visibility)."""
+
+    def __init__(self, world: FakeWorld, observer: Optional[str] = None):
         self.world = world
+        self.observer = observer
 
     def collect(self) -> Dict[str, Snapshot]:
         now = time.time()
-        return {n: self.world.snapshot(n, now) for n in NODE_IDS}
+        return {n: self.world.snapshot(n, now, self.observer) for n in NODE_IDS}
+
+    def collect_target(self, target: str) -> Snapshot:
+        return self.world.snapshot(target, time.time(), self.observer)
 
 
-def fast_config(base_port: int) -> ClusterConfig:
+def sim_investigation(**overrides) -> InvestigationParams:
+    """Investigation timing accelerated like the rest of the simulator."""
+    base = dict(budget_s=6.0, sample_interval_s=0.2, peer_poll_s=1.0, request_timeout_s=1.5,
+                trigger_grace_s=1.5, trigger_stagger_s=0.2, recent_s=2.0, cooldown_s=8.0,
+                authorization_ttl_s=15.0, watch_clear_s=8.0)
+    base.update(overrides)
+    return InvestigationParams(**base)
+
+
+def fast_config(base_port: int, investigation: Optional[InvestigationParams] = None) -> ClusterConfig:
     nodes = {n: NodeSpec(node_id=n, agent_name=f"agent-{n.lower()}",
                          agent_addr=f"localhost:{base_port + i}",
                          status_url=f"http://localhost:{base_port + 100 + i}/status",
@@ -109,7 +160,7 @@ def fast_config(base_port: int) -> ClusterConfig:
                       executor_stagger_s=1.5, stage_dwell_s=3, validate_timeout_s=30),
         trust=TrustParams(agent_decay_per_s=5, agent_recover_per_s=0.5,
                           workload_decay_per_s=20, workload_recover_per_s=8),
-        quorum=QuorumParams())
+        quorum=QuorumParams(), investigation=investigation or sim_investigation())
 
 
 class LocalCluster:
@@ -131,9 +182,10 @@ class LocalCluster:
             signer = Signer.from_pem_file(n, os.path.join(d, "signing.key"))
             tls = TlsMaterial.from_dir(d)
             comp = CompromiseSource(path=None)
-            agent = ResilienceAgent(self.cfg, n, signer, registry, FakeTelemetry(self.world),
+            agent = ResilienceAgent(self.cfg, n, signer, registry, FakeTelemetry(self.world, n),
                                     self.backend, MetricsRecorder(n), comp)
-            srv = PeerServer(n, spec.agent_addr, tls, self.cfg.node_of_agent, agent.on_envelope).start()
+            srv = PeerServer(n, spec.agent_addr, tls, self.cfg.node_of_agent, agent.on_envelope,
+                             agent.on_investigate).start()
             agent.transport = PeerClient(n, self.cfg.nodes, tls)
             self.agents[n], self.compromise[n] = agent, comp
             self.servers.append(srv)

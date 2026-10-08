@@ -50,6 +50,7 @@
   .ev:hover { background:var(--card2); }
   .ev .cat { color:var(--mut); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .ev .det { grid-column:1 / -1; }
+  .ev.cat-INVESTIGATION .cat { color:var(--info); }
   .ev.cat-REJECTED .cat, .ev.cat-FLAG .cat { color:var(--warn); } .ev.cat-QUORUM .cat { color:var(--info); }
   @media (max-width: 640px) { .ev { grid-template-columns:60px 50px 1fr; } .ev .cat { display:none; } }
   /* drawer */
@@ -60,6 +61,9 @@
   .dsec { background:var(--card); border-radius:8px; padding:10px; margin-top:10px; overflow-x:auto; }
   .dsec h3 { margin:0 0 6px; font-size:13px; }
   .spark { display:block; } .over { color:var(--bad); font-weight:600; } .okv { color:var(--fg); }
+  #invreview .rv { background:var(--warn); color:#000; font-weight:600; padding:5px 8px; border-radius:6px; margin:8px 0 2px; }
+  .timeleft { display:inline-block; width:70px; height:6px; background:var(--line); border-radius:3px; vertical-align:middle; margin-right:6px; overflow:hidden; }
+  .timeleft i { display:block; height:100%; background:var(--info); }
   #pausebanner { display:none; background:var(--warn); color:#000; font-weight:600; text-align:center; padding:4px; border-radius:6px; margin-top:8px; }
 </style>
 </head>
@@ -77,6 +81,11 @@
 </div>
 <div id="pausebanner">PAUSED - the screen is frozen; events are still being collected and will appear when you resume.</div>
 <div class="grid" id="nodes"></div>
+<section id="invsec" style="display:none">
+  <b>Investigations</b> <span class="mut">(borderline or disputed evidence is re-checked by all four agents for a few seconds before anyone acts; nothing is isolated by an investigation itself)</span>
+  <div id="invreview"></div>
+  <table id="inv"></table>
+</section>
 <div class="hint">Click a node card to open that agent's own view (what it measures, whom it trusts, how it scores the evidence, why it has or hasn't voted).</div>
 
 <section>
@@ -98,9 +107,9 @@
 
 <script>
 const STAGES = ["QUARANTINE","RESTRICTED","MONITORED","PEER_VALIDATED","FULL"];
-const CATS = ["OBSERVE","EVIDENCE_SENT","EVIDENCE_RECEIVED","REJECTED","SCORE","VOTE_CAST","VOTE_WITHHELD","TRUST_CHANGE","FLAG","QUORUM","ACTION","PEER_LINK"];
+const CATS = ["OBSERVE","EVIDENCE_SENT","EVIDENCE_RECEIVED","REJECTED","SCORE","VOTE_CAST","VOTE_WITHHELD","TRUST_CHANGE","FLAG","QUORUM","ACTION","PEER_LINK","INVESTIGATION"];
 const ICON = {OBSERVE:"👁", EVIDENCE_SENT:"➚", EVIDENCE_RECEIVED:"➘", REJECTED:"⛔", SCORE:"Σ", VOTE_CAST:"✔", VOTE_WITHHELD:"✋",
-              TRUST_CHANGE:"↕", FLAG:"⚑", QUORUM:"⚖", ACTION:"⚙", PEER_LINK:"🔗"};
+              TRUST_CHANGE:"↕", FLAG:"⚑", QUORUM:"⚖", ACTION:"⚙", PEER_LINK:"🔗", INVESTIGATION:"🔎"};
 const NODES = ["A","B","C","D","CENTRAL"];
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const t = x => x ? new Date(x*1000).toLocaleTimeString() : "-";
@@ -165,13 +174,32 @@ function stages(n) {
 }
 document.getElementById("nodes").onclick = e => { const c = e.target.closest("[data-node]"); if (c) openDrawer(c.dataset.node); };
 
+const OUT_CLASS = {CORROBORATED:"bad", FALSE_POSITIVE:"ok", AMBIGUOUS:"warn", UNCERTAIN:"warn", SUPERSEDED:"", MERGED:""};
+function renderInvestigations(iv) {
+  const sec = document.getElementById("invsec");
+  if (!iv || !iv.enabled || (!iv.rows.length && !iv.watch.length)) { sec.style.display = iv && iv.enabled ? "block" : "none";
+    document.getElementById("inv").innerHTML = iv && iv.enabled ? '<tr><td class="mut">No investigations yet. They start only when evidence is borderline or the agents disagree.</td></tr>' : "";
+    document.getElementById("invreview").innerHTML = ""; return; }
+  sec.style.display = "block";
+  document.getElementById("invreview").innerHTML = iv.watch.filter(w => w.review_needed).map(w =>
+    `<div class="rv">HUMAN REVIEW NEEDED: ${esc(w.workload)} is under watch (agents ${w.agents.join(", ")}). ${esc(w.outcome)} investigation: the evidence is unresolved. Heightened monitoring is on; nothing was isolated.</div>`).join("");
+  document.getElementById("inv").innerHTML = "<tr><th>workload</th><th>question being checked</th><th>time left</th><th>outcome</th><th>agents</th></tr>" +
+    iv.rows.map(r => {
+      const budget = Math.max(1, r.deadline - r.started_at), pct = r.active ? Math.min(100, 100 * r.time_left_s / budget) : 0;
+      const chips = Object.entries(r.per_agent).map(([a, p]) => `<span title="${esc(p.reason || p.state)}">${nb(a)}${p.outcome ? ":" + esc(p.outcome.replace("_"," ").toLowerCase()) : ":…"}</span>`).join(" ");
+      return `<tr><td>${nb(r.target)} ${esc(r.workload)}</td><td>${esc(r.question)}<div class="mut">${esc(r.trigger.replace("_"," "))} · started by ${nb(r.initiator)}</div></td>
+        <td>${r.active ? `<span class="timeleft"><i style="width:${pct}%"></i></span>${r.time_left_s}s` : '<span class="mut">closed</span>'}</td>
+        <td>${r.outcome ? `<span class="tag ${OUT_CLASS[r.outcome]||""}">${esc(r.outcome_text)}</span>` : '<span class="tag">in progress</span>'}</td>
+        <td class="mut">${chips}</td></tr>`; }).join("");
+}
+
 function renderState(s) {
   lastState = s;
   document.getElementById("sub").textContent = `mode: ${s.mode} · data from ${t(s.last_poll)}` + (s.baseline ? " · centralized baseline running" : "");
   const cc = s.mode === "centralized" && s.central_compromised; if (cc) document.getElementById("sub").textContent += ` · controller compromise simulation: ${cc}`;
   document.getElementById("nodes").innerHTML = Object.entries(s.nodes).map(([id,n]) => `
     <div class="card ${n.phase}" data-node="${id}" title="Open agent ${id}'s view">
-      <div class="row"><b>${nb(id)} · ${esc(n.workload)}</b><span class="tag">${n.phase}</span></div>
+      <div class="row"><b>${nb(id)} · ${esc(n.workload)}</b><span>${n.watch ? '<span class="tag warn" title="Under watch after an unresolved investigation: heightened monitoring, human review needed. Nothing is isolated.">WATCH · review</span> ' : ''}<span class="tag">${n.phase}</span></span></div>
       ${s.mode === "centralized" ? `<div class="mut" style="margin:6px 0">centralized mode: this node is watched only by the single central controller (no agents, no votes, no trust scores, no staged return: straight back to full access)</div>` : `
       ${stages(n)}
       <div class="row"><span>workload trust</span><span>${n.workload_trust ?? "-"}</span></div>${bar(n.workload_trust)}
@@ -183,6 +211,8 @@ function renderState(s) {
       <div class="mut">${s.mode === "centralized" ? "detections:" : `W(T)=${n.score ? n.score.W : "-"}`} ${(n.detections||[]).map(d=>`· ${d.type} ${d.confidence}`).join(" ")}</div>
       <div class="mut">last decision: ${n.last_decision ? `${n.last_decision.action} ${n.last_decision.stage||""} by ${n.last_decision.voters.join(",")} @ ${t(n.last_decision.t)}` : "none"}</div>
     </div>`).join("");
+
+  renderInvestigations(s.investigations);
 
   // decisions (expandable)
   document.getElementById("dec").innerHTML = "<tr><th>time</th><th>action</th><th>target</th><th>epoch</th><th>stage</th><th>signed by</th><th></th></tr>" +
@@ -300,6 +330,20 @@ async function refreshDrawer() {
       Object.values(s.vote_reasons||{}).map(v => `<tr><td>${esc(propText(v.proposal))}</td><td>${v.voted ? '<span class="tag ok">✔ votes yes</span>' : '<span class="tag">not voting</span>'}</td><td>${esc(v.reason)}</td></tr>`).join("")}</table>
       ${Object.entries(s.pending_votes_detail||{}).map(([k,p]) => `<div class="mut" style="margin-top:4px">pending ${esc(propText(k))}: signed by ${p.voters.join(", ")||"nobody"}, counted ${p.counted.length}/${p.needed}${
         p.excluded.length ? `, not counting ${p.excluded.map(x=>x.voter+" (trust "+x.trust+")").join(", ")}` : ""}</div>`).join("")}</div>`;
+  }
+  const iv = s.investigations;
+  if (iv && iv.enabled) {
+    const all = (iv.active || []).concat((iv.recent || []).slice().reverse());
+    h += `<div class="dsec"><h3>Its investigations (re-measured ${esc(Object.keys(iv.params||{}).length ? iv.params.sample_interval_s + "s apart" : "")}; a silent or unreachable agent is recorded as "unknown", never as normal or as an attack)</h3>${
+      all.length ? `<table><tr><th>workload</th><th>state</th><th>its own re-measurement</th><th>what the peers reported</th></tr>${all.map(r => `<tr>
+        <td>${esc(r.workload)}<div class="mut">${esc(r.trigger.replace("_"," "))}</div></td>
+        <td>${r.state === "ACTIVE" ? `active, ${r.time_left_s}s left` : esc(r.outcome || "")}<div class="mut">${esc(r.reason || "")}</div></td>
+        <td>${(r.own.readings||[]).map(x => `${x.type.toLowerCase()}: anomaly in ${x.tail_positive} of its last ${x.tail} samples`).join("<br>") || "-"}</td>
+        <td>${Object.entries(r.peers||{}).map(([p, v]) => `${nb(p)} ${esc(v.view || "")}`).join(" ") || "-"}${
+          (r.silent||[]).length ? `<div class="mut">no answer from ${r.silent.join(", ")} (unknown)</div>` : ""}${
+          Object.keys(r.invalid||{}).length ? `<div class="mut" style="color:var(--bad)">invalidly signed answers from ${Object.keys(r.invalid).join(", ")}</div>` : ""}</td></tr>`).join("")}</table>`
+      : '<span class="mut">none yet</span>'}
+      ${Object.keys(iv.watch||{}).length ? `<div class="mut" style="margin-top:6px">Under watch: ${Object.entries(iv.watch).map(([t, w]) => esc(w.workload) + " (" + esc(w.outcome) + ", human review needed)").join(", ")}</div>` : ""}</div>`;
   }
   h += `<div class="dsec"><h3>Its recent events</h3>${r.events.slice().reverse().slice(0,80).map(evRow).join("") || '<span class="mut">none yet</span>'}</div>`;
   dr.innerHTML = h;

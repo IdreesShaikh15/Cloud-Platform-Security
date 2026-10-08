@@ -24,29 +24,37 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x10resilience.proto\x12\rresilience.v1\"\xac\x01\n\x08\x45vidence\x12\x13\n\x0b\x65vidence_id\x18\x01 \x01(\t\x12\x0e\n\x06origin\x18\x02 \x01(\t\x12\x0e\n\x06target\x18\x03 \x01(\t\x12\x33\n\x0bobservation\x18\x04 \x01(\x0e\x32\x1e.resilience.v1.ObservationType\x12\x12\n\nconfidence\x18\x05 \x01(\x01\x12\x11\n\ttimestamp\x18\x06 \x01(\x01\x12\x0f\n\x07summary\x18\x07 \x01(\t\"\xb7\x01\n\x04Vote\x12\x0f\n\x07vote_id\x18\x01 \x01(\t\x12\r\n\x05voter\x18\x02 \x01(\t\x12\x0e\n\x06target\x18\x03 \x01(\t\x12)\n\x06\x61\x63tion\x18\x04 \x01(\x0e\x32\x19.resilience.v1.ActionKind\x12\r\n\x05\x65poch\x18\x05 \x01(\r\x12\r\n\x05stage\x18\x06 \x01(\t\x12\r\n\x05score\x18\x07 \x01(\x01\x12\x11\n\ttimestamp\x18\x08 \x01(\x01\x12\x14\n\x0c\x65vidence_ids\x18\t \x03(\t\"R\n\x0eSignedEnvelope\x12\x0e\n\x06signer\x18\x01 \x01(\t\x12\x0c\n\x04kind\x18\x02 \x01(\t\x12\x0f\n\x07payload\x18\x03 \x01(\x0c\x12\x11\n\tsignature\x18\x04 \x01(\x0c\"\'\n\x03\x41\x63k\x12\x10\n\x08\x61\x63\x63\x65pted\x18\x01 \x01(\x08\x12\x0e\n\x06reason\x18\x02 \x01(\t\" \n\x0bPingRequest\x12\x11\n\tfrom_node\x18\x01 \x01(\t\",\n\tPingReply\x12\x0c\n\x04node\x18\x01 \x01(\t\x12\x11\n\ttimestamp\x18\x02 \x01(\x01*f\n\x0fObservationType\x12\x1b\n\x17OBSERVATION_UNSPECIFIED\x10\x00\x12\x0b\n\x07NETWORK\x10\x01\x12\x0b\n\x07PROCESS\x10\x02\x12\x12\n\x0e\x46ILE_INTEGRITY\x10\x03\x12\x08\n\x04\x41UTH\x10\x04*R\n\nActionKind\x12\x16\n\x12\x41\x43TION_UNSPECIFIED\x10\x00\x12\x0b\n\x07\x43ONTAIN\x10\x01\x12\x0c\n\x08VALIDATE\x10\x02\x12\x11\n\rADVANCE_STAGE\x10\x03\x32\xd4\x01\n\x0eResiliencePeer\x12\x43\n\x0eSubmitEvidence\x12\x1d.resilience.v1.SignedEnvelope\x1a\x12.resilience.v1.Ack\x12?\n\nSubmitVote\x12\x1d.resilience.v1.SignedEnvelope\x1a\x12.resilience.v1.Ack\x12<\n\x04Ping\x12\x1a.resilience.v1.PingRequest\x1a\x18.resilience.v1.PingReplyb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x10resilience.proto\x12\rresilience.v1\"\xac\x01\n\x08\x45vidence\x12\x13\n\x0b\x65vidence_id\x18\x01 \x01(\t\x12\x0e\n\x06origin\x18\x02 \x01(\t\x12\x0e\n\x06target\x18\x03 \x01(\t\x12\x33\n\x0bobservation\x18\x04 \x01(\x0e\x32\x1e.resilience.v1.ObservationType\x12\x12\n\nconfidence\x18\x05 \x01(\x01\x12\x11\n\ttimestamp\x18\x06 \x01(\x01\x12\x0f\n\x07summary\x18\x07 \x01(\t\"\xd1\x01\n\x04Vote\x12\x0f\n\x07vote_id\x18\x01 \x01(\t\x12\r\n\x05voter\x18\x02 \x01(\t\x12\x0e\n\x06target\x18\x03 \x01(\t\x12)\n\x06\x61\x63tion\x18\x04 \x01(\x0e\x32\x19.resilience.v1.ActionKind\x12\r\n\x05\x65poch\x18\x05 \x01(\r\x12\r\n\x05stage\x18\x06 \x01(\t\x12\r\n\x05score\x18\x07 \x01(\x01\x12\x11\n\ttimestamp\x18\x08 \x01(\x01\x12\x14\n\x0c\x65vidence_ids\x18\t \x03(\t\x12\x18\n\x10investigation_id\x18\n \x01(\t\"R\n\x0eSignedEnvelope\x12\x0e\n\x06signer\x18\x01 \x01(\t\x12\x0c\n\x04kind\x18\x02 \x01(\t\x12\x0f\n\x07payload\x18\x03 \x01(\x0c\x12\x11\n\tsignature\x18\x04 \x01(\x0c\"\xef\x01\n\x12InvestigateRequest\x12\x12\n\nrequest_id\x18\x01 \x01(\t\x12\x18\n\x10investigation_id\x18\x02 \x01(\t\x12\x11\n\trequester\x18\x03 \x01(\t\x12\x0e\n\x06target\x18\x04 \x01(\t\x12\r\n\x05\x65poch\x18\x05 \x01(\r\x12/\n\x07signals\x18\x06 \x03(\x0e\x32\x1e.resilience.v1.ObservationType\x12\x12\n\nstarted_at\x18\x07 \x01(\x01\x12\x10\n\x08\x62udget_s\x18\x08 \x01(\x01\x12\x0f\n\x07trigger\x18\t \x01(\t\x12\x11\n\ttimestamp\x18\n \x01(\x01\"\xde\x01\n\rSignalReading\x12\x33\n\x0bobservation\x18\x01 \x01(\x0e\x32\x1e.resilience.v1.ObservationType\x12\x17\n\x0flast_confidence\x18\x02 \x01(\x01\x12\x16\n\x0emax_confidence\x18\x03 \x01(\x01\x12\x0f\n\x07samples\x18\x04 \x01(\r\x12\x18\n\x10positive_samples\x18\x05 \x01(\r\x12\x14\n\x0ctail_samples\x18\x06 \x01(\r\x12\x15\n\rtail_positive\x18\x07 \x01(\r\x12\x0f\n\x07summary\x18\x08 \x01(\t\"\xfa\x01\n\x13InvestigateResponse\x12\x13\n\x0bresponse_id\x18\x01 \x01(\t\x12\x18\n\x10investigation_id\x18\x02 \x01(\t\x12\x11\n\tresponder\x18\x03 \x01(\t\x12\x0e\n\x06target\x18\x04 \x01(\t\x12\r\n\x05\x65poch\x18\x05 \x01(\r\x12.\n\x08readings\x18\x06 \x03(\x0b\x32\x1c.resilience.v1.SignalReading\x12\x1a\n\x12telemetry_failures\x18\x07 \x01(\r\x12\x13\n\x0binstance_id\x18\x08 \x01(\t\x12\x11\n\ttimestamp\x18\t \x01(\x01\x12\x0e\n\x06status\x18\n \x01(\t\"f\n\x11InvestigateResult\x12\x10\n\x08\x61\x63\x63\x65pted\x18\x01 \x01(\x08\x12\x0e\n\x06reason\x18\x02 \x01(\t\x12/\n\x08response\x18\x03 \x01(\x0b\x32\x1d.resilience.v1.SignedEnvelope\"\'\n\x03\x41\x63k\x12\x10\n\x08\x61\x63\x63\x65pted\x18\x01 \x01(\x08\x12\x0e\n\x06reason\x18\x02 \x01(\t\" \n\x0bPingRequest\x12\x11\n\tfrom_node\x18\x01 \x01(\t\",\n\tPingReply\x12\x0c\n\x04node\x18\x01 \x01(\t\x12\x11\n\ttimestamp\x18\x02 \x01(\x01*f\n\x0fObservationType\x12\x1b\n\x17OBSERVATION_UNSPECIFIED\x10\x00\x12\x0b\n\x07NETWORK\x10\x01\x12\x0b\n\x07PROCESS\x10\x02\x12\x12\n\x0e\x46ILE_INTEGRITY\x10\x03\x12\x08\n\x04\x41UTH\x10\x04*R\n\nActionKind\x12\x16\n\x12\x41\x43TION_UNSPECIFIED\x10\x00\x12\x0b\n\x07\x43ONTAIN\x10\x01\x12\x0c\n\x08VALIDATE\x10\x02\x12\x11\n\rADVANCE_STAGE\x10\x03\x32\xa4\x02\n\x0eResiliencePeer\x12\x43\n\x0eSubmitEvidence\x12\x1d.resilience.v1.SignedEnvelope\x1a\x12.resilience.v1.Ack\x12?\n\nSubmitVote\x12\x1d.resilience.v1.SignedEnvelope\x1a\x12.resilience.v1.Ack\x12<\n\x04Ping\x12\x1a.resilience.v1.PingRequest\x1a\x18.resilience.v1.PingReply\x12N\n\x0bInvestigate\x12\x1d.resilience.v1.SignedEnvelope\x1a .resilience.v1.InvestigateResultb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'resilience_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_OBSERVATIONTYPE']._serialized_start=601
-  _globals['_OBSERVATIONTYPE']._serialized_end=703
-  _globals['_ACTIONKIND']._serialized_start=705
-  _globals['_ACTIONKIND']._serialized_end=787
+  _globals['_OBSERVATIONTYPE']._serialized_start=1451
+  _globals['_OBSERVATIONTYPE']._serialized_end=1553
+  _globals['_ACTIONKIND']._serialized_start=1555
+  _globals['_ACTIONKIND']._serialized_end=1637
   _globals['_EVIDENCE']._serialized_start=36
   _globals['_EVIDENCE']._serialized_end=208
   _globals['_VOTE']._serialized_start=211
-  _globals['_VOTE']._serialized_end=394
-  _globals['_SIGNEDENVELOPE']._serialized_start=396
-  _globals['_SIGNEDENVELOPE']._serialized_end=478
-  _globals['_ACK']._serialized_start=480
-  _globals['_ACK']._serialized_end=519
-  _globals['_PINGREQUEST']._serialized_start=521
-  _globals['_PINGREQUEST']._serialized_end=553
-  _globals['_PINGREPLY']._serialized_start=555
-  _globals['_PINGREPLY']._serialized_end=599
-  _globals['_RESILIENCEPEER']._serialized_start=790
-  _globals['_RESILIENCEPEER']._serialized_end=1002
+  _globals['_VOTE']._serialized_end=420
+  _globals['_SIGNEDENVELOPE']._serialized_start=422
+  _globals['_SIGNEDENVELOPE']._serialized_end=504
+  _globals['_INVESTIGATEREQUEST']._serialized_start=507
+  _globals['_INVESTIGATEREQUEST']._serialized_end=746
+  _globals['_SIGNALREADING']._serialized_start=749
+  _globals['_SIGNALREADING']._serialized_end=971
+  _globals['_INVESTIGATERESPONSE']._serialized_start=974
+  _globals['_INVESTIGATERESPONSE']._serialized_end=1224
+  _globals['_INVESTIGATERESULT']._serialized_start=1226
+  _globals['_INVESTIGATERESULT']._serialized_end=1328
+  _globals['_ACK']._serialized_start=1330
+  _globals['_ACK']._serialized_end=1369
+  _globals['_PINGREQUEST']._serialized_start=1371
+  _globals['_PINGREQUEST']._serialized_end=1403
+  _globals['_PINGREPLY']._serialized_start=1405
+  _globals['_PINGREPLY']._serialized_end=1449
+  _globals['_RESILIENCEPEER']._serialized_start=1640
+  _globals['_RESILIENCEPEER']._serialized_end=1932
 # @@protoc_insertion_point(module_scope)

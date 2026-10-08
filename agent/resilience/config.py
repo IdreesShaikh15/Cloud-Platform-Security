@@ -64,6 +64,35 @@ class QuorumParams:
 
 
 @dataclass
+class InvestigationParams:
+    """Targeted investigation before containment (docs/INVESTIGATION.md)."""
+    enabled: bool = True               # False: behave exactly like the system without it
+    budget_s: float = 10.0             # an investigation never runs longer than this
+    sample_interval_s: float = 0.25    # re-measure rate while investigating (normal: tick_s)
+    max_samples: int = 120             # hard cap on samples per agent per investigation
+    peer_poll_s: float = 2.0           # how often to ask peers for fresh signed observations
+    request_timeout_s: float = 2.0     # per peer request; no answer = "unknown"
+    trigger_grace_s: float = 3.0       # a trigger must hold this long before we investigate
+    trigger_stagger_s: float = 0.4     # per node rank, so usually only one agent starts it
+    recent_s: float = 4.0              # evidence newer than this counts as "currently reported"
+    band_lo: float = 0.3               # uncertain band for W(T): [band_lo, score_threshold)
+    persist_ratio: float = 0.8         # "still there" = this share of the recent samples
+    tail_fraction: float = 0.4         # the "recent samples" are the last 40% of the window
+    min_tail_samples: int = 3          # fewer valid samples than this = too little data
+    max_concurrent: int = 2            # investigations running at once (per agent)
+    cooldown_s: float = 60.0           # per target, after one finishes
+    authorization_ttl_s: float = 30.0  # how long a CORROBORATED result may authorise votes
+    on_corroborated: str = "contain"   # "contain" | "none"
+    on_uncertain: str = "watch"        # safe policy when it failed / is ambiguous: "watch" | "none"
+    watch_sensitivity: float = 0.85    # heightened monitoring: thresholds x this (<1 = stricter)
+    watch_clear_s: float = 30.0        # watch ends after this long with no anomaly
+    early_close: bool = True           # finish sooner when everyone answered and it is clear
+
+    def to_dict(self) -> dict:
+        return dict(self.__dict__)
+
+
+@dataclass
 class ClusterConfig:
     nodes: Dict[str, NodeSpec]
     healthcare_namespace: str = "healthcare"
@@ -74,6 +103,7 @@ class ClusterConfig:
     timers: Timers = field(default_factory=Timers)
     trust: TrustParams = field(default_factory=TrustParams)
     quorum: QuorumParams = field(default_factory=QuorumParams)
+    investigation: InvestigationParams = field(default_factory=InvestigationParams)
     client_stats_url: Optional[str] = None  # synthetic client (availability probe)
 
     def workload_of(self, node_id: str) -> str:
@@ -112,6 +142,7 @@ def load_cluster_config(path: Optional[str] = None) -> ClusterConfig:
         timers=_dc(Timers, raw.get("timers")),
         trust=_dc(TrustParams, raw.get("trust")),
         quorum=_dc(QuorumParams, raw.get("quorum")),
+        investigation=_dc(InvestigationParams, raw.get("investigation")),
         client_stats_url=raw.get("client_stats_url"),
     )
     hashes_path = raw.get("baseline_hashes_path") or os.environ.get(

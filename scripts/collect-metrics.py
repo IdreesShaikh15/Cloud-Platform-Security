@@ -15,7 +15,8 @@ import os
 import time
 import urllib.request
 
-KEYS = ["ttd_s", "tti_s", "ttr_s", "ttv_s", "ttf_s", "trust_recovery_s", "time_to_flag_s"]
+KEYS = ["ttd_s", "tti_s", "ttr_s", "ttv_s", "ttf_s", "trust_recovery_s", "time_to_flag_s",
+        "inv_start_s", "inv_end_s"]
 
 
 def main():
@@ -35,13 +36,17 @@ def main():
         for k in KEYS:
             vals = [r[k] for r in rs if r.get(k) is not None]
             agg[k] = min(vals) if vals else None
+        agg["investigations"] = max((r.get("investigations") or 0 for r in rs), default=0)
+        agg["investigation_outcome"] = next((r["investigation_outcome"] for r in rs
+                                             if r.get("investigation_outcome")), None)
+        agg["human_review"] = any(r.get("human_review") for r in rs)
         av = [r["availability"] for r in rs if r.get("availability") is not None]
         agg["availability"] = av[0] if av else None
         out.append(agg)
     os.makedirs("results", exist_ok=True)
     path = f"results/metrics-{int(time.time())}.csv"
     cols = ["incident", "scenario", "mode", "target", "attacker", "reporters", *KEYS,
-            "false_isolation", "availability"]
+            "investigations", "investigation_outcome", "human_review", "false_isolation", "availability"]
     with open(path, "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=cols)
         w.writeheader()

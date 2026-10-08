@@ -161,6 +161,55 @@ def _vote_view(key: str, statuses: dict, ids: list) -> dict:
     return {"proposal": key, "voters": sorted(voters), "agents": rows, "excluded": excluded}
 
 
+OUTCOME_TEXT = {
+    "CORROBORATED": "confirmed (quorum may proceed)",
+    "FALSE_POSITIVE": "false positive, closed",
+    "AMBIGUOUS": "ambiguous: under watch, human review",
+    "UNCERTAIN": "uncertain: under watch, human review",
+    "SUPERSEDED": "superseded (incident changed)",
+    "MERGED": "merged into an earlier one",
+}
+
+
+def investigations_view(live: dict) -> dict:
+    """One row per investigation id (the four agents each run their own copy of it), plus the
+    set of workloads currently under watch / flagged for human review."""
+    rows: dict = {}
+    watch: dict = {}
+    enabled = False
+    for sid, s in live.items():
+        inv = s.get("investigations") or {}
+        enabled = enabled or bool(inv.get("enabled"))
+        for r in list(inv.get("active", [])) + list(inv.get("recent", [])):
+            m = rows.setdefault(r["id"], {
+                "id": r["id"], "target": r["target"], "workload": r["workload"], "epoch": r["epoch"],
+                "question": r["question"], "trigger": r["trigger"], "signals": r["signals"],
+                "initiator": r["initiator"], "started_at": r["started_at"], "deadline": r["deadline"],
+                "per_agent": {}})
+            m["per_agent"][sid] = {"state": r["state"], "outcome": r["outcome"], "reason": r["reason"],
+                                   "time_left_s": r["time_left_s"], "own_view": (r.get("own") or {}).get("view"),
+                                   "views": r.get("views") or {}, "silent": r.get("silent") or []}
+        for tgt, w in (inv.get("watch") or {}).items():
+            e = watch.setdefault(tgt, {"target": tgt, "workload": w["workload"], "agents": [],
+                                       "review_needed": False, "reason": w["reason"], "outcome": w["outcome"]})
+            e["agents"].append(sid)
+            e["review_needed"] = e["review_needed"] or bool(w["review_needed"])
+    out = []
+    for m in rows.values():
+        pa = m["per_agent"]
+        active = [a for a in pa.values() if a["state"] == "ACTIVE"]
+        outcomes = Counter(a["outcome"] for a in pa.values() if a["outcome"])
+        m["active"] = bool(active)
+        m["time_left_s"] = max((a["time_left_s"] for a in active), default=0.0)
+        m["outcomes"] = dict(outcomes)
+        top = outcomes.most_common(1)[0][0] if outcomes else None
+        m["outcome"] = top
+        m["outcome_text"] = OUTCOME_TEXT.get(top, "in progress") if top else "in progress"
+        out.append(m)
+    out.sort(key=lambda m: (not m["active"], -m["started_at"]))
+    return {"enabled": enabled, "rows": out[:12], "watch": list(watch.values())}
+
+
 def aggregate() -> dict:
     statuses = COLLECTOR.snapshot()
     if not statuses:                             # poller not warmed up yet
@@ -192,6 +241,8 @@ def aggregate() -> dict:
             "score": own.get("score"),
             "last_decision": last,
         }
+        nodes[nid]["watch"] = any(nid in ((s_.get("investigations") or {}).get("watch") or {})
+                                  for s_ in live.values())
     # committed decisions, de-duplicated, with who saw them and the justification
     merged = {}
     srcs = dict(live, **({"CENTRAL": base} if base else {}))
@@ -209,6 +260,7 @@ def aggregate() -> dict:
     pending = {k: _vote_view(k, live, ids) for k in keys}
     return {"mode": "centralized" if base and not live else "distributed",
             "nodes": nodes, "decisions": uniq[:15], "rejections": rejections,
+            "investigations": investigations_view(live),
             "pending_votes": {k: v["voters"] for k, v in pending.items()},
             "pending_detail": pending, "baseline": BASELINE or None,
             "central_compromised": (base or {}).get("compromised"),

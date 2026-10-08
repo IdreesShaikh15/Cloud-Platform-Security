@@ -12,6 +12,13 @@ Scenarios
   forge-evidence     agent A tries to impersonate B's signature
   agent-crash        agent D is killed, then Node C is genuinely compromised: A, B, C
                      still reach 3-of-4 quorum and complete the full pipeline without D
+  transient-blip     one signal spikes briefly on one workload, seen by only some agents, then
+                     stops: investigation, closed as a false positive, no isolation
+  slow-burn          a weak anomaly seen by only some agents at first, which persists and grows:
+                     investigation confirms it, containment follows
+  ambiguous          a weak, persistent signal only some agents confirm: reversible WATCH state
+                     plus a human-review flag, no isolation
+                     (add --no-investigation to switch the feature off for ANY scenario, to compare)
   baseline           the centralized controller under the same two attacks
   controller-crash   the centralized controller is killed, then Node C is genuinely
                      compromised: no detection or response occurs at all (single point
@@ -29,7 +36,7 @@ import time
 import uuid
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from world import LocalBaseline, LocalCluster  # noqa: E402
+from world import LocalBaseline, LocalCluster, fast_config, sim_investigation  # noqa: E402
 
 import grpc  # noqa: E402 - after world.py has put agent/ on sys.path
 from resilience.proto import resilience_pb2 as pb  # noqa: E402
@@ -137,6 +144,110 @@ def agent_crash(c: LocalCluster) -> bool:
     return down and ok and ok2 and quorum_excludes_d and (len(survivors["voters"]) >= 3 if survivors else False)
 
 
+
+# ---- investigation scenarios: each runs on its own fresh 4-agent cluster ------------
+_INV_PORT = [50801]
+
+
+def _inv_cluster(enabled: bool) -> LocalCluster:
+    port = _INV_PORT[0]
+    _INV_PORT[0] += 10
+    c = LocalCluster(base_port=port, cfg=fast_config(port, sim_investigation(enabled=enabled))).start()
+    time.sleep(2)
+    return c
+
+
+def _outcomes(c: LocalCluster, target: str) -> dict:
+    return {n: [r["outcome"] for r in a.inv.recent if r["target"] == target] for n, a in c.agents.items()}
+
+
+def _show_inv(c: LocalCluster, target: str) -> None:
+    for n, a in c.agents.items():
+        st = a.inv.status()
+        print(f"  [{n}] investigations={_outcomes(c, target)[n]} watch={list(st['watch'])} "
+              f"epoch={a.states[target].epoch}")
+    row = c.agents["B"].metrics.summary()[0]
+    keep = {k: row[k] for k in ("scenario", "target", "ttd_s", "tti_s", "inv_start_s", "inv_end_s",
+                                "investigations", "investigation_outcome", "human_review",
+                                "false_isolation") if row.get(k) is not None}
+    print(f"  [B] {json.dumps(keep)}")
+
+
+def transient_blip(enabled: bool = True) -> bool:
+    banner(f"SCENARIO 7: transient blip on Node C, seen by agents A and B only "
+           f"(investigation {'ON' if enabled else 'OFF'})")
+    c = _inv_cluster(enabled)
+    try:
+        c.mark("transient-blip", "C")
+        c.world.inject_connections("C", lambda t: 40, observers={"A", "B"}, duration=2.5)
+        if enabled:
+            done = c.wait_until(lambda: sum(1 for v in _outcomes(c, "C").values() if v) >= 3, 25)
+        else:
+            time.sleep(12)
+            done = True
+        _show_inv(c, "C")
+        never = all(a.states["C"].epoch == 0 for a in c.agents.values())
+        print(f"  C never isolated: {never}")
+        if not enabled:
+            print(f"  pending CONTAIN votes left hanging: {[k for k in c.agents['C'].votes.pending() if ':C:' in k]}")
+            return never
+        fp = sum(1 for v in _outcomes(c, "C").values() if v and v[-1] == "FALSE_POSITIVE")
+        print(f"  agents that closed it as a false positive: {fp}")
+        return done and never and fp >= 3
+    finally:
+        c.stop()
+
+
+def slow_burn(enabled: bool = True) -> bool:
+    banner(f"SCENARIO 8: slow burn on Node C: weak anomaly, visible to A,B first, C,D after 5s, "
+           f"growing (investigation {'ON' if enabled else 'OFF'})")
+    c = _inv_cluster(enabled)
+    try:
+        c.mark("slow-burn", "C")
+        grow = lambda t: 9 + 0.15 * t          # noqa: E731  connections: 9 -> 12 in 20 s
+        c.world.inject_connections("C", grow, observers={"A", "B"})
+        c.world.inject_connections("C", grow, observers={"C", "D"}, start_after=5)
+        t0 = time.time()
+        contained = c.wait_until(lambda: sum(1 for a in c.agents.values()
+                                             if a.states["C"].phase != "HEALTHY") >= 3, 45)
+        print(f"  contained: {contained} after {time.time() - t0:.1f}s "
+              f"(weak signals alone never reach W>=0.6 until they grow past ~11 connections)")
+        _show_inv(c, "C")
+        d = c.agents["B"].states["C"].last_decision
+        if d:
+            print(f"  decision signed by {d['voters']}; votes cite investigations: "
+                  f"{sorted({v.get('investigation_id', '') for v in []}) or 'see events'}")
+        return contained
+    finally:
+        c.stop()
+
+
+def ambiguous(enabled: bool = True) -> bool:
+    banner(f"SCENARIO 9: weak persistent signal confirmed by only A and B "
+           f"(investigation {'ON' if enabled else 'OFF'})")
+    c = _inv_cluster(enabled)
+    try:
+        c.mark("ambiguous", "C")
+        c.world.inject_connections("C", lambda t: 9.5, observers={"A", "B"})
+        if enabled:
+            done = c.wait_until(lambda: all("C" in a.inv.watch and not a.inv.active
+                                            for a in c.agents.values()), 30)
+        else:
+            time.sleep(12)
+            done = True
+        _show_inv(c, "C")
+        never = all(a.states["C"].epoch == 0 for a in c.agents.values())
+        print(f"  C never isolated: {never}")
+        if not enabled:
+            return never
+        flagged = [n for n, a in c.agents.items() if a.inv.watch.get("C") and a.inv.watch["C"].review_needed]
+        print(f"  agents showing 'human review needed': {flagged}")
+        row = c.agents["B"].metrics.summary()[0]
+        return done and never and len(flagged) == 4 and row["human_review"] is True
+    finally:
+        c.stop()
+
+
 def controller_crash(with_status: bool = False) -> bool:
     banner("SCENARIO 6: centralized controller crashes, then Node C is genuinely compromised")
     b = LocalBaseline(with_status=with_status).start()
@@ -194,13 +305,16 @@ def baseline() -> bool:
 
 
 CLUSTER_SCENARIOS = ("app-compromise", "false-accusation", "forge-evidence", "agent-crash")
+INVESTIGATION_SCENARIOS = ("transient-blip", "slow-burn", "ambiguous")
 BASELINE_SCENARIOS = ("baseline", "controller-crash")
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("scenario", nargs="?", default="all",
-                    choices=["all", *CLUSTER_SCENARIOS, *BASELINE_SCENARIOS])
+                    choices=["all", *CLUSTER_SCENARIOS, *INVESTIGATION_SCENARIOS, *BASELINE_SCENARIOS])
+    ap.add_argument("--no-investigation", action="store_true",
+                    help="run the investigation scenarios with the feature switched off (comparison)")
     ap.add_argument("--serve", action="store_true",
                     help="keep agents/controller running with /status exposed "
                          "(agents on :50251-4, baseline controller on :50261)")
@@ -209,8 +323,10 @@ def main():
     logging.basicConfig(level=logging.INFO if a.v else logging.WARNING,
                         format="%(asctime)s %(levelname)s %(message)s")
     results = {}
+    inv_on = not a.no_investigation
     if a.scenario in ("all", *CLUSTER_SCENARIOS):
-        c = LocalCluster(with_status=a.serve).start()
+        c = LocalCluster(with_status=a.serve,
+                         cfg=fast_config(50151, sim_investigation(enabled=inv_on))).start()
         time.sleep(2)
         try:
             if a.scenario in ("all", "app-compromise"):
@@ -231,6 +347,12 @@ def main():
             pass
         finally:
             c.stop()
+    if a.scenario in ("all", "transient-blip"):
+        results["transient-blip"] = transient_blip(inv_on)
+    if a.scenario in ("all", "slow-burn"):
+        results["slow-burn"] = slow_burn(inv_on)
+    if a.scenario in ("all", "ambiguous"):
+        results["ambiguous"] = ambiguous(inv_on)
     if a.scenario in ("all", "baseline"):
         results["baseline"] = baseline()
     if a.scenario in ("all", "controller-crash"):

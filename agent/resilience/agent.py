@@ -29,6 +29,7 @@ from .config import ClusterConfig
 from .crypto import KeyRegistry, Signer
 from .detection import Detection, Detector, max_confidence
 from .evidence import Action, Evidence, ObsType, ReplayCache, Vote, open_envelope, seal
+from .investigation import InvestigationManager
 from .metrics import MetricsRecorder
 from .monitoring import Snapshot, TelemetrySource, fetch_availability
 from .proto import resilience_pb2 as pb
@@ -111,6 +112,7 @@ class ResilienceAgent:
         self.vote_reasons: Dict[str, dict] = {}
         self._flags: Dict[str, Tuple[bool, bool]] = {n: (False, False) for n in cfg.nodes}
         self._score_seen: Dict[str, bool] = {}
+        self.inv = InvestigationManager(self)       # targeted investigation (docs/INVESTIGATION.md)
 
     # ------------------------------------------------------------------ transport
     @property
@@ -167,21 +169,29 @@ class ResilienceAgent:
                 self.workload_trust.set(nid, STAGE_THRESHOLDS.get(st.stage, 0.0))
 
     # ------------------------------------------------------------------ inbound
+    def on_investigate(self, env: pb.SignedEnvelope, transport_identity: Optional[str]):
+        """gRPC Investigate: a peer asks for fresh signed observations of one target."""
+        return self.inv.on_request(env, transport_identity)
+
+    def _reject_envelope(self, env, culprit: Optional[str], reason: str, now: float) -> None:
+        old = self.agent_trust.get(culprit) if culprit else None
+        if culprit and culprit != self.id:
+            self.agent_trust.penalize(culprit, self.cfg.trust.invalid_message_penalty)
+        self.rejections.append({"t": now, "from": culprit, "claimed_signer": env.signer,
+                                "kind": env.kind, "reason": reason})
+        log.warning("REJECTED %s from %s (claimed %s): %s", env.kind, culprit, env.signer, reason)
+        self._log_rejection(env, culprit, reason, old)
+
     def on_envelope(self, env: pb.SignedEnvelope, transport_identity: Optional[str]) -> Tuple[bool, str]:
         now = self.clock()
         claim, reason = open_envelope(env, self.registry, transport_identity=transport_identity,
                                       now=now, max_skew_s=self.cfg.timers.max_clock_skew_s,
                                       replay=self.replay)
         if claim is None:
-            culprit = transport_identity
-            old = self.agent_trust.get(culprit) if culprit else None
-            if culprit and culprit != self.id:
-                self.agent_trust.penalize(culprit, self.cfg.trust.invalid_message_penalty)
-            self.rejections.append({"t": now, "from": culprit, "claimed_signer": env.signer,
-                                    "kind": env.kind, "reason": reason})
-            log.warning("REJECTED %s from %s (claimed %s): %s", env.kind, culprit, env.signer, reason)
-            self._log_rejection(env, culprit, reason, old)
+            self._reject_envelope(env, transport_identity, reason, now)
             return False, reason
+        if not isinstance(claim, (Evidence, Vote)):         # investigation kinds have their own RPC
+            return False, f"unexpected {env.kind} on this channel"
         if isinstance(claim, Evidence):
             self.pool.add(claim)
             self.events.emit(
@@ -247,7 +257,7 @@ class ResilienceAgent:
                 key=("sent", claim.target, claim.observation.value, forged))
 
     def _cast(self, now: float, target: str, action: Action, epoch: int, stage: str = "",
-              score: float = 0.0, evidence_ids=(), why: str = "") -> None:
+              score: float = 0.0, evidence_ids=(), why: str = "", investigation_id: str = "") -> None:
         key = f"{action.value}:{target}:{epoch}:{stage}"
         if self.votes.is_committed(key):
             return
@@ -256,7 +266,8 @@ class ResilienceAgent:
         resend = key in self.my_votes
         self.my_votes[key] = now
         self._emit(Vote(voter=self.id, target=target, action=action, epoch=epoch, stage=stage,
-                        score=score, timestamp=now, evidence_ids=tuple(evidence_ids)[:20]))
+                        score=score, timestamp=now, evidence_ids=tuple(evidence_ids)[:20],
+                        investigation_id=investigation_id))
         verb = {"CONTAIN": f"contain {target}", "VALIDATE": f"accept {target} as validated",
                 "ADVANCE_STAGE": f"move {target} to {stage}"}[action.value]
         self.events.emit(
@@ -288,11 +299,14 @@ class ResilienceAgent:
                 self._on_commit(c, now)
             self._track_cluster(now)
             self._run_tasks(now)
+            self.inv.tick(now)
 
     def _observe(self, now: float) -> None:
         self.snaps = self.telemetry.collect()
         sens = {t: STAGE_SENSITIVITY.get(st.stage, 1.0)
                 for t, st in self.states.items() if st.phase == REINTEGRATING}
+        for t, v in self.inv.sensitivity_overrides().items():     # heightened monitoring (watch)
+            sens[t] = min(sens.get(t, 1.0), v)
         dets = self.detector.analyze(self.snaps, now, sens)
         q = self.cfg.quorum
         for target, ds in dets.items():
@@ -452,6 +466,8 @@ class ResilienceAgent:
                     self._cast(now, target, Action.CONTAIN, st.epoch + 1, score=score.total,
                                evidence_ids=score.evidence_ids,
                                why=self.vote_reasons[f"CONTAIN:{target}"]["reason"])
+                elif self._investigation_vote(now, target, st, score, local):
+                    pass
                 else:
                     if local < q.local_min_conf:
                         code, why = "own_normal", (f"own observation of {target} normal "
@@ -463,6 +479,8 @@ class ResilienceAgent:
                     peers_want = any(k.startswith(f"CONTAIN:{target}:") for k in pending)
                     if score.total > 0 or peers_want:
                         self._log_withheld("CONTAIN", target, st.epoch + 1, "", code, why)
+                if st.phase == HEALTHY:
+                    self.inv.evaluate(now, target, score)
             else:
                 self.scores[target] = ScoreBreakdown(0.0)
                 self._note_vote("CONTAIN", target, st.epoch + 1, "", False,
@@ -496,6 +514,25 @@ class ResilienceAgent:
                 self._note_vote("ADVANCE_STAGE", target, st.epoch, nxt, False, why)
                 self._log_withheld("ADVANCE_STAGE", target, st.epoch, nxt, why.split(" ")[0], why)
         self._log_excluded_votes(pending)
+
+    def _investigation_vote(self, now: float, target: str, st: TargetState, score: ScoreBreakdown,
+                            local: float) -> bool:
+        """A weak but PERSISTENT anomaly that a CORROBORATED investigation confirmed may be
+        voted on even though W(T) is below the usual bar. Still required: this agent's own
+        persistent re-measurements and a current anomaly (never hearsay), the authorisation
+        is for this incident version and workload instance, and it expires."""
+        q = self.cfg.quorum
+        au = self.inv.vote_authorization(target, now)
+        if au is None or not au.own_persistent or local < q.evidence_min_conf \
+                or score.total < self.cfg.investigation.band_lo:
+            return False
+        why = (f"investigation {au.investigation_id[-12:]} confirmed the anomaly persists "
+               f"(still seen by {', '.join(au.seers)}) and this agent still sees it itself "
+               f"(confidence {local:.2f}); W({target})={score.total:.2f}")
+        self._note_vote("CONTAIN", target, st.epoch + 1, "", True, why)
+        self._cast(now, target, Action.CONTAIN, st.epoch + 1, score=score.total,
+                   evidence_ids=score.evidence_ids, why=why, investigation_id=au.investigation_id)
+        return True
 
     # ---- observability helpers for voting (never feed back into decisions)
     def _note_vote(self, action: str, target: str, epoch: int, stage: str, voted: bool,
@@ -626,6 +663,7 @@ class ResilienceAgent:
             st.contaminated_instance = s.instance_id if s else ""
             self.workload_trust.set(v.target, 0.0)
             self.pool.clear_target(v.target)
+            self.inv.on_incident_change(v.target, now)
             self._record_decision(c, now, "isolate + recover", just)
             self.metrics.event("contain_committed", now, v.target, voters=c.voters)
             ann, epoch = self._qc_annotations(c), v.epoch
@@ -841,6 +879,7 @@ class ResilienceAgent:
                 "pending_votes_detail": self._pending_detail(),
                 "flags": {n: {"suspect": f[0], "vote_excluded": f[1]}
                           for n, f in self._flags.items() if n != self.id},
+                "investigations": self.inv.status(),
                 "event_boot": self.events.boot,
                 "event_seq": self.events.seq,
                 "events": self.events.recent(since=events_since) if include_events else [],

@@ -49,6 +49,7 @@ message Vote {
   double score = 7;                  // voter's weighted evidence score (CONTAIN)
   double timestamp = 8;
   repeated string evidence_ids = 9;  // evidence the voter relied on
+  string investigation_id = 10;      // set when an investigation authorised this vote
 }
 
 message SignedEnvelope {
@@ -56,6 +57,53 @@ message SignedEnvelope {
   string kind = 2;                   // "evidence" | "vote" (domain separation)
   bytes payload = 3;                 // serialized Evidence or Vote
   bytes signature = 4;               // Ed25519(kind || 0x00 || payload)
+}
+
+// ---- Targeted investigation (see docs/INVESTIGATION.md) -------------------
+// Both messages travel inside a SignedEnvelope (kind "inv_request" / "inv_response"),
+// so they get the same mTLS-identity binding, Ed25519 signature, freshness and
+// replay checks as evidence and votes.
+message InvestigateRequest {
+  string request_id = 1;
+  string investigation_id = 2;       // unique; the lowest id wins if two start at once
+  string requester = 3;
+  string target = 4;
+  uint32 epoch = 5;                  // incident version of the target when it started
+  repeated ObservationType signals = 6;  // ONLY these signal types are re-measured
+  double started_at = 7;
+  double budget_s = 8;
+  string trigger = 9;                // uncertain_band | split_view | single_sender
+  double timestamp = 10;
+}
+
+message SignalReading {
+  ObservationType observation = 1;
+  double last_confidence = 2;
+  double max_confidence = 3;
+  uint32 samples = 4;                // valid samples taken during the investigation
+  uint32 positive_samples = 5;       // samples at or above the "I see it" confidence
+  uint32 tail_samples = 6;           // the most recent part of the window ...
+  uint32 tail_positive = 7;          // ... and how many of those still showed the anomaly
+  string summary = 8;
+}
+
+message InvestigateResponse {
+  string response_id = 1;
+  string investigation_id = 2;
+  string responder = 3;
+  string target = 4;
+  uint32 epoch = 5;
+  repeated SignalReading readings = 6;
+  uint32 telemetry_failures = 7;     // samples that could not be taken (unknown, not "normal")
+  string instance_id = 8;            // workload instance measured (detects a replaced pod)
+  double timestamp = 9;
+  string status = 10;                // "ok" | "stale"
+}
+
+message InvestigateResult {
+  bool accepted = 1;                 // false: not signed, reason says why (busy, stale, ...)
+  string reason = 2;
+  SignedEnvelope response = 3;       // a signed InvestigateResponse when accepted
 }
 
 message Ack {
@@ -76,4 +124,5 @@ service ResiliencePeer {
   rpc SubmitEvidence(SignedEnvelope) returns (Ack);
   rpc SubmitVote(SignedEnvelope) returns (Ack);
   rpc Ping(PingRequest) returns (PingReply);
+  rpc Investigate(SignedEnvelope) returns (InvestigateResult);
 }

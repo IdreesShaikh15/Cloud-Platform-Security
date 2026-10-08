@@ -64,6 +64,7 @@ Everything else is not claimed live, even where it probably works.
 | 19 | Compromised-agent variants "goes silent" / "blocks a legitimate isolation" | **MISSING** | n/a | n/a | Listed as future work in the README. |
 | 20 | Admission webhook / quorum-certificate enforcement | **MISSING** | n/a | n/a | Phase 3. Today any agent's RBAC can act alone. |
 | 21 | 2-of-4 compromised experiment | **MISSING** | n/a | n/a | Phase 5. |
+| 22 | **Targeted investigation** (added in Phase 2; see `docs/INVESTIGATION.md`) | **VERIFIED IN SIMULATOR/TESTS**, not live | `agent/resilience/investigation.py`; `Investigate` RPC in `proto/resilience.proto` | `tests/test_investigation.py` (35), `tests/test_investigation_scenarios.py` (9), `tests/test_dashboard_investigations.py` (3); scenarios `transient-blip`, `slow-burn`, `ambiguous` | Never run on the real cluster; sampling rates and thresholds are untuned against real telemetry. |
 
 ---
 

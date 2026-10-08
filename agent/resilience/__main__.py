@@ -43,7 +43,8 @@ def wire_agent(cfg, node_id, signer, registry, tls, telemetry, backend, metrics,
     from .peer import PeerClient, PeerServer
 
     agent = ResilienceAgent(cfg, node_id, signer, registry, telemetry, backend, metrics, compromise)
-    agent.server = PeerServer(node_id, bind, tls, cfg.node_of_agent, agent.on_envelope).start()
+    agent.server = PeerServer(node_id, bind, tls, cfg.node_of_agent, agent.on_envelope,
+                              agent.on_investigate).start()
     agent.transport = PeerClient(node_id, cfg.nodes, tls)
     return agent
 
