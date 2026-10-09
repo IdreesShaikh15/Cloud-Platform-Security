@@ -61,6 +61,7 @@
   .dsec { background:var(--card); border-radius:8px; padding:10px; margin-top:10px; overflow-x:auto; }
   .dsec h3 { margin:0 0 6px; font-size:13px; }
   .spark { display:block; } .over { color:var(--bad); font-weight:600; } .okv { color:var(--fg); }
+  .rv { background:var(--bad); color:#000; font-weight:600; padding:5px 8px; border-radius:6px; margin:6px 0; }
   #invreview .rv { background:var(--warn); color:#000; font-weight:600; padding:5px 8px; border-radius:6px; margin:8px 0 2px; }
   .timeleft { display:inline-block; width:70px; height:6px; background:var(--line); border-radius:3px; vertical-align:middle; margin-right:6px; overflow:hidden; }
   .timeleft i { display:block; height:100%; background:var(--info); }
@@ -99,6 +100,8 @@
 </section>
 
 <section><b>Recent quorum decisions</b> <span class="mut">(click a row to see the evidence and votes that justified it)</span><table id="dec"></table></section>
+<section id="recsec"><b>Evidence snapshots &amp; Kubernetes actions</b> <span class="mut">(a read-only snapshot of the affected workload is saved BEFORE it is replaced; every cluster action records its observable result. A timeout is not a failure: the cluster is checked, and if it cannot be read the result is shown as UNKNOWN.)</span>
+  <div id="recunk"></div><table id="snaps"></table><table id="acts" style="margin-top:8px"></table></section>
 <section><b>Pending votes</b> <span class="mut">(need 3 of 4 eligible signed votes; each agent says why it has not voted)</span><div id="pend"></div></section>
 <section><b>Rejected messages</b> <span class="mut">(signature / mTLS identity failures)</span><table id="rej"></table></section>
 <section><b>Incident metrics</b> <span class="mut">(seconds since injection; min across agents)</span><table id="met"></table></section>
@@ -121,7 +124,7 @@ const t = x => x ? new Date(x*1000).toLocaleTimeString() : "-";
 const col = v => v == null ? "var(--line)" : v >= 70 ? "var(--ok)" : v >= 40 ? "var(--warn)" : "var(--bad)";
 const bar = v => `<div class="bar"><i style="width:${v ?? 0}%;background:${col(v)}"></i></div>`;
 const nb = n => `<span class="nb"><i style="background:var(--node-${esc(n)},var(--mut))"></i>${n === "CENTRAL" ? "CTRL" : esc(n)}</span>`;
-const propText = k => { const [a,tg,ep,st] = String(k).split(":"); return a === "ADVANCE_STAGE" ? `move ${tg} to ${st} (epoch ${ep})` : `${a} ${tg} (epoch ${ep})`; };
+const propText = k => { const [a,tg,ep,st] = String(k).split(":"); return a === "ADVANCE_STAGE" ? `move ${tg} to ${st} (epoch ${ep})` : a === "RETRY_RECOVERY" ? `redeploy ${tg} again, attempt ${st} (epoch ${ep})` : `${a} ${tg} (epoch ${ep})`; };
 
 let paused = false, timers = [], lastState = null, openAgent = null;
 const expandedDec = new Set();
@@ -198,14 +201,35 @@ function renderInvestigations(iv) {
         <td class="mut">${chips}</td></tr>`; }).join("");
 }
 
+const ACT_CLASS = {applied:"ok", already_applied:"ok", applied_after_timeout:"ok", applied_unconfirmed:"warn", unknown_resolved:"ok",
+  not_applied:"warn", failed:"bad", unknown:"bad", refused_stale:"warn", refused_certificate:"bad", waiting:"", abandoned:"bad"};
+function renderRecovery(s) {
+  const unk = (s.actions && s.actions.unknown) || [];
+  document.getElementById("recunk").innerHTML = unk.map(u =>
+    `<div class="rv" style="background:var(--warn)">UNKNOWN RESULT: ${esc(u.action)} on ${esc(u.workload)} (reported by ${nb(u.node)}): the request timed out and the cluster could not be read, so it is not known whether it took effect. It is re-checked, not blindly repeated.</div>`).join("");
+  document.getElementById("snaps").innerHTML = (s.snapshots && s.snapshots.length) ?
+    "<tr><th>evidence snapshot</th><th>why</th><th>pods</th><th>log lines</th><th>NOT captured</th><th>digest</th><th>by</th><th></th></tr>" +
+    s.snapshots.map(x => `<tr><td>${nb(x.target)} ${esc(x.workload)} · incident ${x.epoch} · ${esc(x.tag)}</td><td>${esc(x.reason)}</td><td>${x.pods}</td><td>${x.log_lines}</td>
+      <td>${x.not_captured.length ? x.not_captured.map(m => `<span title="${esc(m.reason)}">${esc(m.item)}</span>`).join("; ") : '<span class="mut">nothing missing</span>'}</td>
+      <td class="mut">${esc(x.digest)}</td><td>${nb(x.agent)}</td><td><a class="btn" href="api/snapshot/${x.agent}/${encodeURIComponent(x.key)}">export JSON</a></td></tr>`).join("")
+    : '<tr><td class="mut">No evidence snapshots yet. One is saved automatically when a workload is contained.</td></tr>';
+  const rec = (s.actions && s.actions.recent) || [];
+  document.getElementById("acts").innerHTML = rec.length ?
+    "<tr><th>time</th><th>agent</th><th>action</th><th>workload</th><th>try</th><th>result</th><th>detail</th></tr>" +
+    rec.slice(0, 20).map(r => `<tr><td>${t(r.t)}</td><td>${nb(r.node)}</td><td>${esc(r.action)}</td><td>${esc(r.workload)}</td><td>${r.attempt}</td>
+      <td><span class="tag ${ACT_CLASS[r.outcome] || ""}">${esc(r.outcome.replace(/_/g, " "))}</span></td><td class="mut">${esc(r.detail)}${r.error ? " · " + esc(r.error) : ""}</td></tr>`).join("") : "";
+}
+
 function renderState(s) {
   lastState = s;
   document.getElementById("sub").textContent = `mode: ${s.mode} · data from ${t(s.last_poll)}` + (s.baseline ? " · centralized baseline running" : "");
   const cc = s.mode === "centralized" && s.central_compromised; if (cc) document.getElementById("sub").textContent += ` · controller compromise simulation: ${cc}`;
   document.getElementById("nodes").innerHTML = Object.entries(s.nodes).map(([id,n]) => `
-    <div class="card ${n.phase}" data-node="${id}" title="Open agent ${id}'s view">
-      <div class="row"><b>${nb(id)} · ${esc(n.workload)}</b><span>${n.watch ? '<span class="tag warn" title="Under watch after an unresolved investigation: heightened monitoring, human review needed. Nothing is isolated.">WATCH · review</span> ' : ''}<span class="tag">${n.phase}</span></span></div>
+    <div class="card ${n.display_state === 'NEEDS_ATTENTION' ? 'ISOLATED' : n.phase}" data-node="${id}" title="Open agent ${id}'s view">
+      <div class="row"><b>${nb(id)} · ${esc(n.workload)}</b><span>${n.watch ? '<span class="tag warn" title="Under watch after an unresolved investigation: heightened monitoring, human review needed. Nothing is isolated.">WATCH · review</span> ' : ''}<span class="tag ${n.display_state === 'NEEDS_ATTENTION' ? 'bad' : n.display_state === 'UNKNOWN' ? 'warn' : ''}">${esc((n.display_state || n.phase).replace('_', ' '))}</span></span></div>
       ${s.mode === "centralized" ? `<div class="mut" style="margin:6px 0">centralized mode: this node is watched only by the single central controller (no agents, no votes, no trust scores, no staged return: straight back to full access)</div>` : `
+      ${n.attention ? `<div class="rv">NEEDS HUMAN ATTENTION: ${esc(n.attention.reason)}. Stays quarantined; NOT healthy.</div>` : ""}
+      ${n.attempt > 1 && n.phase !== "HEALTHY" ? `<div class="mut">recovery attempt ${n.attempt} of ${n.recovery ? n.recovery.max_attempts : "?"}${n.recovery && n.recovery.failure ? " · last attempt failed: " + esc(n.recovery.failure) : ""}</div>` : ""}
       ${stages(n)}
       <div class="row"><span>workload trust</span><span>${n.workload_trust ?? "-"}</span></div>${bar(n.workload_trust)}
       <div class="row"><span>agent trust (peers' median)</span><span>${n.agent_trust ?? "-"}
@@ -218,6 +242,7 @@ function renderState(s) {
     </div>`).join("");
 
   renderInvestigations(s.investigations);
+  renderRecovery(s);
   const dl = s.decision_logs, de = document.getElementById("dlog");
   if (dl && dl.checked) {
     de.className = "tag " + (dl.ok ? "ok" : "bad");

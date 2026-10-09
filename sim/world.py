@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.join(ROOT, "agent"))
 from resilience.agent import ResilienceAgent  # noqa: E402
 from resilience.baseline import CentralController  # noqa: E402
 from resilience.config import (NODE_IDS, ClusterConfig, InvestigationParams, NodeSpec,  # noqa: E402
-                               QuorumParams, Timers, TrustParams)
+                               QuorumParams, RecoveryParams, Timers, TrustParams)
 from resilience.crypto import KeyRegistry, Signer  # noqa: E402
 from resilience.metrics import MetricsRecorder  # noqa: E402
 from resilience.monitoring import Snapshot  # noqa: E402
@@ -66,6 +66,36 @@ class FakeWorld:
         self.lock = threading.Lock()
         self.apps = {n: FakeApp(n, f"10.244.0.{10 + i}") for i, n in enumerate(NODE_IDS)}
         self.overlays: List[Overlay] = []
+        # workload -> number of upcoming recoveries that produce a replacement which FAILS validation
+        # (simulated unhealthy pod; the recovery itself "succeeds", the new pod just is not good).
+        self.bad_recoveries: Dict[str, int] = {}
+
+    def pods_for(self, workload: str) -> list:
+        """Simulated read-only pod listing (what `kubectl get pods -l app=<workload>` would show)."""
+        node = next(n for n, w in WORKLOADS.items() if w == workload)
+        with self.lock:
+            a = self.apps[node]
+            return [{"name": f"{workload}-{a.instance_id[:6]}", "uid": a.instance_id, "phase": "Running",
+                     "pod_ip": a.ip, "node": "sim-node", "start_time": "", "deletion_timestamp": "",
+                     "labels": {"app": workload}, "owner_kinds": ["ReplicaSet"],
+                     "containers": [{"name": "app", "image": "cr-healthcare-app:known-good", "image_id": "",
+                                     "ready": a.healthy, "restart_count": 0, "state": "running", "reason": ""}]}]
+
+    def logs_for(self, pod_name: str) -> str:
+        """Simulated container log. A compromised pod's log mentions the attack (and, deliberately, a
+        credential-looking string so the snapshot's redaction can be shown working)."""
+        with self.lock:
+            for a in self.apps.values():
+                if pod_name.endswith(a.instance_id[:6]):
+                    lines = ["app started on :8080", "GET /healthz 200"]
+                    if a.attacks:
+                        lines += ["outbound connection to 203.0.113.9:4444 (unexpected)",
+                                  "static/index.html modified at runtime",
+                                  "request header Authorization: Bearer SIMULATED-SECRET-TOKEN-123"]
+                    if not a.healthy:
+                        lines += ["ERROR: readiness check failing (simulated)"]
+                    return "\n".join(lines)
+        raise KeyError(pod_name)
 
     def inject_connections(self, target: str, level_fn, observers=None, duration=None,
                            start_after: float = 0.0) -> None:
@@ -89,7 +119,11 @@ class FakeWorld:
         node = next(n for n, w in WORKLOADS.items() if w == workload)
         with self.lock:
             old = self.apps[node]
-            self.apps[node] = FakeApp(node, old.ip)  # fresh instance, clean state
+            fresh = FakeApp(node, old.ip)  # fresh instance, clean state
+            if self.bad_recoveries.get(workload, 0) > 0:
+                self.bad_recoveries[workload] -= 1
+                fresh.healthy = False         # simulated: the replacement comes up but fails its health check
+            self.apps[node] = fresh
             self.overlays = [o for o in self.overlays if o.target != node]   # a clean pod has none
 
     def snapshot(self, nid: str, now: float, observer: Optional[str] = None) -> Snapshot:
@@ -149,7 +183,16 @@ def sim_investigation(**overrides) -> InvestigationParams:
     return InvestigationParams(**base)
 
 
-def fast_config(base_port: int, investigation: Optional[InvestigationParams] = None) -> ClusterConfig:
+def sim_recovery(**overrides) -> RecoveryParams:
+    """Recovery timing accelerated like the rest of the simulator."""
+    base = dict(snapshot_timeout_s=5.0, max_retries=2, backoff_base_s=2.0, backoff_factor=2.0,
+                backoff_max_s=6.0, action_backoff_base_s=1.0, action_backoff_max_s=4.0, unknown_recheck_s=1.0)
+    base.update(overrides)
+    return RecoveryParams(**base)
+
+
+def fast_config(base_port: int, investigation: Optional[InvestigationParams] = None,
+                validate_timeout_s: float = 30, recovery: Optional[RecoveryParams] = None) -> ClusterConfig:
     nodes = {n: NodeSpec(node_id=n, agent_name=f"agent-{n.lower()}",
                          agent_addr=f"localhost:{base_port + i}",
                          status_url=f"http://localhost:{base_port + 100 + i}/status",
@@ -158,10 +201,11 @@ def fast_config(base_port: int, investigation: Optional[InvestigationParams] = N
     return ClusterConfig(
         nodes=nodes, baseline_hashes=dict(BASELINE_HASHES),
         timers=Timers(tick_s=0.5, evidence_window_s=20, contradiction_grace_s=4,
-                      executor_stagger_s=1.5, stage_dwell_s=3, validate_timeout_s=30),
+                      executor_stagger_s=1.5, stage_dwell_s=3, validate_timeout_s=validate_timeout_s),
         trust=TrustParams(agent_decay_per_s=5, agent_recover_per_s=0.5,
                           workload_decay_per_s=20, workload_recover_per_s=8),
-        quorum=QuorumParams(), investigation=investigation or sim_investigation())
+        quorum=QuorumParams(), investigation=investigation or sim_investigation(),
+        recovery=recovery or sim_recovery())
 
 
 class LocalCluster:
@@ -179,6 +223,8 @@ class LocalCluster:
         # agent makes must carry a valid 3-signature quorum certificate or it is refused.
         self.backend = FakeBackend(recovery_delay_s=2.0, on_recover=self.world.recover_workload,
                                    known_good_image=self.cfg.known_good_image)
+        self.backend.pods_provider = self.world.pods_for
+        self.backend.logs_provider = self.world.logs_for
         if enforce_admission:
             self.admission = AdmissionPolicy.from_config(self.cfg, registry,
                                                          epoch_source=self.backend.incident_epoch)
@@ -199,7 +245,10 @@ class LocalCluster:
                                     decision_log_path=(os.path.join(state_dir, f"decisions-{n}.jsonl")
                                                        if state_dir else None),
                                     trust_state_path=(os.path.join(state_dir, f"trust-{n}.json")
-                                                      if state_dir else None))
+                                                      if state_dir else None),
+                                    snapshot_dir=(os.path.join(state_dir, f"snapshots-{n}") if state_dir else None),
+                                    audit_log_path=(os.path.join(state_dir, f"actions-{n}.jsonl")
+                                                    if state_dir else None))
             srv = PeerServer(n, spec.agent_addr, tls, self.cfg.node_of_agent, agent.on_envelope,
                              agent.on_investigate).start()
             agent.transport = PeerClient(n, self.cfg.nodes, tls)

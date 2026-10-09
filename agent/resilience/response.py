@@ -16,6 +16,7 @@ import threading
 import time
 from typing import Callable, Dict, Optional, Protocol
 
+from .actions import ApiTimeout
 from .certificate import ANNOTATION as QC_ANNOTATION
 from .reintegration import POLICY_NAME_FMT, STAGES, network_policy
 
@@ -27,10 +28,15 @@ MARKER_CONFIGMAP = "cr-attack-marker"
 class ResponseBackend(Protocol):
     def apply_stage(self, workload: str, stage: str, annotations: Dict[str, str]) -> None: ...
     def current_stage(self, workload: str) -> Optional[str]: ...
-    def recover(self, workload: str, epoch: int, qc: str = "") -> None: ...
-    def recovery_done(self, workload: str, epoch: int) -> bool: ...
+    def recover(self, workload: str, epoch: int, qc: str = "", attempt: int = 1) -> None: ...
+    def recovery_done(self, workload: str, epoch: int, attempt: int = 1) -> bool: ...
+    def recovery_attempt(self, workload: str) -> int: ...
+    def rollout_in_progress(self, workload: str) -> bool: ...
     def write_state(self, workload: str, state: Dict[str, str], qc: str = "") -> None: ...
     def read_state(self, workload: str) -> Dict[str, str]: ...
+    def read_state_strict(self, workload: str) -> Dict[str, str]: ...   # raises when the cluster cannot be read
+    def list_pods(self, workload: str) -> list: ...                      # read-only, this workload's pods only
+    def read_logs(self, pod_name: str, tail_lines: int, limit_bytes: int) -> str: ...
     def read_marker(self) -> Optional[dict]: ...
 
 
@@ -100,30 +106,64 @@ class K8sBackend:
         stage = (pol.metadata.annotations or {}).get("resilience.io/stage")
         return "PEER_VALIDATED" if stage == "FULL" else stage    # FULL on an existing policy = removal pending
 
-    def recover(self, workload: str, epoch: int, qc: str = "") -> None:
-        """Redeploy from the known-good image: the pod is replaced (Recreate
-        strategy) so any tampered filesystem / rogue process is discarded."""
+    def recover(self, workload: str, epoch: int, qc: str = "", attempt: int = 1) -> None:
+        """Redeploy from the known-good image: the pod is replaced (Recreate strategy) so any tampered
+        filesystem / rogue process is discarded.
+
+        IDEMPOTENT: the pod-template annotation that triggers the rollout is derived from (epoch, attempt),
+        not from the clock, so repeating the same request (for example after a timeout whose outcome was
+        unknown) changes nothing and does NOT start a second rollout. A new attempt changes it, which is
+        exactly a new rollout."""
         ts = f"{time.time():.3f}"
         patch = {
             "metadata": {"annotations": {"resilience.io/recovered-epoch": str(epoch),
-                                         "resilience.io/recovery-requested-at": ts,
+                                         "resilience.io/recovery-attempt": str(attempt),
+                                         "resilience.io/recovery-requested-at": ts,   # metadata only: no rollout
                                          **({QC_ANNOTATION: qc} if qc else {})}},
             "spec": {"template": {
-                "metadata": {"annotations": {"resilience.io/recovered-at": ts}},
+                "metadata": {"annotations": {"resilience.io/recovered-at": f"e{epoch}-a{attempt}"}},
                 "spec": {"containers": [{"name": "app", "image": self.image}]}}},
         }
         self.apps.patch_namespaced_deployment(workload, self.hc_ns, patch, **self.t)
 
-    def recovery_done(self, workload: str, epoch: int) -> bool:
-        d = self.apps.read_namespaced_deployment(workload, self.hc_ns, **self.t)
+    def _deployment(self, workload: str):
+        return self.apps.read_namespaced_deployment(workload, self.hc_ns, **self.t)
+
+    def recovery_attempt(self, workload: str) -> int:
+        d = self._deployment(workload)
+        return int((d.metadata.annotations or {}).get("resilience.io/recovery-attempt", "0"))
+
+    def recovery_done(self, workload: str, epoch: int, attempt: int = 1) -> bool:
+        d = self._deployment(workload)
         ann = d.metadata.annotations or {}
         if int(ann.get("resilience.io/recovered-epoch", "-1")) < epoch:
+            return False
+        if int(ann.get("resilience.io/recovery-attempt", "1")) < attempt:
             return False
         st, want = d.status, d.spec.replicas or 1
         return ((st.observed_generation or 0) >= d.metadata.generation
                 and (st.updated_replicas or 0) == want
                 and (st.ready_replicas or 0) == want
                 and (st.replicas or 0) == want)
+
+    def rollout_in_progress(self, workload: str) -> bool:
+        """Is a rollout still replacing pods? (Never start a second recovery on top of it.) A new pod that
+        is up but NOT ready is not 'in progress': that is exactly the validation-failure case."""
+        d = self._deployment(workload)
+        st, want = d.status, d.spec.replicas or 1
+        return ((st.observed_generation or 0) < d.metadata.generation
+                or (st.updated_replicas or 0) < want or (st.replicas or 0) > want)
+
+    def list_pods(self, workload: str) -> list:
+        """READ-ONLY. Only pods labelled app=<workload> in the workload namespace."""
+        from .forensics import pod_summary
+        pods = self.core.list_namespaced_pod(self.hc_ns, label_selector=f"app={workload}", **self.t)
+        return [pod_summary(p) for p in pods.items]
+
+    def read_logs(self, pod_name: str, tail_lines: int, limit_bytes: int) -> str:
+        """READ-ONLY. The tail of one pod's log."""
+        return self.core.read_namespaced_pod_log(pod_name, self.hc_ns, tail_lines=tail_lines,
+                                                 limit_bytes=limit_bytes, **self.t)
 
     def write_state(self, workload: str, state: Dict[str, str], qc: str = "") -> None:
         ann = {f"resilience.io/{k}": str(v) for k, v in state.items()}
@@ -132,13 +172,16 @@ class K8sBackend:
         self.apps.patch_namespaced_deployment(workload, self.hc_ns,
                                               {"metadata": {"annotations": ann}}, **self.t)
 
-    def read_state(self, workload: str) -> Dict[str, str]:
-        try:
-            d = self.apps.read_namespaced_deployment(workload, self.hc_ns, **self.t)
-        except Exception:
-            return {}
+    def read_state_strict(self, workload: str) -> Dict[str, str]:
+        d = self.apps.read_namespaced_deployment(workload, self.hc_ns, **self.t)
         return {k.split("/", 1)[1]: v for k, v in (d.metadata.annotations or {}).items()
                 if k.startswith("resilience.io/")}
+
+    def read_state(self, workload: str) -> Dict[str, str]:
+        try:
+            return self.read_state_strict(workload)
+        except Exception:
+            return {}
 
     def read_marker(self) -> Optional[dict]:
         try:
@@ -152,6 +195,11 @@ class K8sBackend:
 # --------------------------------------------------------------------------- in-memory
 class AdmissionDenied(Exception):
     """The (simulated) admission webhook refused a change."""
+
+
+class ApiRejected(Exception):
+    """The (simulated) API server definitely refused a request (HTTP 409)."""
+    status = 409
 
 
 class FakeBackend:
@@ -183,6 +231,38 @@ class FakeBackend:
         self.deployments: Dict[str, dict] = {}
         self.denied: list = []                     # (time, kind, operation, name, reason)
         self.admitted: list = []
+        # Simulated cluster reads for the evidence snapshot, plus fault injection (see inject()).
+        self.pods_provider: Optional[Callable[[str], list]] = None
+        self.logs_provider: Optional[Callable[[str], str]] = None
+        self.faults: Dict[str, list] = {}
+
+    def inject(self, call: str, *behaviours: str) -> None:
+        """Queue faults for the next calls of `call` (apply_stage, recover, write_state, list_pods,
+        read_logs, read_state, recovery_done, current_stage):
+          timeout_lost     the request never arrives; raises a timeout            (outcome: NOT applied)
+          timeout_applied  the request is applied but the response is lost        (outcome: applied)
+          error            a definite refusal (HTTP 409)
+          unreadable       a read raises a timeout"""
+        self.faults.setdefault(call, []).extend(behaviours)
+
+    def _fault(self, call: str) -> Optional[str]:
+        q = self.faults.get(call)
+        return q.pop(0) if q else None
+
+    def _pre(self, call: str) -> Optional[str]:
+        f = self._fault(call)
+        if f == "timeout_lost":
+            raise ApiTimeout(f"simulated timeout: {call} request lost")
+        if f == "error":
+            raise ApiRejected(f"simulated 409 on {call}")
+        if f == "unreadable":
+            raise ApiTimeout(f"simulated timeout reading for {call}")
+        return f
+
+    @staticmethod
+    def _post(f: Optional[str], call: str) -> None:
+        if f == "timeout_applied":
+            raise ApiTimeout(f"simulated timeout: {call} applied but the response was lost")
 
     def incident_epoch(self, workload: str) -> int:
         """What the real webhook reads from the Deployment annotation resilience.io/epoch."""
@@ -223,6 +303,11 @@ class FakeBackend:
 
     # ---- ResponseBackend interface
     def apply_stage(self, workload, stage, annotations):
+        f = self._pre("apply_stage")
+        self._apply_stage(workload, stage, annotations)
+        self._post(f, "apply_stage")
+
+    def _apply_stage(self, workload, stage, annotations):
         with self._lock:
             name = POLICY_NAME_FMT.format(workload=workload)
             old = self.objects.get(name)
@@ -244,29 +329,70 @@ class FakeBackend:
             self.policies[workload] = {"stage": stage, **annotations}
 
     def current_stage(self, workload):
+        if self._fault("current_stage") == "unreadable":
+            raise ApiTimeout("simulated timeout reading the policy")
         with self._lock:
             p = self.policies.get(workload)
             return p["stage"] if p else None
 
-    def recover(self, workload, epoch, qc=""):
+    def recover(self, workload, epoch, qc="", attempt=1):
+        f = self._pre("recover")
         with self._lock:
             ts = f"{time.time():.3f}"
             self._patch_deployment(workload, {"resilience.io/recovered-epoch": str(epoch),
+                                              "resilience.io/recovery-attempt": str(attempt),
                                               "resilience.io/recovery-requested-at": ts,
                                               **({QC_ANNOTATION: qc} if qc else {})},
-                                   image=self.image, template_ann={"resilience.io/recovered-at": ts})
+                                   image=self.image, template_ann={"resilience.io/recovered-at": f"e{epoch}-a{attempt}"})
+            prev = self.recoveries.get(workload)
+            fresh = not (prev and prev[0] == epoch and prev[2] == attempt)   # same (epoch, attempt) = no new rollout
             self.log.append((time.time(), "recover", workload, epoch))
-            self.recoveries[workload] = (epoch, time.time() + self.delay)
+            if fresh:
+                self.recoveries[workload] = (epoch, time.time() + self.delay, attempt)
             self.state.setdefault(workload, {})["recovered-epoch"] = str(epoch)
-        if self.on_recover:
+            self.state[workload]["recovery-attempt"] = str(attempt)
+        if fresh and self.on_recover:
             threading.Timer(self.delay, self.on_recover, args=(workload,)).start()
+        self._post(f, "recover")
 
-    def recovery_done(self, workload, epoch):
+    def recovery_attempt(self, workload):
+        with self._lock:
+            return int(self.state.get(workload, {}).get("recovery-attempt", 0))
+
+    def rollout_in_progress(self, workload):
         with self._lock:
             r = self.recoveries.get(workload)
-            return bool(r and r[0] >= epoch and time.time() >= r[1])
+            return bool(r and time.time() < r[1])
+
+    def recovery_done(self, workload, epoch, attempt=1):
+        if self._fault("recovery_done") == "unreadable":
+            raise ApiTimeout("simulated timeout reading the deployment")
+        with self._lock:
+            r = self.recoveries.get(workload)
+            return bool(r and r[0] >= epoch and r[2] >= attempt and time.time() >= r[1])
+
+    def list_pods(self, workload):
+        f = self._fault("list_pods")
+        if f in ("unreadable", "timeout_lost"):
+            raise ApiTimeout("simulated timeout listing pods")
+        return list(self.pods_provider(workload)) if self.pods_provider else []
+
+    def read_logs(self, pod_name, tail_lines, limit_bytes):
+        f = self._fault("read_logs")
+        if f in ("unreadable", "timeout_lost"):
+            raise ApiTimeout("simulated timeout reading logs")
+        if f == "gone":
+            e = Exception("pod not found")
+            e.status = 404
+            raise e
+        return self.logs_provider(pod_name) if self.logs_provider else ""
 
     def write_state(self, workload, state, qc=""):
+        f = self._pre("write_state")
+        self._write_state(workload, state, qc)
+        self._post(f, "write_state")
+
+    def _write_state(self, workload, state, qc=""):
         with self._lock:
             ann = {f"resilience.io/{k}": str(v) for k, v in state.items()}
             if qc:
@@ -274,9 +400,17 @@ class FakeBackend:
             self._patch_deployment(workload, ann)
             self.state.setdefault(workload, {}).update({k: str(v) for k, v in state.items()})
 
-    def read_state(self, workload):
+    def read_state_strict(self, workload):
+        if self._fault("read_state") == "unreadable":
+            raise ApiTimeout("simulated timeout reading the deployment")
         with self._lock:
             return dict(self.state.get(workload, {}))
+
+    def read_state(self, workload):
+        try:
+            return self.read_state_strict(workload)
+        except ApiTimeout:
+            return {}
 
     def read_marker(self):
         with self._lock:

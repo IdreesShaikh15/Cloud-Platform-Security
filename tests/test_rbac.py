@@ -52,12 +52,14 @@ def test_no_cluster_wide_permissions_exist():
 
 
 # --------------------------------------------------------------------------- derived from the real code
-VERB = {"read": "get", "replace": "update", "patch": "patch", "create": "create", "delete": "delete"}
+VERB = {"read": "get", "replace": "update", "patch": "patch", "create": "create", "delete": "delete",
+        "list": "list"}
 RESOURCE = {"network_policy": ("networking.k8s.io", "networkpolicies"),
-            "deployment": ("apps", "deployments"), "config_map": ("", "configmaps")}
+            "deployment": ("apps", "deployments"), "config_map": ("", "configmaps"),
+            "pod": ("", "pods"), "pod_log": ("", "pods/log")}
 
 
-def needed_permissions():
+def needed_permissions(evidence=False):
     """Every Kubernetes call K8sBackend makes (for every stage and action) as (ns, verb, group, resource, name)."""
     b = object.__new__(K8sBackend)
     b.hc_ns, b.res_ns, b.image, b.t = "healthcare", "resilience", "known-good", {}
@@ -65,6 +67,8 @@ def needed_permissions():
     b.apps.read_namespaced_deployment.return_value = NS(
         metadata=NS(annotations={"resilience.io/recovered-epoch": "1"}, generation=1), spec=NS(replicas=1),
         status=NS(observed_generation=1, updated_replicas=1, ready_replicas=1, replicas=1))
+    b.core.list_namespaced_pod.return_value = NS(items=[])
+    b.core.read_namespaced_pod_log.return_value = ""
     b.core.read_namespaced_config_map.return_value = NS(data={"marker": "{}"})
     b.net.read_namespaced_network_policy.return_value = NS(metadata=NS(annotations={"resilience.io/stage": "X"}))
     for w in WORKLOADS:
@@ -75,6 +79,12 @@ def needed_permissions():
         b.recovery_done(w, 1)
         b.write_state(w, {"phase": "X"}, "qc")
         b.read_state(w)
+        b.rollout_in_progress(w)
+        b.recovery_attempt(w)
+        b.recover(w, 2, "qc", 2)
+        if evidence:                                   # the pre-replacement snapshot's read-only calls
+            b.list_pods(w)
+            b.read_logs("some-pod", 200, 65536)
     b.read_marker()
     # a first isolation: replace -> 404 -> create
     from kubernetes.client.rest import ApiException
@@ -89,7 +99,7 @@ def needed_permissions():
             group, resource = RESOURCE[res]
             args = call[1]
             ns = ns_arg
-            if verb_word == "create":
+            if verb_word in ("create", "list"):
                 name, ns = None, args[0]
             else:
                 name, ns = args[0], args[1]
@@ -106,10 +116,22 @@ def test_every_call_the_platform_makes_is_allowed():
                 f"{sa[1]} lacks {verb} {resource}/{name} in {ns}"
 
 
+def test_the_evidence_snapshot_calls_are_allowed_for_the_agents_only():
+    need = needed_permissions(evidence=True) - needed_permissions()
+    assert {(v, r) for _, v, _, r, _ in need} == {("list", "pods"), ("get", "pods/log")}
+    for ns, verb, group, resource, name in need:
+        assert allowed(AGENT, ns, verb, group, resource, name)
+        assert not allowed(BASELINE, ns, verb, group, resource, name)    # the baseline never needs them
+
+
 @pytest.mark.parametrize("sa", [AGENT, BASELINE])
 @pytest.mark.parametrize("ns,verb,group,resource,name", [
-    ("healthcare", "list", "", "pods", None),                                   # pods: unused, removed
-    ("healthcare", "get", "", "pods", "records-api-abc"),
+    ("healthcare", "delete", "", "pods", "records-api-abc"),                     # evidence is READ-ONLY: never delete,
+    ("healthcare", "create", "", "pods", None),                                  # create,
+    ("healthcare", "create", "", "pods/exec", None),                             # exec into,
+    ("healthcare", "get", "", "pods/exec", "records-api-abc"),
+    ("healthcare", "patch", "", "pods", "records-api-abc"),                      # or modify a pod
+    ("healthcare", "watch", "", "pods", None),
     ("healthcare", "delete", "apps", "deployments", "records-api"),             # may never delete a workload
     ("healthcare", "create", "apps", "deployments", None),
     ("healthcare", "patch", "apps", "deployments", "client"),                   # the client is not ours
@@ -131,6 +153,18 @@ def test_every_call_the_platform_makes_is_allowed():
 ])
 def test_forbidden_operations_are_refused(sa, ns, verb, group, resource, name):
     assert not allowed(sa, ns, verb, group, resource, name)
+
+
+@pytest.mark.parametrize("verb,resource", [("get", "pods"), ("list", "pods"), ("get", "pods/log")])
+def test_baseline_controller_has_no_pod_access(verb, resource):
+    assert not allowed(BASELINE, "healthcare", verb, "", resource, None)
+
+
+def test_agent_pod_access_is_read_only_and_only_in_the_healthcare_namespace():
+    assert allowed(AGENT, "healthcare", "list", "", "pods", None)
+    assert allowed(AGENT, "healthcare", "get", "", "pods/log", "any-pod")
+    assert not allowed(AGENT, "resilience", "list", "", "pods", None)
+    assert not allowed(AGENT, "resilience", "get", "", "pods/log", "any-pod")
 
 
 def test_the_agent_and_baseline_are_separate_identities_and_other_pods_have_none():

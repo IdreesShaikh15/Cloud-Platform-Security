@@ -36,6 +36,7 @@ class Action(str, Enum):
     CONTAIN = "CONTAIN"
     VALIDATE = "VALIDATE"
     ADVANCE_STAGE = "ADVANCE_STAGE"
+    RETRY_RECOVERY = "RETRY_RECOVERY"
 
     @property
     def pb(self) -> int:

@@ -19,6 +19,11 @@ Scenarios
   ambiguous          a weak, persistent signal only some agents confirm: reversible WATCH state
                      plus a human-review flag, no isolation
                      (add --no-investigation to switch the feature off for ANY scenario, to compare)
+  validation-retry   Node C is compromised and the FIRST replacement pod fails its health check:
+                     an evidence snapshot is saved, recovery is retried with back-off, the second
+                     replacement validates, and C is reintegrated (never shown healthy before that)
+  failed-validation  every replacement pod of Node C fails validation: bounded retries, then the
+                     incident is marked NEEDS HUMAN ATTENTION; C stays quarantined, never healthy
   baseline           the centralized controller under the same two attacks
   controller-crash   the centralized controller is killed, then Node C is genuinely
                      compromised: no detection or response occurs at all (single point
@@ -248,6 +253,70 @@ def ambiguous(enabled: bool = True) -> bool:
         c.stop()
 
 
+def _rec_cluster(bad_recoveries: int, port: int) -> LocalCluster:
+    c = LocalCluster(base_port=port, cfg=fast_config(port, validate_timeout_s=6)).start()
+    time.sleep(2)
+    c.world.bad_recoveries["records-api"] = bad_recoveries
+    return c
+
+
+def _recoveries(c: LocalCluster) -> int:
+    return len([x for x in c.backend.log if x[1] == "recover"])
+
+
+def _snapshot_report(c: LocalCluster) -> tuple:
+    """(tags captured by agent B, whether any snapshot text contains the simulated secret)."""
+    snaps = list(c.agents["B"].forensics.items.values())
+    tags = sorted(s["incident"]["tag"] for s in snaps)
+    leaked = any("SIMULATED-SECRET" in json.dumps(s) for a in c.agents.values()
+                 for s in a.forensics.items.values())
+    return tags, leaked
+
+
+def validation_retry() -> bool:
+    banner("SCENARIO: first replacement of Node C fails validation, the second passes")
+    c = _rec_cluster(1, 50701)
+    try:
+        c.mark("validation-retry", "C")
+        c.world.attack("C")
+        ok = c.wait_until(lambda: all(a.states["C"].epoch == 1 and a.states["C"].phase == "HEALTHY"
+                                      and a.states["C"].stage == "FULL" for a in c.agents.values()), 150)
+        att = {n: a.states["C"].attempt for n, a in c.agents.items()}
+        tags, leaked = _snapshot_report(c)
+        rec = _recoveries(c)
+        ev = [e for e in c.agents["B"].events.by_category("QUORUM") if "redeploy" in e["summary"]]
+        print(f"  reintegrated after retry: {ok}  attempts={att}  redeploys={rec}  snapshots={tags}  "
+              f"secret leaked into a snapshot: {leaked}")
+        unknown = any(a.audit.unresolved for a in c.agents.values())
+        return bool(ok and set(att.values()) == {2} and rec == 2 and "failed1" in tags and "contain" in tags
+                    and not leaked and not unknown and ev)
+    finally:
+        c.stop()
+
+
+def failed_validation() -> bool:
+    banner("SCENARIO: every replacement of Node C fails validation -> human attention")
+    c = _rec_cluster(99, 50711)
+    try:
+        c.mark("failed-validation", "C")
+        c.world.attack("C")
+        ok = c.wait_until(lambda: all(a.states["C"].attention for a in c.agents.values()), 150)
+        time.sleep(3)
+        att = {n: a.states["C"].attempt for n, a in c.agents.items()}
+        phases = c.phases("C")
+        tags, leaked = _snapshot_report(c)
+        rec = _recoveries(c)
+        quarantined = (c.backend.policies.get("records-api") or {}).get("stage") == "QUARANTINE"
+        print(f"  needs human attention on all agents: {ok}  attempts={att}  phases={phases}  redeploys={rec}  "
+              f"still quarantined: {quarantined}  snapshots={tags}  secret leaked: {leaked}")
+        print("  reason:", c.agents["B"].states["C"].attention)
+        return bool(ok and rec == 3 and set(att.values()) == {3} and quarantined
+                    and all(p != "HEALTHY" for p in phases.values()) and not leaked
+                    and {"contain", "failed1", "failed2"} <= set(tags))
+    finally:
+        c.stop()
+
+
 def controller_crash(with_status: bool = False) -> bool:
     banner("SCENARIO 6: centralized controller crashes, then Node C is genuinely compromised")
     b = LocalBaseline(with_status=with_status).start()
@@ -306,13 +375,15 @@ def baseline() -> bool:
 
 CLUSTER_SCENARIOS = ("app-compromise", "false-accusation", "forge-evidence", "agent-crash")
 INVESTIGATION_SCENARIOS = ("transient-blip", "slow-burn", "ambiguous")
+RECOVERY_SCENARIOS = ("validation-retry", "failed-validation")
 BASELINE_SCENARIOS = ("baseline", "controller-crash")
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("scenario", nargs="?", default="all",
-                    choices=["all", *CLUSTER_SCENARIOS, *INVESTIGATION_SCENARIOS, *BASELINE_SCENARIOS])
+                    choices=["all", *CLUSTER_SCENARIOS, *INVESTIGATION_SCENARIOS, *RECOVERY_SCENARIOS,
+                             *BASELINE_SCENARIOS])
     ap.add_argument("--no-investigation", action="store_true",
                     help="run the investigation scenarios with the feature switched off (comparison)")
     ap.add_argument("--serve", action="store_true",
@@ -353,6 +424,10 @@ def main():
         results["slow-burn"] = slow_burn(inv_on)
     if a.scenario in ("all", "ambiguous"):
         results["ambiguous"] = ambiguous(inv_on)
+    if a.scenario in ("all", "validation-retry"):
+        results["validation-retry"] = validation_retry()
+    if a.scenario in ("all", "failed-validation"):
+        results["failed-validation"] = failed_validation()
     if a.scenario in ("all", "baseline"):
         results["baseline"] = baseline()
     if a.scenario in ("all", "controller-crash"):

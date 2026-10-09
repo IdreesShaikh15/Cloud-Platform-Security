@@ -163,6 +163,8 @@ def proposal_text(key: str) -> str:
         return key
     if action == "ADVANCE_STAGE":
         return f"move {target} to {stage} (epoch {epoch})"
+    if action == "RETRY_RECOVERY":
+        return f"redeploy {target} again, attempt {stage} (epoch {epoch})"
     return f"{action} {target} (epoch {epoch})"
 
 

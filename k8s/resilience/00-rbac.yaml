@@ -12,7 +12,11 @@
 #   resilience ns   ConfigMap:     get ONLY cr-attack-marker
 #   quorum-webhook       the admission webhook: read-only `get` of the 4 workload Deployments, only to read
 #                        each one's incident version (stops a replayed certificate creating a new isolation).
-# No pods, no secrets, no list/watch, no cluster-wide rights, no other namespace.
+#   healthcare ns   (agents only, NOT the baseline controller) READ-ONLY evidence for the pre-replacement
+#                   snapshot (docs/RECOVERY.md): Pod: get, list; pods/log: get. Kubernetes RBAC cannot restrict
+#                   these to the four workloads' pods (pod names are generated), so the code restricts itself
+#                   to pods labelled app=<the workload being replaced>. No pods/exec, no create/delete of pods.
+# No secrets, no watch, no cluster-wide rights, no other namespace.
 apiVersion: v1
 kind: ServiceAccount
 metadata: {name: resilience-agent, namespace: resilience}
@@ -45,6 +49,24 @@ subjects:
 - {kind: ServiceAccount, name: resilience-agent, namespace: resilience}
 - {kind: ServiceAccount, name: resilience-baseline, namespace: resilience}
 roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: resilience-actuator}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: resilience-evidence, namespace: healthcare}
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: resilience-evidence, namespace: healthcare}
+subjects:
+- {kind: ServiceAccount, name: resilience-agent, namespace: resilience}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: resilience-evidence}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role

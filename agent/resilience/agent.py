@@ -32,6 +32,9 @@ from .crypto import KeyRegistry, Signer
 from .decisionlog import DecisionLog, digest_of
 from .detection import Detection, Detector, max_confidence
 from .evidence import Action, Evidence, ObsType, ReplayCache, Vote, open_envelope, seal
+from . import actions as act
+from .actions import ActionAudit, classify_error
+from .forensics import SnapshotManager
 from .certificate import (ANNOTATION as QC_ANNOTATION, ActionPending, CertificateInvalid,
                           CertificateManager, CertificatePending, Expect, verify_certificate)
 from .investigation import InvestigationManager
@@ -63,6 +66,8 @@ class TargetState:
     stage_entered: float = 0.0
     contaminated_instance: str = ""
     last_decision: Optional[dict] = None
+    attempt: int = 1                      # which recovery attempt of this incident is current
+    attention: Optional[dict] = None      # set when a human is needed (validation keeps failing, ...)
 
 
 @dataclass
@@ -74,6 +79,14 @@ class _Task:
     effect_present: Callable[[], bool]
     run: Callable[[], None]
     desc: str
+    guard: Optional[Callable[[], Optional[str]]] = None   # returns a reason if the task is now stale
+    action: str = ""                                      # name used in the audit trail
+    attempt: int = 1                                      # recovery attempt this task belongs to
+    tries: int = 0                                        # executions attempted so far
+    ran_ok: bool = False                                  # the write call returned success
+    waiting_noted: bool = False
+    unknown: bool = False                                 # an earlier outcome could not be determined
+    ambiguous: bool = False                               # the last failure may or may not have been applied
 
 
 class ResilienceAgent:
@@ -82,7 +95,8 @@ class ResilienceAgent:
                  backend: ResponseBackend, metrics: Optional[MetricsRecorder] = None,
                  compromise: Optional[CompromiseSource] = None,
                  clock: Callable[[], float] = time.time,
-                 decision_log_path: Optional[str] = None, trust_state_path: Optional[str] = None):
+                 decision_log_path: Optional[str] = None, trust_state_path: Optional[str] = None,
+                 snapshot_dir: Optional[str] = None, audit_log_path: Optional[str] = None):
         self.cfg = cfg
         self.id = node_id
         self.signer = signer
@@ -125,6 +139,9 @@ class ResilienceAgent:
         # what peers observe, never through what the agent says about itself).
         self.excluded_pool = EvidencePool()
         self.decision_log = DecisionLog(decision_log_path)       # tamper-evident (docs/SECURITY.md)
+        self.forensics = SnapshotManager(self, snapshot_dir)     # evidence before replacement (docs/RECOVERY.md)
+        self.audit = ActionAudit(node_id, audit_log_path, clock)  # every cluster action + its observable result
+        self._rec_seen: Dict[Tuple[str, int, int], float] = {}   # (target, epoch, attempt) -> redeploy first seen in cluster
         self._trust_path = trust_state_path
         self._trust_saved: Optional[str] = None
         self._trust_saved_at = 0.0
@@ -180,6 +197,7 @@ class ResilienceAgent:
             st.epoch = int(s.get("epoch", 0))
             st.phase = s.get("phase", HEALTHY)
             st.stage = s.get("stage", "FULL")
+            st.attempt = max(1, int(s.get("recovery-attempt", 1) or 1))
             st.phase_entered = st.stage_entered = self.clock()
             if st.phase != HEALTHY:
                 self.workload_trust.set(nid, STAGE_THRESHOLDS.get(st.stage, 0.0))
@@ -302,7 +320,8 @@ class ResilienceAgent:
                         score=score, timestamp=now, evidence_ids=tuple(evidence_ids)[:20],
                         investigation_id=investigation_id))
         verb = {"CONTAIN": f"contain {target}", "VALIDATE": f"accept {target} as validated",
-                "ADVANCE_STAGE": f"move {target} to {stage}"}[action.value]
+                "ADVANCE_STAGE": f"move {target} to {stage}",
+                "RETRY_RECOVERY": f"redeploy {target} again (attempt {stage})"}[action.value]
         self.events.emit(
             obs.VOTE_CAST,
             f"Agent {self.id} {'re-sent its' if resend else 'cast a'} signed vote to {verb} "
@@ -563,7 +582,12 @@ class ResilienceAgent:
                 else:
                     self._log_withheld("VALIDATE", target, st.epoch, "", _why, _why)
 
-            if st.phase == REINTEGRATING and can_advance(
+            if st.phase in (RECOVERING, VALIDATING):
+                self._vote_recovery(now, target, st)
+
+            if st.phase == REINTEGRATING and st.stage == "FULL":
+                pass                                  # waiting for the cluster to confirm the policy is gone
+            elif st.phase == REINTEGRATING and can_advance(
                     st.stage, now - st.stage_entered, tm.stage_dwell_s,
                     self.workload_trust.get(target), self.local_max(target), q.evidence_min_conf):
                 nxt = next_stage(st.stage)
@@ -581,6 +605,45 @@ class ResilienceAgent:
                 self._note_vote("ADVANCE_STAGE", target, st.epoch, nxt, False, why)
                 self._log_withheld("ADVANCE_STAGE", target, st.epoch, nxt, why.split(" ")[0], why)
         self._log_excluded_votes(pending)
+
+    def _recovery_failure(self, now: float, target: str, st: TargetState) -> Optional[str]:
+        """Why the current recovery attempt has FAILED (None = not failed (yet)). Failure is judged only
+        after `validate_timeout_s`, so a slow start is not mistaken for a bad recovery."""
+        tm = self.cfg.timers
+        if st.phase == VALIDATING:
+            ok, why = self.validation_check(target)
+            if not ok and now - st.phase_entered > tm.validate_timeout_s:
+                return f"validation still failing after {tm.validate_timeout_s:g}s: {why}"
+        elif st.phase == RECOVERING:
+            seen = self._rec_seen.get((target, st.epoch, st.attempt))
+            if seen is not None and now - seen > tm.validate_timeout_s:
+                return f"the replacement pod was not ready {tm.validate_timeout_s:g}s after the redeploy"
+        return None
+
+    def _vote_recovery(self, now: float, target: str, st: TargetState) -> None:
+        why = self._recovery_failure(now, target, st)
+        if not why:
+            return
+        rc = self.cfg.recovery
+        if st.attempt > rc.max_retries:             # every allowed attempt has been used
+            self._attention(target, now, f"all {st.attempt} recovery attempts failed; last: {why}")
+            return
+        nxt = str(st.attempt + 1)
+        self._note_vote("RETRY_RECOVERY", target, st.epoch, nxt, True, why)
+        self._cast(now, target, Action.RETRY_RECOVERY, st.epoch, stage=nxt, why=why)
+
+    def _attention(self, target: str, now: float, reason: str) -> None:
+        """Mark the incident as needing a human. The workload stays quarantined; it is never shown healthy."""
+        st = self.states[target]
+        if st.attention is not None:
+            return
+        st.attention = {"since": now, "reason": reason, "attempts": st.attempt, "phase": st.phase}
+        w = self.workload(target)
+        self.audit.record(action="needs_human_attention", task=f"attention:{target}:{st.epoch}", workload=w,
+                          target=target, epoch=st.epoch, outcome=act.ABANDONED, attempt=st.attempt, detail=reason)
+        self.events.emit(obs.ACTION, f"Agent {self.id}: {w} ({target}) NEEDS HUMAN ATTENTION - {reason}. "
+                         f"It stays quarantined and is NOT shown as healthy.", target,
+                         {"action": "needs_attention", "workload": w, "reason": reason, "attempts": st.attempt})
 
     def _investigation_vote(self, now: float, target: str, st: TargetState, score: ScoreBreakdown,
                             local: float) -> bool:
@@ -612,7 +675,8 @@ class ResilienceAgent:
     def _log_withheld(self, action: str, target: str, epoch: int, stage: str, code: str,
                       why: str) -> None:
         verb = {"CONTAIN": f"contain {target}", "VALIDATE": f"validate {target}",
-                "ADVANCE_STAGE": f"move {target} to {stage}"}[action]
+                "ADVANCE_STAGE": f"move {target} to {stage}",
+                "RETRY_RECOVERY": f"redeploy {target} again"}[action]
         self.events.emit(
             obs.VOTE_WITHHELD, f"Agent {self.id} is not voting to {verb}: {why}.", target,
             {"proposal": f"{action}:{target}:{epoch}:{stage}", "action": action, "reason": why},
@@ -684,7 +748,8 @@ class ResilienceAgent:
         log.info("QUORUM %s on %s (epoch %d%s) by %s", v.action.value, v.target, v.epoch,
                  f", stage {v.stage}" if v.stage else "", ",".join(c.voters))
         what = {"CONTAIN": f"CONTAIN {v.target}", "VALIDATE": f"VALIDATE {v.target}",
-                "ADVANCE_STAGE": f"move {v.target} to {v.stage}"}[v.action.value]
+                "ADVANCE_STAGE": f"move {v.target} to {v.stage}",
+                "RETRY_RECOVERY": f"redeploy {v.target} again (attempt {v.stage})"}[v.action.value]
         self.events.emit(
             obs.QUORUM,
             f"Quorum reached: {', '.join(c.voters)} signed {what} (epoch {v.epoch}) -> {note}.",
@@ -708,6 +773,9 @@ class ResilienceAgent:
             out["score"] = self.scores.get(v.target, ScoreBreakdown(0.0)).to_dict()
         elif v.action == Action.VALIDATE:
             out["my_validation"] = self.validation_check(v.target)[1]
+        elif v.action == Action.RETRY_RECOVERY:
+            out["failure"] = self._recovery_failure(now, v.target, self.states[v.target]) or "not failing on this agent's view"
+            out["attempt"] = v.stage
         else:
             out["my_workload_trust"] = round(self.workload_trust.get(v.target), 1)
             out["stage_threshold"] = STAGE_THRESHOLDS.get(v.stage)
@@ -718,6 +786,40 @@ class ResilienceAgent:
         return {"resilience.io/action": v.action.value, "resilience.io/epoch": str(v.epoch),
                 "resilience.io/authorized-by": ",".join(c.voters),
                 "resilience.io/qc-votes": ",".join(x.vote_id[:12] for x in c.votes)}
+
+    @staticmethod
+    def _snap_tag(attempt: int) -> str:
+        """Snapshot of the pods that attempt `attempt` is about to replace."""
+        return "contain" if attempt <= 1 else f"failed{attempt - 1}"
+
+    def _make_recover(self, target: str, epoch: int, key: str, attempt: int, snap_key: str):
+        """(effect_present, run) for recovery attempt `attempt` of incident `epoch`."""
+        w = self.workload(target)
+        action = "CONTAIN" if attempt <= 1 else "RETRY_RECOVERY"
+        stage = "" if attempt <= 1 else str(attempt)
+
+        def present() -> bool:
+            s = self._cluster_state(w)
+            return (int(s.get("recovered-epoch", -1)) >= epoch
+                    and int(s.get("recovery-attempt", 1)) >= attempt)
+
+        def recover() -> None:
+            # 1. isolation first: never replace the pod while the quarantine policy is not confirmed.
+            if int(self._cluster_state(w).get("isolated-epoch", -1)) < epoch:
+                raise ActionPending("isolation is not confirmed in the cluster yet")
+            # 2. evidence first: the replacement destroys it (bounded wait: never blocks forever).
+            ok, why = self.forensics.ready(snap_key, self.clock())
+            if not ok:
+                raise ActionPending(why)
+            # 3. never two recoveries of the same incident at once.
+            if self.backend.rollout_in_progress(w):
+                raise ActionPending("a rollout of this workload is still replacing pods; not starting a second one")
+            self.backend.recover(w, epoch, self._qc(key, action, target, epoch, stage), attempt)
+            self.events.emit(obs.ACTION, f"Agent {self.id} started recovery of {w} ({target}), attempt "
+                             f"{attempt}: redeploying it from the known-good image.", target,
+                             {"action": "recover", "workload": w, "result": "ok", "epoch": epoch,
+                              "attempt": attempt})
+        return present, recover
 
     def _on_commit(self, c: Commit, now: float) -> None:
         v = c.sample
@@ -731,16 +833,18 @@ class ResilienceAgent:
             s = self.snaps.get(v.target)
             st.phase, st.epoch, st.phase_entered = ISOLATED, v.epoch, now
             st.stage, st.stage_entered = "QUARANTINE", now
+            st.attempt, st.attention = 1, None
             st.contaminated_instance = s.instance_id if s else ""
             self.workload_trust.set(v.target, 0.0)
             self.pool.clear_target(v.target)
             self.inv.on_incident_change(v.target, now)
-            self._record_decision(c, now, "isolate + recover", just)
+            d = self._record_decision(c, now, "isolate + recover", just)
             self.metrics.event("contain_committed", now, v.target, voters=c.voters)
             ann, epoch = self._qc_annotations(c), v.epoch
-
             key = c.action_key
             self.certs.on_commit(c, now)
+            # Evidence BEFORE replacement: values are taken now, the cluster reads happen in the background.
+            snap_key = self.forensics.capture_async(v.target, epoch, "contain", "containment", d, now)
 
             def isolate():
                 qc = self._qc(key, "CONTAIN", v.target, epoch, "")
@@ -753,49 +857,56 @@ class ResilienceAgent:
                                  v.target, {"action": "isolate", "workload": w, "result": "ok",
                                             "stage": "QUARANTINE", "authorized_by": c.voters})
 
-            def recover():
-                # Isolation first: never replace the pod while the quarantine policy is not
-                # confirmed in the cluster, or the new pod would come up un-quarantined and
-                # un-validated. Raising makes the executor retry in 2 s (see _run_tasks).
-                if int(self.backend.read_state(w).get("isolated-epoch", -1)) < epoch:
-                    raise ActionPending("isolation is not confirmed in the cluster yet")
-                self.backend.recover(w, epoch, self._qc(key, "CONTAIN", v.target, epoch, ""))
-                self.events.emit(obs.ACTION, f"Agent {self.id} started recovery of {w} "
-                                 f"({v.target}): redeploying it from the known-good image.",
-                                 v.target, {"action": "recover", "workload": w, "result": "ok",
-                                            "epoch": epoch})
-
+            present, recover = self._make_recover(v.target, epoch, key, 1, snap_key)
             self._schedule(now, v.target, f"isolate:{v.target}:{epoch}",
-                           lambda: int(self.backend.read_state(w).get("isolated-epoch", -1)) >= epoch,
-                           isolate, f"isolate {w}")
-            self._schedule(now, v.target, f"recover:{v.target}:{epoch}",
-                           lambda: int(self.backend.read_state(w).get("recovered-epoch", -1)) >= epoch,
-                           recover, f"redeploy {w} from known-good image")
+                           lambda: int(self._cluster_state(w).get("isolated-epoch", -1)) >= epoch,
+                           isolate, f"isolate {w}", action="CONTAIN/isolate",
+                           guard=lambda: self._guard(v.target, epoch, (ISOLATED, RECOVERING, VALIDATING)))
+            self._schedule(now, v.target, f"recover:{v.target}:{epoch}:1", present, recover,
+                           f"redeploy {w} from known-good image", action="CONTAIN/recover", attempt=1,
+                           guard=lambda: self._guard(v.target, epoch, (ISOLATED, RECOVERING, VALIDATING), 1))
+
+        elif (v.action == Action.RETRY_RECOVERY and v.epoch == st.epoch and st.phase in (RECOVERING, VALIDATING)
+              and v.stage == str(st.attempt + 1)):
+            n, epoch, key = int(v.stage), v.epoch, c.action_key
+            failure = self._recovery_failure(now, v.target, st) or "validation failed (as judged by the quorum)"
+            st.attempt, st.phase, st.phase_entered, st.attention = n, RECOVERING, now, None
+            d = self._record_decision(c, now, f"recovery attempt {n - 1} failed validation; redeploy again", just)
+            self.metrics.event("validation_failed", now, v.target, attempt=n - 1)
+            self.certs.on_commit(c, now)
+            snap_key = self.forensics.capture_async(v.target, epoch, self._snap_tag(n),
+                                                    f"recovery attempt {n - 1} failed: {failure}", d, now)
+            present, recover = self._make_recover(v.target, epoch, key, n, snap_key)
+            delay = self.cfg.recovery.backoff(n - 1)
+            self._schedule(now, v.target, f"recover:{v.target}:{epoch}:{n}", present, recover,
+                           f"redeploy {w} again (attempt {n})", delay=delay, action="RETRY_RECOVERY", attempt=n,
+                           guard=lambda: self._guard(v.target, epoch, (RECOVERING, VALIDATING), n))
 
         elif v.action == Action.VALIDATE and v.epoch == st.epoch and st.phase == VALIDATING:
             st.phase, st.stage, st.stage_entered = REINTEGRATING, "QUARANTINE", now
+            st.attention = None
             self._record_decision(c, now, "validated; start staged reintegration", just)
             self.metrics.event("validated", now, v.target, voters=c.voters)
             self.metrics.event("stage:QUARANTINE", now, v.target)
             epoch, key = v.epoch, c.action_key
             self.certs.on_commit(c, now)
             self._schedule(now, v.target, f"validated:{v.target}:{epoch}",
-                           lambda: self.backend.read_state(w).get("phase") == REINTEGRATING
-                           and int(self.backend.read_state(w).get("epoch", -1)) >= epoch,
+                           lambda: self._cluster_state(w).get("phase") == REINTEGRATING
+                           and int(self._cluster_state(w).get("epoch", -1)) >= epoch,
                            lambda: self.backend.write_state(
                                w, {"phase": REINTEGRATING, "stage": "QUARANTINE"},
                                self._qc(key, "VALIDATE", v.target, epoch, "")),
-                           f"mark {w} validated")
+                           f"mark {w} validated", action="VALIDATE")
 
         elif (v.action == Action.ADVANCE_STAGE and v.epoch == st.epoch and st.phase == REINTEGRATING
               and v.stage == next_stage(st.stage)):
             st.stage, st.stage_entered = v.stage, now
             self.metrics.event(f"stage:{v.stage}", now, v.target)
-            if v.stage == "FULL":
-                st.phase = HEALTHY
-                self.metrics.event("reintegrated", now, v.target)
+            # At FULL the target is NOT yet HEALTHY: it becomes HEALTHY only once the cluster confirms the
+            # isolation policy is really gone (_track_cluster).
             self._record_decision(c, now, f"advance to {v.stage}", just)
-            ann, stage, phase = self._qc_annotations(c), v.stage, st.phase
+            ann, stage = self._qc_annotations(c), v.stage
+            phase = HEALTHY if stage == "FULL" else REINTEGRATING
             key, epoch = c.action_key, v.epoch
             self.certs.on_commit(c, now)
 
@@ -819,7 +930,7 @@ class ResilienceAgent:
                                             "stage": stage, "result": "ok"})
 
             self._schedule(now, v.target, f"stage:{v.target}:{v.epoch}:{stage}", expected_stage, apply,
-                           f"move {w} to {stage}")
+                           f"move {w} to {stage}", action=f"ADVANCE_STAGE/{stage}")
         else:
             log.info("ignoring stale/out-of-order commit %s (local phase %s epoch %d)",
                      c.action_key, st.phase, st.epoch)
@@ -828,6 +939,22 @@ class ResilienceAgent:
                 f"{', '.join(c.voters)}: it no longer matches its state ({st.phase}, epoch {st.epoch}).",
                 v.target, {"proposal": c.action_key, "signers": c.voters, "ignored": True,
                            "local_phase": st.phase, "local_epoch": st.epoch})
+
+    def _cluster_state(self, workload: str) -> dict:
+        """Deployment state annotations; RAISES if the cluster cannot be read, so that "could not read"
+        is never mistaken for "the effect is absent"."""
+        return getattr(self.backend, "read_state_strict", self.backend.read_state)(workload)
+
+    def _guard(self, target: str, epoch: int, phases, attempt: Optional[int] = None) -> Optional[str]:
+        """Is this task still about the same incident and the same stage of it? (None = yes.)"""
+        st = self.states[target]
+        if st.epoch != epoch:
+            return f"incident version changed ({epoch} -> {st.epoch})"
+        if st.phase not in phases:
+            return f"{target} is now {st.phase}, not {'/'.join(phases)}"
+        if attempt is not None and st.attempt != attempt:
+            return f"recovery attempt changed ({attempt} -> {st.attempt})"
+        return None
 
     # ------------------------------------------------------------------ certificates (executor side)
     def _qc(self, action_key: str, action: str, target: str, epoch: int, stage: str) -> str:
@@ -856,93 +983,209 @@ class ResilienceAgent:
         order = [n for n in sorted(self.cfg.nodes) if self.eligible_voter(n)]
         return order.index(self.id) if self.id in order else len(order)
 
-    def _schedule(self, now: float, target: str, key: str, effect_present, run, desc: str) -> None:
+    def _schedule(self, now: float, target: str, key: str, effect_present, run, desc: str,
+                  delay: float = 0.0, guard=None, action: str = "", attempt: int = 1) -> None:
         rank = self.executor_rank()
-        due = now + rank * self.cfg.timers.executor_stagger_s
-        self.tasks.append(_Task(due, key, target, self.states[target].epoch, effect_present, run, desc))
+        due = now + delay + rank * self.cfg.timers.executor_stagger_s
+        self.tasks.append(_Task(due, key, target, self.states[target].epoch, effect_present, run, desc,
+                                guard=guard, action=action or key.split(":")[0], attempt=attempt))
         self.events.emit(
             obs.ACTION,
             f"Agent {self.id} is executor rank {rank} for '{desc}': "
-            + ("it acts now." if rank == 0 else
+            + ("it acts now." if rank == 0 and delay == 0 else
                f"it will act in {due - now:.0f}s only if no higher-ranked agent has done it."),
             target, {"action": "scheduled", "task": key, "desc": desc, "rank": rank,
                      "delay_s": round(due - now, 1)})
+
+    def _audit(self, t: _Task, outcome: str, detail: str = "", error: str = "", duration: float = 0.0) -> dict:
+        return self.audit.record(action=t.action, task=t.key, workload=self.workload(t.target), target=t.target,
+                                 epoch=t.epoch, outcome=outcome, attempt=max(1, t.tries), detail=detail,
+                                 error=error, duration_s=duration)
 
     def _run_tasks(self, now: float) -> None:
         remaining = []
         for t in self.tasks:
             if self.states[t.target].epoch != t.epoch:
-                continue  # superseded by a newer incident
+                self._audit(t, act.REFUSED_STALE, "this incident was superseded by a newer one; nothing done")
+                continue
             if t.due > now:
                 remaining.append(t)
                 continue
-            try:
-                if t.effect_present():
-                    self.events.emit(obs.ACTION, f"Agent {self.id} skipped '{t.desc}': already done "
-                                     f"(by itself or a higher-ranked agent).", t.target,
-                                     {"action": "skipped", "task": t.key, "desc": t.desc,
-                                      "result": "already applied"})
-                    continue
-                log.info("EXECUTOR %s: %s", self.id, t.desc)
-                t.run()
-            except ActionPending as exc:                  # a prerequisite is not met yet: retry next tick
-                self.events.emit(obs.ACTION, f"Agent {self.id} is holding back '{t.desc}': {exc}.", t.target,
-                                 {"action": "waiting", "task": t.key, "detail": str(exc)},
-                                 key=("certwait", t.key), every=5.0)
-                t.due = now
-                remaining.append(t)
-            except CertificateInvalid as exc:             # never act on a bad certificate
-                log.error("executor REFUSED %s: invalid certificate: %s", t.key, exc)
-                self.events.emit(obs.ACTION, f"Agent {self.id} REFUSED to '{t.desc}': the quorum certificate "
-                                 f"is not valid ({exc}). Nothing was changed.", t.target,
-                                 {"action": "refused", "task": t.key, "desc": t.desc,
-                                  "result": f"invalid certificate: {exc}"})
-            except Exception as exc:
-                log.error("executor task %s failed: %s (retrying)", t.key, exc)
-                self.events.emit(obs.ACTION, f"Agent {self.id} failed to '{t.desc}' ({exc}); "
-                                 f"retrying in 2s.", t.target,
-                                 {"action": "failed", "task": t.key, "desc": t.desc,
-                                  "result": f"error: {exc}"}, key=("taskfail", t.key), every=10.0)
-                t.due = now + 2.0
+            stale = t.guard() if t.guard else None
+            if stale:
+                self._audit(t, act.REFUSED_STALE, stale)
+                self.events.emit(obs.ACTION, f"Agent {self.id} dropped '{t.desc}': {stale}.", t.target,
+                                 {"action": "refused_stale", "task": t.key, "desc": t.desc, "result": stale})
+                continue
+            if self._step(t, now):
                 remaining.append(t)
         self.tasks = remaining
 
+    def _step(self, t: _Task, now: float) -> bool:
+        """One execution step of an action. Returns True while the task must stay queued.
+
+        A timeout is NOT a failure: after any ambiguous error the actual cluster state decides what happened.
+        Every step writes an audit record with an explicit outcome."""
+        rc = self.cfg.recovery
+        t0 = time.monotonic()
+
+        def backoff() -> float:
+            return min(rc.action_backoff_max_s, rc.action_backoff_base_s * (2 ** max(0, t.tries - 1)))
+
+        # 1. look at the cluster BEFORE doing anything
+        try:
+            present = t.effect_present()
+        except Exception as exc:
+            t.due = now + rc.unknown_recheck_s
+            if t.tries > 0:
+                t.unknown = True
+                self._audit(t, act.UNKNOWN, "an earlier call had an unknown result and the cluster cannot be "
+                            "read now; will check again", str(exc))
+                self.events.emit(obs.ACTION, f"Agent {self.id}: result of '{t.desc}' is UNKNOWN (the cluster "
+                                 f"cannot be read: {exc}); checking again in {rc.unknown_recheck_s:g}s.", t.target,
+                                 {"action": "unknown", "task": t.key, "desc": t.desc, "result": "unknown"},
+                                 key=("unknown", t.key), every=10.0)
+            elif not t.waiting_noted:
+                t.waiting_noted = True
+                self._audit(t, act.WAITING, "cannot read the cluster yet; nothing done", str(exc))
+            return True
+        if present:
+            if t.unknown:
+                out, det = act.UNKNOWN_RESOLVED, "the earlier UNKNOWN is settled: the effect IS in the cluster"
+            elif t.tries == 0:
+                out, det = act.ALREADY_APPLIED, "already in place (this or another agent did it); nothing to do"
+            elif t.ambiguous and not t.ran_ok:
+                out, det = act.APPLIED_AFTER_TIMEOUT, "the call timed out, but the cluster shows the effect"
+            else:
+                out, det = act.APPLIED, "the cluster shows the effect"
+            self._audit(t, out, det)
+            if out == act.ALREADY_APPLIED:
+                self.events.emit(obs.ACTION, f"Agent {self.id} skipped '{t.desc}': already done "
+                                 f"(by itself or a higher-ranked agent).", t.target,
+                                 {"action": "skipped", "task": t.key, "desc": t.desc, "result": "already applied"})
+            return False
+
+        # 2. act
+        t.tries += 1
+        if t.tries > rc.action_max_attempts:
+            self._audit(t, act.ABANDONED, f"gave up after {rc.action_max_attempts} attempts")
+            self._attention(t.target, now, f"'{t.desc}' could not be completed after {rc.action_max_attempts} attempts")
+            return False
+        try:
+            log.info("EXECUTOR %s: %s (try %d)", self.id, t.desc, t.tries)
+            t.run()
+        except ActionPending as exc:                       # prerequisite not met: not an attempt
+            t.tries -= 1
+            if not t.waiting_noted:
+                t.waiting_noted = True
+                self._audit(t, act.WAITING, str(exc))
+            self.events.emit(obs.ACTION, f"Agent {self.id} is holding back '{t.desc}': {exc}.", t.target,
+                             {"action": "waiting", "task": t.key, "detail": str(exc)},
+                             key=("certwait", t.key), every=5.0)
+            t.due = now
+            return True
+        except CertificateInvalid as exc:                  # never act on a bad certificate
+            log.error("executor REFUSED %s: invalid certificate: %s", t.key, exc)
+            self._audit(t, act.REFUSED_CERT, f"invalid quorum certificate: {exc}")
+            self.events.emit(obs.ACTION, f"Agent {self.id} REFUSED to '{t.desc}': the quorum certificate "
+                             f"is not valid ({exc}). Nothing was changed.", t.target,
+                             {"action": "refused", "task": t.key, "desc": t.desc,
+                              "result": f"invalid certificate: {exc}"})
+            return False
+        except Exception as exc:
+            dur = time.monotonic() - t0
+            if classify_error(exc) == act.DEFINITE:
+                t.ambiguous = False
+                t.due = now + backoff()
+                self._audit(t, act.FAILED, f"refused; retrying in {t.due - now:.0f}s", str(exc), dur)
+                self.events.emit(obs.ACTION, f"Agent {self.id} failed to '{t.desc}' ({exc}); retrying in "
+                                 f"{t.due - now:.0f}s.", t.target,
+                                 {"action": "failed", "task": t.key, "desc": t.desc, "result": f"error: {exc}"},
+                                 key=("taskfail", t.key), every=10.0)
+                return True
+            # ambiguous: the request may have been applied. Look.
+            t.ambiguous = True
+            try:
+                present = t.effect_present()
+            except Exception as exc2:
+                t.unknown, t.due = True, now + rc.unknown_recheck_s
+                self._audit(t, act.UNKNOWN, "the call's result is unknown and the cluster cannot be read; "
+                            "will check again before doing anything", f"{exc}; read: {exc2}", dur)
+                self.events.emit(obs.ACTION, f"Agent {self.id}: result of '{t.desc}' is UNKNOWN (the call timed "
+                                 f"out and the cluster cannot be read).", t.target,
+                                 {"action": "unknown", "task": t.key, "desc": t.desc, "result": "unknown"},
+                                 key=("unknown", t.key), every=10.0)
+                return True
+            if present:
+                self._audit(t, act.APPLIED_AFTER_TIMEOUT, "the call timed out but the cluster shows the effect; "
+                            "not repeated", str(exc), dur)
+                return False
+            t.due = now + backoff()
+            self._audit(t, act.NOT_APPLIED, f"the call timed out and the effect is NOT in the cluster; "
+                        f"retrying in {t.due - now:.0f}s", str(exc), dur)
+            return True
+
+        # 3. the call returned: confirm in the cluster
+        t.ran_ok = True
+        dur = time.monotonic() - t0
+        try:
+            present = t.effect_present()
+        except Exception as exc:
+            self._audit(t, act.APPLIED_UNCONFIRMED, "the call succeeded; confirming read failed", str(exc), dur)
+            return False
+        if present:
+            self._audit(t, act.APPLIED, "the call succeeded and the cluster shows the effect", duration=dur)
+            return False
+        t.due = now + rc.unknown_recheck_s
+        self._audit(t, act.NOT_APPLIED, "the call succeeded but the effect is not visible yet; checking again", duration=dur)
+        return True
+
+    def _old_pods_gone(self, target: str, st: TargetState) -> bool:
+        """Recovery counts as done only when the pods that existed when the snapshot was taken are gone."""
+        if not self.cfg.recovery.check_replacement_pods:
+            return True
+        uids = self.forensics.pod_uids(self.forensics.key(target, st.epoch, self._snap_tag(st.attempt)))
+        if not uids:
+            return True
+        live = {p.get("uid") for p in self.backend.list_pods(self.workload(target))}
+        return not (set(uids) & live)
+
     def _track_cluster(self, now: float) -> None:
-        """Follow the physical progress of isolation/recovery."""
+        """Follow the physical progress of isolation/recovery. Reads are strict: an unreadable cluster is
+        'unknown', never 'the effect is absent'."""
         for nid, st in self.states.items():
             w = self.workload(nid)
             try:
-                if st.phase == ISOLATED and int(self.backend.read_state(w).get(
-                        "isolated-epoch", -1)) >= st.epoch:
+                if st.phase == ISOLATED and int(self._cluster_state(w).get("isolated-epoch", -1)) >= st.epoch:
                     st.phase, st.phase_entered = RECOVERING, now
                     self.metrics.event("isolation_applied", now, nid)
                     self.events.emit(obs.ACTION, f"Agent {self.id} confirms {w} ({nid}) is isolated; "
                                      f"waiting for the clean replacement pod.", nid,
                                      {"action": "isolation_confirmed", "workload": w})
-                if st.phase == RECOVERING and self.backend.recovery_done(w, st.epoch):
-                    st.phase, st.phase_entered = VALIDATING, now
-                    self.metrics.event("recovered", now, nid)
-                    self.events.emit(obs.ACTION, f"Agent {self.id} sees {w} ({nid}) recovered: the new "
-                                     f"pod from the known-good image is ready; validating it now.",
-                                     nid, {"action": "recovered", "workload": w})
-                if st.phase == VALIDATING and now - st.phase_entered > self.cfg.timers.validate_timeout_s:
-                    log.warning("validation of %s stalled; re-running recovery", w)
-                    self.events.emit(obs.ACTION, f"Agent {self.id}: validation of {w} ({nid}) stalled "
-                                     f"for {self.cfg.timers.validate_timeout_s:g}s; re-running recovery.",
-                                     nid, {"action": "validate_stalled", "workload": w,
-                                           "result": self.validation_check(nid)[1]})
-                    st.phase_entered = now
-                    self._schedule(now, nid, f"re-recover:{nid}:{st.epoch}:{int(now)}",
-                                   lambda: False,
-                                   lambda w=w, e=st.epoch, n=nid: self.backend.recover(
-                                       w, e, self._qc(f"CONTAIN:{n}:{e}:", "CONTAIN", n, e, "")),
-                                   f"re-redeploy {w}")
+                if st.phase == RECOVERING:
+                    cs = self._cluster_state(w)
+                    if (int(cs.get("recovered-epoch", -1)) >= st.epoch
+                            and int(cs.get("recovery-attempt", 1)) >= st.attempt):
+                        self._rec_seen.setdefault((nid, st.epoch, st.attempt), now)
+                    if self.backend.recovery_done(w, st.epoch, st.attempt) and self._old_pods_gone(nid, st):
+                        st.phase, st.phase_entered = VALIDATING, now
+                        self.metrics.event("recovered", now, nid)
+                        self.events.emit(obs.ACTION, f"Agent {self.id} sees {w} ({nid}) recovered: the new "
+                                         f"pod from the known-good image is ready; validating it now.",
+                                         nid, {"action": "recovered", "workload": w, "attempt": st.attempt})
+                if st.phase == REINTEGRATING and st.stage == "FULL" and self.backend.current_stage(w) is None:
+                    st.phase, st.attention = HEALTHY, None
+                    self.metrics.event("reintegrated", now, nid)
+                    self.events.emit(obs.ACTION, f"Agent {self.id} confirms {w} ({nid}) is HEALTHY: validated, "
+                                     f"and the cluster shows the isolation policy is gone.", nid,
+                                     {"action": "healthy_confirmed", "workload": w})
             except Exception as exc:
                 # Not silent: a persistent failure here leaves the target stuck in its
                 # current phase, so say so (throttled, once per 10 s per target).
                 if self.events.emit(
                         obs.ACTION, f"Agent {self.id} could not read the cluster state of {w} "
-                        f"({nid}) while it is {st.phase}: {exc}. It will keep retrying.", nid,
+                        f"({nid}) while it is {st.phase}: {exc}. Its state is UNKNOWN until it can; it will "
+                        f"keep retrying.", nid,
                         {"action": "cluster_read_failed", "workload": w, "phase": st.phase,
                          "result": f"error: {exc}"}, key=("trackfail", nid), every=10.0):
                     log.warning("cluster tracking for %s failed: %s", w, exc)
@@ -963,7 +1206,12 @@ class ResilienceAgent:
                                     "summary": d.summary} for d in self.latest.get(nid, [])],
                     "score": self.scores.get(nid, ScoreBreakdown(0.0)).to_dict(),
                     "validation": self.validation_check(nid)[1] if st.phase == VALIDATING else None,
+                    "recovery": {"attempt": st.attempt, "max_attempts": self.cfg.recovery.max_retries + 1,
+                                 "failure": self._recovery_failure(now, nid, st)},
+                    "unknown_action": any(r["target"] == nid for r in self.audit.unresolved.values()),
                 }
+                targets[nid]["display_state"] = (
+                    "NEEDS_ATTENTION" if st.attention else "UNKNOWN" if targets[nid]["unknown_action"] else st.phase)
             return {
                 "node": self.id, "mode": "distributed", "time": now,
                 "agent_name": self.cfg.nodes[self.id].agent_name,
@@ -996,6 +1244,8 @@ class ResilienceAgent:
                 "investigations": self.inv.status(),
                 "certificates": self.certs.status(),
                 "decision_log": self.decision_log.status(),
+                "snapshots": self.forensics.status(),
+                "actions": self.audit.status(),
                 "event_boot": self.events.boot,
                 "event_seq": self.events.seq,
                 "events": self.events.recent(since=events_since) if include_events else [],

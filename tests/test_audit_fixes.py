@@ -160,7 +160,7 @@ def test_unreadable_cluster_state_is_reported_not_silent():
     from world import FakeTelemetry, FakeWorld, fast_config
 
     class Broken(FakeBackend):
-        def read_state(self, workload):
+        def read_state_strict(self, workload):
             raise RuntimeError("API timeout")
 
     cfg = fast_config(50901)

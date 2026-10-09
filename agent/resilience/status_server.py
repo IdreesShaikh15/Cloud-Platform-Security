@@ -4,6 +4,7 @@ GET /status   -> agent/controller state (JSON), incl. its event log (last 300)
                ?events_since=<seq>  only events newer than seq
                ?events=0            omit events
 GET /metrics  -> per-incident metric summary (JSON)
+GET /snapshot/<key> -> one saved evidence snapshot (JSON), e.g. /snapshot/C:1:contain
 GET /healthz  -> liveness
 There is deliberately no write endpoint.
 """
@@ -41,6 +42,9 @@ def serve_status(node, port: int) -> ThreadingHTTPServer:
                         include_events=q.get("events", ["1"])[0] != "0"))
                 if self.path.startswith("/metrics"):
                     return self._send(200, node.metrics_summary())
+                if self.path.startswith("/snapshot/") and hasattr(node, "forensics"):
+                    snap = node.forensics.get(urlparse(self.path).path[len("/snapshot/"):])
+                    return self._send(200, snap) if snap else self._send(404, {"error": "no such snapshot"})
                 if self.path.startswith("/healthz"):
                     return self._send(200, {"ok": True})
                 return self._send(404, {"error": "not found"})

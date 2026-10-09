@@ -41,6 +41,22 @@ data:
         "score_threshold": 0.6,
         "diversity_bonus": 0.15
       },
+      "recovery": {
+        "snapshot_enabled": true,
+        "snapshot_timeout_s": 15,
+        "log_tail_lines": 200,
+        "log_max_bytes": 65536,
+        "max_pods": 5,
+        "max_retries": 3,
+        "backoff_base_s": 15,
+        "backoff_factor": 2,
+        "backoff_max_s": 120,
+        "check_replacement_pods": true,
+        "action_backoff_base_s": 2,
+        "action_backoff_max_s": 30,
+        "action_max_attempts": 10,
+        "unknown_recheck_s": 3
+      },
       "certificates": {
         "ttl_s": 300,
         "max_ttl_s": 900,

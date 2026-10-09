@@ -9,7 +9,7 @@ A certificate is one *statement* plus signatures over that statement:
 
   workload         the Kubernetes workload it is about (e.g. "records-api")
   target           the resilience node id of that workload ("C")
-  action           CONTAIN | VALIDATE | ADVANCE_STAGE
+  action           CONTAIN | VALIDATE | ADVANCE_STAGE | RETRY_RECOVERY
   stage            the stage being entered (ADVANCE_STAGE) or QUARANTINE (CONTAIN) or "" (VALIDATE)
   epoch            the incident version of the target
   evidence_digest  SHA-256 of the sorted, de-duplicated evidence ids cited by the three votes
@@ -63,7 +63,7 @@ log = logging.getLogger(__name__)
 
 QC_KIND = "qc-v1"                       # signature domain (cannot be replayed as evidence / vote)
 ANNOTATION = "resilience.io/qc"         # where the executor attaches the certificate
-ACTIONS = ("CONTAIN", "VALIDATE", "ADVANCE_STAGE")
+ACTIONS = ("CONTAIN", "VALIDATE", "ADVANCE_STAGE", "RETRY_RECOVERY")
 _FIELDS = ("action", "epoch", "evidence_digest", "expires_ms", "stage", "target", "version", "workload")
 
 

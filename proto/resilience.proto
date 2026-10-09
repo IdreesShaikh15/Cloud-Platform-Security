@@ -37,6 +37,7 @@ enum ActionKind {
   CONTAIN = 1;                       // isolate + recover the target
   VALIDATE = 2;                      // recovered target passed health+hash checks
   ADVANCE_STAGE = 3;                 // move target to the next reintegration stage
+  RETRY_RECOVERY = 4;                // validation failed: redeploy again (stage = the attempt number)
 }
 
 message Vote {

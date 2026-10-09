@@ -22,7 +22,8 @@ WHAT AN AGENT MAY DO IN THE healthcare NAMESPACE, AND ONLY WITH A VALID CERTIFIC
   Deployment of one of the 4 workloads
       UPDATE only; the only changes allowed are the recovery fields (image -> the known-good image,
       resilience.io/* annotations, the recovery timestamp); every other change is refused. Needs a
-      certificate matching the state being written (CONTAIN / VALIDATE / ADVANCE_STAGE), and the
+      certificate matching the state being written (CONTAIN / VALIDATE / ADVANCE_STAGE; a recovery RETRY
+      needs its own RETRY_RECOVERY certificate for that attempt number), and the
       state may never move backwards within an incident (so an old certificate cannot rewind it).
       CREATE and DELETE are refused outright.
   Anything else an enforced agent tries in this namespace is refused.
@@ -263,8 +264,15 @@ class AdmissionPolicy:
             rec = self._int(na.get(PREFIX + "recovered-epoch"))
             if rec is None:
                 return False, "a recovery must carry resilience.io/recovered-epoch"
-            expect: List[Expect] = [Expect(name, "CONTAIN", "", rec)]
-            current = self._int(oa.get(PREFIX + "recovered-epoch"))
+            attempt = self._int(na.get(PREFIX + "recovery-attempt"), 1)
+            old_attempt = self._int(oa.get(PREFIX + "recovery-attempt"), 0)
+            old_rec = self._int(oa.get(PREFIX + "recovered-epoch"), -1)
+            if rec == old_rec and attempt < old_attempt:
+                return False, f"recovery attempt may not go backwards ({old_attempt} -> {attempt})"
+            # attempt 1 is authorised by the CONTAIN certificate; every RETRY needs its own quorum decision
+            expect: List[Expect] = ([Expect(name, "CONTAIN", "", rec)] if attempt <= 1
+                                    else [Expect(name, "RETRY_RECOVERY", str(attempt), rec)])
+            current = old_rec if old_rec >= 0 else None
         else:
             phase, stage = na.get(PREFIX + "phase"), na.get(PREFIX + "stage")
             if phase == "ISOLATED":

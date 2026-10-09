@@ -192,3 +192,41 @@ No secrets in the diff (checked).
 ### Commit / push
 * Commit **`dc50f4e`** ("Phase 3: security hardening ..."), pushed (no force) to `claude/cyber-resilience-platform-xxs3oh` and `claude/inspiring-thompson-ik54a3`.
 * Tag `pre-phase-3` exists locally only (recreate with `git tag pre-phase-3 7992562`).
+
+## Phase 4: Safer recovery
+
+**Status: DONE in the simulator and tests; NOT run against a real cluster.** Safety tag `pre-phase-4` (at `95aa88a`; local only). Full write-up: `docs/RECOVERY.md`.
+
+### What was done
+* **Evidence snapshot before replacement** (`forensics.py`): read-only, only pods labelled `app=<workload>`, pod metadata without env/volumes/commands, last 200 log lines with credentials redacted, observed signal values, monitored-file hashes vs known-good, the quorum decision, a digest, and an explicit `not_captured` list (nothing faked). Saved as a `0600` JSON file per agent; listed on the dashboard with an export-JSON button (`/api/snapshot/<agent>/<key>`); a late snapshot never blocks recovery for more than 15 s.
+* **Validation failure handling:** a failed replacement triggers a new quorum action `RETRY_RECOVERY` (own 3-signature certificate, checked by the webhook, attempt number can only increase), with exponential back-off (15/30/60 s, cap 120 s), at most 3 retries, then **NEEDS HUMAN ATTENTION** (dashboard card + audit record); the workload stays quarantined throughout. Never two recoveries at once (isolation confirmed, snapshot ready and no rollout in progress are prerequisites; one idempotent task per incident+attempt). HEALTHY is now set only after the cluster is read and the isolation policy is gone.
+* **Honest Kubernetes actions** (`actions.py`, `agent.py::_step`): every step writes a hash-chained audit record with an explicit outcome (applied, already_applied, applied_after_timeout, not_applied, failed, unknown, unknown_resolved, refused_stale, refused_certificate, waiting, abandoned). A timeout triggers a read of the actual cluster before anything is repeated; an unreadable cluster shows UNKNOWN. Redeploy is idempotent (template value derived from incident+attempt, no longer a timestamp). Stale incident/attempt tasks are refused and recorded.
+* **RBAC:** agents (not the baseline) get read-only `pods` get/list and `pods/log` get in the healthcare namespace; `verify-rbac.sh` checks both sides.
+* **Simulator:** 2 new scenarios, `validation-retry` and `failed-validation` (a replacement that reports unhealthy; nothing real misbehaves).
+
+### Results (measured on the final code)
+
+| Check | Result |
+|---|---|
+| `python -m pytest -q tests` | **298 passed, 1 failed** (685 s): `test_verify_isolation.py::test_ctrl_c_during_isolation_still_cleans_up` timed out at 60 s in this run; it **passes when run alone** (all 15 tests in that file pass, 55 s). It tests `verify-isolation.sh` (not touched in this phase), is timing-sensitive, and I did not investigate the cause further. 260 before + 38 new = 298. |
+| `python sim/local_demo.py` | **11 of 11 PASS** (9 before + 2 new) |
+| Detection/response timings (app-compromise) | TTD 0.5 s, TTI 1.5 s, TTR 3.5 s, TTV 4.5 s, TTF 18.5 s (unchanged from Phase 3) |
+| New tests | `tests/test_recovery.py` 26 (incl. 2 end-to-end scenarios), RBAC +12 |
+
+### Bugs found while building it
+1. A patch of mine left `response.py` with a duplicated, truncated `K8sBackend` class; caught when reading the file, repaired before any test run.
+2. **Existing test changed (disclosed):** `test_unreadable_cluster_state_is_reported_not_silent` stubbed `read_state`; tracking now uses the strict read (an unreadable cluster must not look like "absent"), so the test stubs `read_state_strict`. Same behaviour asserted.
+3. Dashboard screenshot (`docs/img/dashboard-needs-attention.png`) is from the real simulator `failed-validation` run; no JavaScript errors.
+
+### Files changed
+New: `agent/resilience/{forensics,actions}.py`, `docs/RECOVERY.md`, `docs/img/dashboard-needs-attention.png`, `tests/test_recovery.py`. Modified: `proto/resilience.proto` (+stubs: `RETRY_RECOVERY`), `agent/resilience/{agent,admission,certificate,config,evidence,observability,response,status_server,__main__}.py`, `dashboard/{server.py,index.html}`, `k8s/resilience/{00-rbac,10-config}.yaml`, `scripts/verify-rbac.sh`, `sim/{world,local_demo}.py`, `tests/{test_rbac,test_audit_fixes}.py`, `docs/AUDIT.md`. No secrets in the diff (checked; the only "secret" strings are fake simulator data used to prove redaction).
+
+### What is NOT verified / remaining gaps
+* **Never run on a real API server:** real timeout behaviour, pod readiness, the rollout-in-progress and pods-gone checks against a real Deployment controller, the webhook accepting `RETRY_RECOVERY` with real objects. `K8sBackend` is checked only with mocks. Run `scripts/verify-rbac.sh` (new pod checks) on your cluster.
+* Snapshots are per agent in an `emptyDir` (lost if the agent pod is deleted) and redaction is pattern-based.
+* "Needs human attention" appears on the dashboard and audit log only; nothing pages anyone.
+* The flaky test above.
+* **To use it:** rebuild the agent image and dashboard image; `kubectl apply` `00-rbac.yaml` and `10-config.yaml`; restart the agents and the dashboard (the webhook runs from the agent image, so restart it too).
+
+### Commit / push
+* See the next line (filled after the push).

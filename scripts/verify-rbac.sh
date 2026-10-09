@@ -34,9 +34,14 @@ check yes "  delete isolation policy"                      -n "$NS" delete "$POL
 check yes "get workload deployment"                        -n "$NS" get "deployments.apps/$TARGET"
 check yes "patch workload deployment"                      -n "$NS" patch "deployments.apps/$TARGET"
 check yes "read the attack-marker ConfigMap"               -n "$RES_NS" get configmaps/cr-attack-marker
+check yes "list pods (read-only evidence snapshot)"        -n "$NS" list pods
+check yes "get pods (read-only evidence snapshot)"         -n "$NS" get pods
+check yes "read pod logs (read-only evidence snapshot)"    -n "$NS" get pods --subresource=log
 echo "--- must be DENIED (everything else) ---"
-check no  "list pods in $NS"                               -n "$NS" list pods
-check no  "get pods in $NS"                                -n "$NS" get pods
+check no  "delete a pod"                                   -n "$NS" delete pods
+check no  "create a pod"                                   -n "$NS" create pods
+check no  "exec into a pod"                                -n "$NS" create pods --subresource=exec
+check no  "watch pods"                                     -n "$NS" watch pods
 check no  "delete the workload deployment"                 -n "$NS" delete "deployments.apps/$TARGET"
 check no  "create a deployment"                            -n "$NS" create deployments.apps
 check no  "patch the client deployment"                    -n "$NS" patch deployments.apps/client

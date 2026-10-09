@@ -72,7 +72,9 @@ def run_agent():
     agent = wire_agent(cfg, node_id, signer, registry, tls, HttpTelemetrySource(cfg), backend,
                        metrics, CompromiseSource(), bind,
                        decision_log_path=os.environ.get("DECISION_LOG", DEFAULT_PATH),
-                       trust_state_path=os.environ.get("TRUST_STATE", "/var/log/resilience/trust-state.json"))
+                       trust_state_path=os.environ.get("TRUST_STATE", "/var/log/resilience/trust-state.json"),
+                       snapshot_dir=os.environ.get("SNAPSHOT_DIR", "/var/log/resilience/snapshots"),
+                       audit_log_path=os.environ.get("ACTION_LOG", "/var/log/resilience/actions.jsonl"))
     agent.resync_from_cluster()
     logging.getLogger("agent").info("gRPC/mTLS peer server listening on %s", bind)
     serve_status(agent, int(os.environ.get("STATUS_PORT", "8081")))

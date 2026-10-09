@@ -11,6 +11,7 @@ anything.
   GET /api/agent/<id>   one agent's full view + its recent events
   GET /api/export       every buffered event from every agent, as a JSON download
   GET /api/metrics      per-incident metrics from every agent/controller
+  GET /api/snapshot/<agent>/<key>   one evidence snapshot, as a JSON download
 
 Local use (against the simulator):
   STATUS_URLS=http://localhost:50251/status,... [BASELINE_URL=http://localhost:50261] \\
@@ -353,6 +354,12 @@ def aggregate() -> dict:
             "score": own.get("score"),
             "last_decision": last,
         }
+        disp = [v.get("display_state") or v["phase"] for v in views]
+        nodes[nid]["display_state"] = ("NEEDS_ATTENTION" if "NEEDS_ATTENTION" in disp
+                                       else "UNKNOWN" if "UNKNOWN" in disp else phase)
+        nodes[nid]["attention"] = next((v["attention"] for v in views if v.get("attention")), None)
+        nodes[nid]["attempt"] = max((v.get("attempt", 1) for v in views), default=1)
+        nodes[nid]["recovery"] = next((v["recovery"] for v in views if v.get("recovery")), None)
         nodes[nid]["watch"] = any(nid in ((s_.get("investigations") or {}).get("watch") or {})
                                   for s_ in live.values())
     # committed decisions, de-duplicated, with who saw them and the justification
@@ -374,10 +381,37 @@ def aggregate() -> dict:
             "nodes": nodes, "decisions": uniq[:15], "rejections": rejections,
             "investigations": investigations_view(live),
             "decision_logs": decision_logs_view(live),
+            "snapshots": snapshots_view(live), "actions": actions_view(live),
             "pending_votes": {k: v["voters"] for k, v in pending.items()},
             "pending_detail": pending, "baseline": BASELINE or None,
             "central_compromised": (base or {}).get("compromised"),
             "last_poll": COLLECTOR.last_poll, "gseq": COLLECTOR.gseq}
+
+
+def snapshots_view(live: dict) -> list:
+    """Evidence snapshots every agent saved (summary only; the full JSON is /api/snapshot/<agent>/<key>)."""
+    rows = [{**x, "agent": sid} for sid, s in live.items() for x in (s.get("snapshots") or [])]
+    return sorted(rows, key=lambda r: r.get("captured_at") or 0, reverse=True)[:20]
+
+
+def actions_view(live: dict) -> dict:
+    """Every Kubernetes action and its observable result, plus the outcomes still UNKNOWN."""
+    recent, unknown = [], []
+    for sid, s in live.items():
+        a = s.get("actions") or {}
+        recent += a.get("recent", [])
+        unknown += a.get("unknown", [])
+    recent.sort(key=lambda r: r["t"], reverse=True)
+    return {"recent": recent[:40], "unknown": unknown}
+
+
+SNAP_KEY = __import__("re").compile(r"^[A-Za-z0-9_:-]{1,80}$")
+
+
+def snapshot_export(sid: str, key: str):
+    if sid not in URLS or not SNAP_KEY.match(key):
+        return None
+    return get(URLS[sid].replace("/status", f"/snapshot/{key}"))
 
 
 def agent_view(sid: str) -> dict:
@@ -462,6 +496,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"gseq": COLLECTOR.gseq, "events": COLLECTOR.events_since(since, limit)})
         if p.startswith("/api/agent/"):
             return self._json(agent_view(p.rsplit("/", 1)[1]))
+        if p.startswith("/api/snapshot/"):
+            parts = p.split("/")
+            snap = snapshot_export(parts[3], parts[4]) if len(parts) == 5 else None
+            if snap is None:
+                return self._send(404, b'{"error":"no such snapshot"}', "application/json")
+            return self._json(snap, {"Content-Disposition": f'attachment; filename="snapshot-{parts[4].replace(":", "-")}-{parts[3]}.json"'})
         if p == "/api/export":
             name = f"resilience-events-{time.strftime('%Y%m%d-%H%M%S')}.json"
             return self._json({"exported_at": time.time(), "sources": list(SOURCES),

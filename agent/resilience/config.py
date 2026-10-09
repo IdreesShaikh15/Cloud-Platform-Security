@@ -93,6 +93,28 @@ class InvestigationParams:
 
 
 @dataclass
+class RecoveryParams:
+    """Safer recovery (docs/RECOVERY.md)."""
+    snapshot_enabled: bool = True
+    snapshot_timeout_s: float = 15.0   # recovery waits at most this long for the evidence snapshot
+    log_tail_lines: int = 200          # last lines of each pod's log kept in the snapshot
+    log_max_bytes: int = 65536
+    max_pods: int = 5                  # at most this many pods of the workload are captured
+    max_retries: int = 3               # extra recoveries after validation fails (total attempts = 1 + this)
+    backoff_base_s: float = 15.0       # wait before retry n: base * factor^(n-1), capped
+    backoff_factor: float = 2.0
+    backoff_max_s: float = 120.0
+    check_replacement_pods: bool = True  # recovery is done only when the old pods are really gone
+    action_backoff_base_s: float = 2.0   # retry delay for a Kubernetes action that definitely failed
+    action_backoff_max_s: float = 30.0
+    action_max_attempts: int = 10        # then the action is abandoned and a human is asked
+    unknown_recheck_s: float = 3.0       # how often to re-read the cluster for an UNKNOWN outcome
+
+    def backoff(self, failed_attempts: int) -> float:
+        return min(self.backoff_max_s, self.backoff_base_s * (self.backoff_factor ** max(0, failed_attempts - 1)))
+
+
+@dataclass
 class CertParams:
     """Quorum certificates and the admission webhook (docs/SECURITY.md)."""
     ttl_s: float = 300.0               # a certificate is void this long after its newest vote
@@ -116,6 +138,7 @@ class ClusterConfig:
     quorum: QuorumParams = field(default_factory=QuorumParams)
     investigation: InvestigationParams = field(default_factory=InvestigationParams)
     certificates: CertParams = field(default_factory=CertParams)
+    recovery: RecoveryParams = field(default_factory=RecoveryParams)
     client_stats_url: Optional[str] = None  # synthetic client (availability probe)
 
     def workload_of(self, node_id: str) -> str:
@@ -156,6 +179,7 @@ def load_cluster_config(path: Optional[str] = None) -> ClusterConfig:
         quorum=_dc(QuorumParams, raw.get("quorum")),
         investigation=_dc(InvestigationParams, raw.get("investigation")),
         certificates=_dc(CertParams, raw.get("certificates")),
+        recovery=_dc(RecoveryParams, raw.get("recovery")),
         client_stats_url=raw.get("client_stats_url"),
     )
     hashes_path = raw.get("baseline_hashes_path") or os.environ.get(
