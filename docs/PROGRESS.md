@@ -256,4 +256,4 @@ See `docs/RESULTS.md` section 0 for the ten-line summary. Headlines: lying agent
 * The full test suite was **not re-run** after this phase (no product code changed; `.gitignore`, `scripts/evaluate.py`, `tests/test_evaluate.py`, `docs/RESULTS.md`, `results/` added). The last full run (Phase 4) was 298 passed, 1 timing-sensitive failure (passes alone); the new file's 8 tests pass.
 
 ### Commit / push
-* See the next line (filled after the push).
+* Commit **`c45ddec`** ("Phase 5: evaluation harness, results and graphs"), pushed (no force) to `claude/cyber-resilience-platform-xxs3oh` and `claude/inspiring-thompson-ik54a3`.
