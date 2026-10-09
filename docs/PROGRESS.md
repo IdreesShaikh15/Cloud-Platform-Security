@@ -229,4 +229,5 @@ New: `agent/resilience/{forensics,actions}.py`, `docs/RECOVERY.md`, `docs/img/da
 * **To use it:** rebuild the agent image and dashboard image; `kubectl apply` `00-rbac.yaml` and `10-config.yaml`; restart the agents and the dashboard (the webhook runs from the agent image, so restart it too).
 
 ### Commit / push
-* See the next line (filled after the push).
+* Commit **`52f828c`** ("Phase 4: safer recovery ..."), pushed (no force) to `claude/cyber-resilience-platform-xxs3oh` and `claude/inspiring-thompson-ik54a3`.
+* Tag `pre-phase-4` exists locally only (recreate with `git tag pre-phase-4 95aa88a`).
