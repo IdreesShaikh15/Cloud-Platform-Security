@@ -1,6 +1,6 @@
 certs/
 k8s/generated/
-results/
+results/metrics-*.csv
 __pycache__/
 *.pyc
 .venv/

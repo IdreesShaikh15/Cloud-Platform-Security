@@ -231,3 +231,29 @@ New: `agent/resilience/{forensics,actions}.py`, `docs/RECOVERY.md`, `docs/img/da
 ### Commit / push
 * Commit **`52f828c`** ("Phase 4: safer recovery ..."), pushed (no force) to `claude/cyber-resilience-platform-xxs3oh` and `claude/inspiring-thompson-ik54a3`.
 * Tag `pre-phase-4` exists locally only (recreate with `git tag pre-phase-4 95aa88a`).
+
+## Phase 5: Evaluation and graphs
+
+**Status: DONE (simulator only).** Safety tag `pre-phase-5` at `fd15eaa` (local only; recreate with `git tag pre-phase-5 fd15eaa`). Full write-up: `docs/RESULTS.md`.
+
+### What was done
+* `scripts/evaluate.py`: runs 8 experiments (scenario timings, trust trajectory, distributed vs centralized, investigation ON/OFF on identical seeds, fault-tolerance boundary k=0..3, agent crash 4/3/2 alive, mixed genuine/benign run, CPU/memory) with **20 trials per variant** (60 in the mixed run), each trial in its own process with a **recorded seed** (seed fixes inputs, not timings), resumable, and never drops or invents a result (non-reached endpoints are empty cells with an `outcome`; crashed trials are `error` and counted).
+* Output (committed): `results/*_trials.csv` (trial level), `results/trust_trajectories.csv`, `results/raw/trials.jsonl`, `results/summary.md`, 8 PNG graphs `results/fig1..fig8`.
+* `docs/RESULTS.md`: every metric with start event, end event and denominator; false ALARM vs false ISOLATION; how to read each graph; findings; limitations. The tables inside are rewritten by the script, the prose is hand-written.
+* `tests/test_evaluate.py` (8 tests): intervals, no invented numbers, paired seeds, resume, availability maths, report on partial data.
+
+### Results (760 trials, 0 errors; ~2 h of wall time on 4 cores; the first launch was killed at 560 trials by a session restart and resumed from the recorded trials)
+See `docs/RESULTS.md` section 0 for the ten-line summary. Headlines: lying agent 0/20 false isolation vs lying central controller 20/20; controller crashed 0/20 contained vs one agent crashed 20/20; breaks at 3 accusers (20/20), at 2 liars + 1 deceived honest agent (20/20) and at 2 silent agents (0/20 contained); the investigation did **not** reduce false isolations in my transient mix (4/20 both ways) but isolated slow-burn attacks sooner (20/20 pairs, median 4.2 s) and flagged ambiguity for review; mixed run: 0/30 missed, 15/30 benign transients isolated (all seen by >= 3 agents).
+
+### Problems found while building it (and what I did)
+1. My first benign-transient mix produced 82% false isolation in a smoke test, and my first description of the detector's confidence curve was wrong (it is 0 up to 8 connections and then 0.5-1.0, not linear from 0). Fixed the benign mix and the stratification, and corrected the doc before the full run.
+2. A first trust experiment (15 s of lying) was too short to ever mark the liar suspect; lengthened to 30 s lying + 90 s recovery.
+3. ON and OFF (and distributed / centralized) initially got different seeds, so they did not see identical inputs; fixed with paired seed series and a test.
+4. The `.gitignore` excluded `results/`; changed to ignore only the metrics collector's `results/metrics-*.csv`.
+
+### What is NOT verified / honest limits
+* Simulator only; all times are accelerated simulator times. The benign/attack mixes are my choice, so false-positive/negative rates illustrate behaviour under a stated mix. "Silent" agents are crashed agents. CPU/memory numbers are one-process approximations. Details: `docs/RESULTS.md` section 5.
+* The full test suite was **not re-run** after this phase (no product code changed; `.gitignore`, `scripts/evaluate.py`, `tests/test_evaluate.py`, `docs/RESULTS.md`, `results/` added). The last full run (Phase 4) was 298 passed, 1 timing-sensitive failure (passes alone); the new file's 8 tests pass.
+
+### Commit / push
+* See the next line (filled after the push).
