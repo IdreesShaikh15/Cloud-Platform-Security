@@ -7,7 +7,23 @@ when **one of its own security nodes is compromised**.
 
 - **Setup / prerequisites:** [SETUP.md](SETUP.md)
 - **Step-by-step live demo:** [demo.md](demo.md)
-- **Try it without Kubernetes:** `python3 sim/local_demo.py`
+- **Try it without Kubernetes:** `python3 sim/local_demo.py` (11 scenarios)
+- **What was audited, hardened and measured:** [docs/PROGRESS.md](docs/PROGRESS.md) (start here), [docs/AUDIT.md](docs/AUDIT.md),
+  [docs/INVESTIGATION.md](docs/INVESTIGATION.md), [docs/SECURITY.md](docs/SECURITY.md), [docs/RECOVERY.md](docs/RECOVERY.md),
+  [docs/RESULTS.md](docs/RESULTS.md) (evaluation, graphs in `results/`)
+
+## What the platform does beyond the basic cycle
+
+| Capability | In one sentence | Details |
+|---|---|---|
+| **Targeted investigation** | Borderline or disputed evidence is re-measured by all four agents for a few seconds before anyone acts; unresolved cases become a human-review flag, never an isolation. | `docs/INVESTIGATION.md` |
+| **Quorum certificates + admission webhook** | Kubernetes itself refuses an agent's isolation/redeploy unless the change carries 3 valid agent signatures, so one compromised agent cannot act alone. Least-privilege RBAC; tamper-evident (hash-chained) decision log; optional dashboard token. | `docs/SECURITY.md` |
+| **Safer recovery** | An evidence snapshot (read-only, scoped, redacted) is saved before a workload is replaced; a replacement that fails validation is retried with back-off, then flagged "needs human attention" (never shown healthy); every Kubernetes action records an observable result, and a timeout is never treated as a failure without checking the cluster. | `docs/RECOVERY.md` |
+| **Measured** | 760 seeded simulator trials: timings, trust, distributed vs centralized, fault-tolerance boundary, crash, false positives/negatives, overhead. | `docs/RESULTS.md`, `python3 scripts/evaluate.py` |
+
+**Scope of the evidence:** the pipeline, quorum, certificates, admission policy and recovery logic are tested end to end in the simulator
+(real agents, signatures and gRPC/mTLS; simulated telemetry and Kubernetes API). Calico enforcement and the real API server are **not**
+verified; run `scripts/verify-isolation.sh`, `scripts/verify-rbac.sh` and `scripts/verify-webhook.sh` on your cluster (see `docs/PROGRESS.md`).
 
 ## Architecture
 
@@ -96,9 +112,11 @@ agent/resilience/      agent package (+ generated stubs in proto/)
 apps/                  mock healthcare app image (stdlib only, synthetic data)
 dashboard/             read-only dashboard
 k8s/                   manifests (base/, resilience/, baseline/, generated/ ← created by scripts)
-scripts/               cluster setup, build, deploy, PKI, experiment helpers, metrics
-sim/                   in-process 4-agent simulator (real gRPC/mTLS, fake cluster)
+scripts/               cluster setup, build, deploy, PKI, metrics; verify-{isolation,rbac,webhook}.sh; evaluate.py
+sim/                   in-process 4-agent simulator (real gRPC/mTLS, fake cluster that runs the same admission policy)
 tests/                 pytest suite (unit + integration via simulator)
+docs/                  AUDIT, INVESTIGATION, SECURITY, RECOVERY, RESULTS, PROGRESS
+results/               evaluation output: trial-level CSVs, raw trials, graphs
 ```
 
 ## Honest positioning
@@ -111,11 +129,10 @@ sections 8 and 12.
 ## Future work (explicitly out of scope for this version)
 
 - Real clinical datasets (Synthea / MIMIC). The app currently uses seeded synthetic records.
-- Compromised-agent variants **"goes silent"** and **"blocks a legitimate isolation"**.
-  Ranked executor fail-over already exists (`executor_rank`), but these variants are not simulated or measured.
-- The **2-of-4 compromised** breaking-point experiment (BFT predicts failure beyond f=1).
+- A "stays alive but refuses to vote" compromised-agent mode and a "blocks a legitimate isolation" mode (the evaluation models silent agents as crashed ones;
+  the **2-of-4 breaking point itself is now measured**, see `docs/RESULTS.md`).
+- Running everything on a real cluster: Calico enforcement, the admission webhook against a real API server, and real pod timings are unverified.
 - Prometheus / Grafana visualization. There is a custom dashboard plus CSV export instead.
 - Isolating the compromised *agent* itself, not just down-weighting it.
-- An admission webhook that rejects NetworkPolicy changes lacking a valid quorum certificate.
-  Today any agent's RBAC could technically act alone.
-- Statistical (non-threshold) detection.
+- Statistical (non-threshold) detection. A threshold detector cannot tell a benign disturbance seen by most agents from an attack (see `docs/RESULTS.md` section 4.8).
+- Paging someone on "needs human attention"; durable (non-`emptyDir`) storage for evidence snapshots and trust state.

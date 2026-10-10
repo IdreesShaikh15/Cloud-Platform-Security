@@ -121,7 +121,10 @@ def test_never_deletes_a_policy_that_is_no_longer_ours(env):
 def test_ctrl_c_during_isolation_still_cleans_up(env):
     env["FAKE_SLOW"] = "1"
     proc = subprocess.Popen(["bash", SCRIPT, *BASE_ARGS], env=env, stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT, text=True, start_new_session=True)
+                            stderr=subprocess.STDOUT, text=True, start_new_session=True,
+                            # a test runner started in the background (nohup, CI) inherits SIGINT = ignored, and so would
+                            # the script, which would then never see the Ctrl-C this test sends: restore the default
+                            preexec_fn=lambda: __import__("signal").signal(__import__("signal").SIGINT, __import__("signal").SIG_DFL))
     try:
         end = time.time() + 30
         while time.time() < end:

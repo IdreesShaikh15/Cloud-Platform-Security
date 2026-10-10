@@ -257,3 +257,10 @@ See `docs/RESULTS.md` section 0 for the ten-line summary. Headlines: lying agent
 
 ### Commit / push
 * Commit **`c45ddec`** ("Phase 5: evaluation harness, results and graphs"), pushed (no force) to `claude/cyber-resilience-platform-xxs3oh` and `claude/inspiring-thompson-ik54a3`.
+
+## FINISH: final verification and documentation
+
+* README.md, demo.md and SETUP.md updated for everything new (11 scenarios, new docs, verify scripts, evaluation).
+* **Final full run (after all code changes):** `python -m pytest -q tests` = **306 passed, 1 failed** of 307 (685 s); `python sim/local_demo.py` = **11 of 11 PASS**.
+* **The one failure was not a flaky product test.** `test_ctrl_c_during_isolation_still_cleans_up` failed in both of my full runs (Phase 4 and this one) and passed when run alone. Cause found: I launched those full runs in the background (`nohup`), where the shell sets SIGINT to "ignored", the test's child process inherited that, and the Ctrl-C the test sends was never seen. This corrects my earlier "timing-sensitive, cause not investigated" note in the Phase 4 and 5 entries. Fix: the test now restores the default SIGINT handler in the child (`tests/test_verify_isolation.py`); the file passes (15/15) when run in the background too. The full suite was not re-run after that one-line test fix; the 15 tests of the file were.
+* Baseline vs final: **57 tests / 6 scenarios -> 307 tests / 11 scenarios**.

@@ -14,10 +14,13 @@ The simulator runs the 4 real agents (real Ed25519, real gRPC over mTLS, real qu
 against a fake cluster. It's a good backup if the live cluster misbehaves during a presentation.
 
 ```bash
-python3 sim/local_demo.py            # 6 scenarios, prints metrics, ends with 6 × PASS
+python3 sim/local_demo.py            # 11 scenarios, prints metrics, ends with 11 × PASS
 ```
 
 To watch one on the dashboard (any of: app-compromise, false-accusation, forge-evidence, agent-crash):
+
+(Other scenarios: `transient-blip`, `slow-burn`, `ambiguous` (investigation), `validation-retry`, `failed-validation` (safer recovery), `baseline`, `controller-crash`. Run one by name, e.g. `python3 sim/local_demo.py failed-validation`; they use their own ports and need no `--serve`.)
+
 
 ```bash
 # T3
@@ -230,16 +233,55 @@ scripts/reset.sh
 scripts/switch-mode.sh distributed
 ```
 
+## 6b. Safer recovery (simulator; 2 minutes)
+
+```bash
+python3 sim/local_demo.py validation-retry     # first replacement pod fails validation, the second passes
+python3 sim/local_demo.py failed-validation    # every replacement fails: 3 retries, then NEEDS HUMAN ATTENTION
+```
+
+What to point out: an **evidence snapshot** of the compromised pod is saved before it is replaced (dashboard section "Evidence snapshots & Kubernetes actions",
+with an export-JSON button and a list of anything that could not be captured); retries are spaced by back-off; after the last one the card turns red
+**NEEDS HUMAN ATTENTION**, the workload stays quarantined and is never shown healthy; every Kubernetes action shows its result (applied, applied after timeout, UNKNOWN ...).
+Details: `docs/RECOVERY.md`. A screenshot is in `docs/img/dashboard-needs-attention.png`.
+
+## 6c. Targeted investigation (simulator)
+
+```bash
+python3 sim/local_demo.py transient-blip       # seen by 2 agents, then gone: investigated, closed as a false positive
+python3 sim/local_demo.py slow-burn            # weak at first, persists and grows: confirmed, then contained
+python3 sim/local_demo.py ambiguous            # unresolved: a human-review flag, nothing isolated
+python3 sim/local_demo.py transient-blip --no-investigation   # same input with the feature off, for comparison
+```
+
+## 6d. Verify the security claims on your cluster
+
+```bash
+scripts/verify-isolation.sh --namespace healthcare --client-pod <client-pod> --target records-api --agent-pod <agent-pod> --egress-peer auth-service
+scripts/verify-rbac.sh      --namespace healthcare --target records-api
+scripts/verify-webhook.sh   --namespace healthcare --target records-api            # add --test-failsafe to also test the fail-closed behaviour
+```
+
 ## 7. Collect the numbers
 
 ```bash
 python3 scripts/collect-metrics.py --url http://localhost:8090
 ```
 
-This prints a table and writes `results/metrics-<timestamp>.csv` with, per incident: TTD, TTI, TTR,
+This prints a table and writes `results/metrics-<timestamp>.csv` (git-ignored; the evaluation's committed output is separate, see below) with, per incident: TTD, TTI, TTR,
 validated, full reintegration, trust-recovery time, time-to-flag the lying agent, false isolation,
 and availability (from the synthetic client). Metrics live in agent memory, so collect them
 **before** running `reset.sh`. Raw event logs are also in each agent at `/var/log/resilience/metrics.jsonl`.
+
+### 7b. Repeatable evaluation (simulator)
+
+```bash
+python3 -m pip install matplotlib
+python3 scripts/evaluate.py            # 20 seeded trials per variant, about 2 hours on 4 cores; resumable
+python3 scripts/evaluate.py --report-only    # rebuild graphs and tables from results/raw/trials.jsonl
+```
+
+Graphs are in `results/`, explained in `docs/RESULTS.md`.
 
 ## 8. Tear down
 
@@ -261,11 +303,12 @@ scripts/teardown.sh      # minikube delete -p cr-platform
 | SUSPECT / vote-exclusion threshold | 50 / 40 |
 | stage dwell | 10 s; workload trust +2/s (stage thresholds 20/40/60/80) |
 | executor fail-over stagger | 3 s per rank |
+| recovery retries / back-off | 3 retries; 15 s, 30 s, 60 s (cap 120 s); failure judged after `validate_timeout_s` (90 s) |
 
 Edit the ConfigMap and `kubectl -n resilience rollout restart deploy` to change them.
 
 ### Note on attack injection
 
 The on-demand attack-injection script for making an *application* workload actually misbehave
-(deliverable 10) is not part of this codebase. Scenarios B, B′ and the baseline comparison, which
+(deliverable 10) is not part of this codebase, deliberately: nothing in this repository makes a real workload misbehave. Genuine-compromise scenarios run in the simulator. Scenarios B, B′ and the baseline comparison, which
 target the security layer itself, are fully scripted above.
