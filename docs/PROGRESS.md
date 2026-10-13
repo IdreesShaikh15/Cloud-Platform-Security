@@ -295,4 +295,4 @@ New: `agent/resilience/provenance.py`, `sim/scenarios.py`, `sim/demo_server.py`,
 * **Rebuild** `cr-agent:1.0` (agents, central controller and the webhook now stamp `data_source`) and `cr-dashboard:1.0` (new server and page). **Restart** the agents, the dashboard and (same image) the quorum-webhook. No manifest or ConfigMap changes; no new install. Until the agents are rebuilt, a new dashboard shows `SOURCE UNKNOWN` for their records (they send no stamp): that is the intended fail-safe.
 
 ### Commit / push
-* See the next line (filled after the push).
+* Commit **`91afecc`** ("Dashboard Part 1: ..."), pushed (no force) to `claude/cyber-resilience-platform-xxs3oh` and `claude/inspiring-thompson-ik54a3`.
