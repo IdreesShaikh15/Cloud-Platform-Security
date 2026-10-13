@@ -25,6 +25,7 @@ from .monitoring import Snapshot, TelemetrySource, fetch_availability
 from .response import ResponseBackend
 from .simhooks import CompromiseSource
 from . import observability as obs
+from . import provenance as prov
 
 log = logging.getLogger(__name__)
 CONTAIN_THRESHOLD = 0.6
@@ -59,9 +60,11 @@ class CentralController:
         self.lock = threading.RLock()
         self._comp_mode = None
         self.events = obs.EventLog("CENTRAL", clock)     # observability only
+        self.source = prov.derive(backend, telemetry)    # SIMULATOR / LIVE_CLUSTER / UNKNOWN (provenance.py)
+        self.events.source = self.metrics.source = self.source
 
     def _decide(self, now: float, target: str, action: str, note: str) -> None:
-        d = {"t": now, "action": action, "target": target, "epoch": self.states[target].epoch,
+        d = {"t": now, "action": action, "target": target, "epoch": self.states[target].epoch, "data_source": self.source,
              "stage": self.states[target].stage, "voters": ["CENTRAL"], "note": note}
         self.decisions = (self.decisions + [d])[-30:]
         self.states[target].last_decision = d
@@ -151,7 +154,7 @@ class CentralController:
                                 "reachable": bool(s and s.reachable), "healthy": bool(s and s.healthy),
                                 "detections": [{"type": d.observation.value, "confidence": d.confidence,
                                                 "summary": d.summary} for d in self.latest.get(nid, [])]}
-            return {"node": "CENTRAL", "mode": "centralized", "time": self.clock(),
+            return {"node": "CENTRAL", "mode": "centralized", "time": self.clock(), "data_source": self.source,
                     "compromised": self._comp_mode, "targets": targets,
                     "decisions": self.decisions[-15:], "agent_trust": {},
                     "observations": {t: {**m, "confidence": max_confidence(self.latest.get(t, []))}

@@ -10,7 +10,7 @@ when **one of its own security nodes is compromised**.
 - **Try it without Kubernetes:** `python3 sim/local_demo.py` (11 scenarios)
 - **What was audited, hardened and measured:** [docs/PROGRESS.md](docs/PROGRESS.md) (start here), [docs/AUDIT.md](docs/AUDIT.md),
   [docs/INVESTIGATION.md](docs/INVESTIGATION.md), [docs/SECURITY.md](docs/SECURITY.md), [docs/RECOVERY.md](docs/RECOVERY.md),
-  [docs/RESULTS.md](docs/RESULTS.md) (evaluation, graphs in `results/`)
+  [docs/RESULTS.md](docs/RESULTS.md) (evaluation, graphs in `results/`), [docs/DASHBOARD.md](docs/DASHBOARD.md) (source labelling, simulator demo controls)
 
 ## What the platform does beyond the basic cycle
 

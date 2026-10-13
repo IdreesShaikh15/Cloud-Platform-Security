@@ -162,6 +162,8 @@ class FakeTelemetry:
     """What one agent (`observer`) measures. Observers share one world, but an Overlay may
     be visible from only some vantage points (models partial / noisy visibility)."""
 
+    SOURCE = "SIMULATOR"
+
     def __init__(self, world: FakeWorld, observer: Optional[str] = None):
         self.world = world
         self.observer = observer
@@ -298,6 +300,13 @@ class LocalCluster:
             t.join(timeout=3)
         for s in self.servers:
             s.stop(0)
+        for srv in list(self.status_servers.values()):     # free the status ports (the demo server rebuilds the cluster)
+            try:
+                srv.shutdown()
+                srv.server_close()
+            except Exception:
+                pass
+        self.status_servers.clear()
 
     def mark(self, scenario: str, target: str, attacker: Optional[str] = None) -> None:
         self.backend.marker = {"id": uuid.uuid4().hex[:8], "scenario": scenario, "target": target,

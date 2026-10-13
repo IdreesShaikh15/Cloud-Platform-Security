@@ -264,3 +264,35 @@ See `docs/RESULTS.md` section 0 for the ten-line summary. Headlines: lying agent
 * **Final full run (after all code changes):** `python -m pytest -q tests` = **306 passed, 1 failed** of 307 (685 s); `python sim/local_demo.py` = **11 of 11 PASS**.
 * **The one failure was not a flaky product test.** `test_ctrl_c_during_isolation_still_cleans_up` failed in both of my full runs (Phase 4 and this one) and passed when run alone. Cause found: I launched those full runs in the background (`nohup`), where the shell sets SIGINT to "ignored", the test's child process inherited that, and the Ctrl-C the test sends was never seen. This corrects my earlier "timing-sensitive, cause not investigated" note in the Phase 4 and 5 entries. Fix: the test now restores the default SIGINT handler in the child (`tests/test_verify_isolation.py`); the file passes (15/15) when run in the background too. The full suite was not re-run after that one-line test fix; the 15 tests of the file were.
 * Baseline vs final: **57 tests / 6 scenarios -> 307 tests / 11 scenarios**.
+
+## Dashboard improvements, Part 1: source labelling and simulator demo controls
+
+**Status: DONE in the simulator and tests; NOT run against a real cluster.** Full write-up: `docs/DASHBOARD.md`. No architecture, quorum policy, workload default or agent capability was changed; all four agents remain identical.
+
+### What was done
+* **Source metadata, stamped by the producer** (`agent/resilience/provenance.py`): `K8sBackend` / `HttpTelemetrySource` declare `LIVE_CLUSTER`, `FakeBackend` / `FakeTelemetry` declare `SIMULATOR`; an agent's source is derived from its backend **and** telemetry and is `UNKNOWN` if they disagree or declare nothing. Stamped as `data_source` on every event, decision (also in the hash-chained decision log), action-audit record, evidence snapshot, metric row and `/status`, for agents and the central controller.
+* **Dashboard**: copies the stamp (disagreeing stamps become `UNKNOWN`, decisions of different sources are never merged, overall label SIMULATOR / LIVE_CLUSTER / MIXED / UNKNOWN); persistent banner (`DEMO — SIMULATED DATA` etc.); a text chip on every timeline event, decision row and metrics row.
+* **Simulator demo controls** (pick scenario, Start, Reset; 9 scenarios) via `sim/demo_server.py` + `sim/scenarios.py`, with backend-enforced isolation from live: not configured in the live manifests (403), loopback-only control address, a gate that requires EVERY reachable agent to report SIMULATOR at the moment of each request (otherwise 403 and nothing is forwarded), POST+JSON+custom header+origin check+login, fixed scenario vocabulary (only the id is forwarded), and the control server itself refuses to run in a Kubernetes pod, never imports the Kubernetes client, asserts SIMULATOR before every build/start, binds 127.0.0.1 with a per-run token.
+* **Bug fixed, "centralized baseline running" in distributed mode:** the live dashboard manifest always sets `BASELINE_URL`; the page printed the text whenever a URL was configured. The backend now returns `baseline_up` (the controller actually answers) and the page uses it.
+* `LocalCluster.stop()` now also shuts down its status servers (the demo server rebuilds the cluster on Reset).
+
+### Test evidence (commands run, actual results)
+* `python3 -m pytest -q tests` -> **349 passed in 669 s** (307 before + 15 `tests/test_provenance.py` + 27 `tests/test_sim_control.py`; 0 failed).
+* `python3 sim/local_demo.py` -> **11 of 11 PASS**.
+* Safety tests at the backend boundary: refused-and-never-forwarded for LIVE / UNKNOWN / MIXED / one live agent among simulated / nobody reachable; unconfigured live dashboard refuses even when the data looks simulated; non-loopback control address refused; only catalogue scenarios and only the id forwarded; header / content-type / origin / GET checks; dashboard login required; control server refuses a non-simulator cluster, a Kubernetes pod, a backend swapped after build, a missing/wrong token; clean-subprocess check that the Kubernetes client is never imported; live manifests contain no `SIM_CONTROL`; one end-to-end test dashboard -> control server -> real simulated cluster -> real agents' `/status`.
+* Browser check (Playwright/Chromium, real `python3 sim/demo_server.py --dashboard`): started `false-accusation` from the page, it ran, ended PASS, the page then asked for Reset; banner shown; no JavaScript errors. The LIVE / MIXED / UNKNOWN banners and "controls hidden" were checked by rewriting the API answer in the browser, which verifies the rendering only; the real gate is the pytest suite above.
+* Existing test changed (disclosed): `tests/test_observability.py::test_event_structure_and_seq` asserted the exact key set of an event; it now includes `data_source` (and asserts a bare `EventLog` is `UNKNOWN`).
+
+### Files changed
+New: `agent/resilience/provenance.py`, `sim/scenarios.py`, `sim/demo_server.py`, `docs/DASHBOARD.md`, `tests/test_provenance.py`, `tests/test_sim_control.py`, `docs/img/dashboard-p1-*.png`. Modified: `agent/resilience/{agent,actions,baseline,forensics,metrics,monitoring,observability,response}.py`, `dashboard/{server.py,index.html}`, `sim/world.py`, `tests/test_observability.py`, `README.md`, `demo.md`, `docs/PROGRESS.md`.
+
+### Limitations
+* A stamp is a claim by the producer; a fully compromised agent could claim SIMULATOR, which is why the controls also require configuration that the live manifests never set and a loopback-only control server.
+* One scenario per Reset by design. The two centralized-baseline scenarios are not offered in the dashboard.
+* Not run on a real cluster: the live path (LIVE_CLUSTER stamps from real `K8sBackend` agents, the green banner) is covered by unit tests with stand-in classes only.
+
+### Cluster rebuild / restart for Part 1
+* **Rebuild** `cr-agent:1.0` (agents, central controller and the webhook now stamp `data_source`) and `cr-dashboard:1.0` (new server and page). **Restart** the agents, the dashboard and (same image) the quorum-webhook. No manifest or ConfigMap changes; no new install. Until the agents are rebuilt, a new dashboard shows `SOURCE UNKNOWN` for their records (they send no stamp): that is the intended fail-safe.
+
+### Commit / push
+* See the next line (filled after the push).

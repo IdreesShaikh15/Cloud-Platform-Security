@@ -76,6 +76,7 @@ class ActionAudit:
         self.node, self.clock = node, clock
         self.chain = DecisionLog(path)
         self.recent: Deque[dict] = deque(maxlen=keep)
+        self.source = "UNKNOWN"                            # set by the owning agent (provenance.py)
         self.unresolved: Dict[str, dict] = {}              # task key -> latest UNKNOWN record
         self._lock = threading.Lock()
 
@@ -84,7 +85,8 @@ class ActionAudit:
                extra: Optional[dict] = None) -> dict:
         rec = {"id": uuid.uuid4().hex[:12], "t": self.clock(), "node": self.node, "action": action,
                "task": task, "workload": workload, "target": target, "epoch": epoch, "attempt": attempt,
-               "outcome": outcome, "detail": detail, "error": error[:300], "duration_s": round(duration_s, 3)}
+               "outcome": outcome, "detail": detail, "error": error[:300], "duration_s": round(duration_s, 3),
+               "data_source": self.source}
         if extra:
             rec["extra"] = extra
         with self._lock:

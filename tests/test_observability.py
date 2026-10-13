@@ -37,7 +37,8 @@ class Clock:
 def test_event_structure_and_seq():
     log = obs.EventLog("B", Clock())
     e = log.emit(obs.OBSERVE, "Agent B sees x.", "C", {"v": 1})
-    assert set(e) == {"seq", "ts", "node", "category", "target", "summary", "details"}
+    assert set(e) == {"seq", "ts", "node", "category", "target", "summary", "details", "data_source"}
+    assert e["data_source"] == "UNKNOWN"          # a bare EventLog has no established provenance
     assert (e["node"], e["category"], e["target"], e["details"]) == ("B", "OBSERVE", "C", {"v": 1})
     log.emit(obs.ACTION, "two")
     log.emit(obs.ACTION, "three")

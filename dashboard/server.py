@@ -12,6 +12,9 @@ anything.
   GET /api/export       every buffered event from every agent, as a JSON download
   GET /api/metrics      per-incident metrics from every agent/controller
   GET /api/snapshot/<agent>/<key>   one evidence snapshot, as a JSON download
+  GET  /api/sim/state   demo controls (SIMULATOR only; see docs/DASHBOARD.md)
+  POST /api/sim/start   {"scenario": id}   both refused unless the dashboard is wired to the simulator
+  POST /api/sim/reset                      AND every reachable agent reports data_source SIMULATOR
 
 Local use (against the simulator):
   STATUS_URLS=http://localhost:50251/status,... [BASELINE_URL=http://localhost:50261] \\
@@ -26,6 +29,7 @@ import secrets
 import statistics
 import threading
 import time
+import urllib.error
 import urllib.request
 from collections import Counter, deque
 from concurrent.futures import ThreadPoolExecutor
@@ -47,6 +51,27 @@ def agent_urls() -> dict:
     with open(os.environ.get("RESILIENCE_CONFIG", "/etc/resilience/config.json")) as fh:
         cfg = json.load(fh)
     return {nid: spec["status_url"] for nid, spec in cfg["nodes"].items()}
+
+
+# Data provenance (mirrors agent/resilience/provenance.py; the dashboard image does not contain the agent package,
+# tests/test_provenance.py checks the two stay identical).
+SIMULATOR, LIVE_CLUSTER, UNKNOWN, MIXED = "SIMULATOR", "LIVE_CLUSTER", "UNKNOWN", "MIXED"
+VALID_SOURCES = (SIMULATOR, LIVE_CLUSTER)
+
+
+def clean_source(*claims) -> str:
+    """The provenance of one record. Each claim is what a producer stamped on it. Anything that is not exactly
+    SIMULATOR or LIVE_CLUSTER is UNKNOWN, and claims that DISAGREE (a record stamped differently from the status it
+    arrived in) are UNKNOWN too: never trust either one."""
+    got = {c if c in VALID_SOURCES else UNKNOWN for c in claims if c is not None}
+    return next(iter(got)) if len(got) == 1 else UNKNOWN
+
+
+def aggregate_source(sources) -> str:
+    s = {x if x in VALID_SOURCES else UNKNOWN for x in sources}
+    if not s:
+        return UNKNOWN
+    return next(iter(s)) if len(s) == 1 else MIXED
 
 
 URLS = agent_urls()
@@ -103,7 +128,8 @@ class Collector:
                     if last_seq is not None and e["seq"] <= last_seq:
                         continue
                     self.gseq += 1
-                    self.events.append({**e, "gseq": self.gseq, "source": sid})
+                    self.events.append({**e, "gseq": self.gseq, "source": sid,
+                                        "data_source": clean_source(e.get("data_source"), res.get("data_source"))})
                 if evs:
                     last_seq = max(e["seq"] for e in evs)
                 self.cursor[sid] = (boot, last_seq if last_seq is not None else res.get("event_seq"))
@@ -367,8 +393,9 @@ def aggregate() -> dict:
     srcs = dict(live, **({"CENTRAL": base} if base else {}))
     for sid, s in srcs.items():
         for d in s.get("decisions", []):
-            k = (d["action"], d["target"], d["epoch"], d["stage"])
-            m = merged.setdefault(k, {**d, "seen_by": []})
+            ds = clean_source(d.get("data_source"), s.get("data_source"))
+            k = (d["action"], d["target"], d["epoch"], d["stage"], ds)      # never merge records of different sources
+            m = merged.setdefault(k, {**d, "seen_by": [], "data_source": ds})
             m["seen_by"].append(sid)
             if not m.get("justification") and d.get("justification"):
                 m["justification"] = d["justification"]
@@ -377,7 +404,12 @@ def aggregate() -> dict:
                         key=lambda r: r["t"], reverse=True)[:10]
     keys = sorted({k for s in live.values() for k in (s.get("pending_votes") or {})})
     pending = {k: _vote_view(k, live, ids) for k in keys}
+    per_source = {sid: clean_source(s.get("data_source")) for sid, s in statuses.items()}
     return {"mode": "centralized" if base and not live else "distributed",
+            "data_source": aggregate_source(per_source.values()), "data_sources": per_source,
+            # The baseline controller is "running" only if it ANSWERS, not merely because a URL is configured
+            # (the live dashboard manifest always configures one, even when no controller is deployed).
+            "baseline_up": base is not None,
             "nodes": nodes, "decisions": uniq[:15], "rejections": rejections,
             "investigations": investigations_view(live),
             "decision_logs": decision_logs_view(live),
@@ -420,13 +452,88 @@ def agent_view(sid: str) -> dict:
     return {"id": sid, "up": s is not None, "status": s, "events": evs}
 
 
+# --------------------------------------------------------------------------- simulator demo controls
+# SAFETY MODEL (docs/DASHBOARD.md). These endpoints can only ever talk to the simulator's own control server:
+#   1. SIM_CONTROL_URL + SIM_CONTROL_TOKEN must be configured. The live Kubernetes manifest sets neither.
+#   2. The control URL must be a loopback address, so it can never point at anything on a cluster network.
+#   3. EVERY reachable agent must report data_source == SIMULATOR right now. LIVE_CLUSTER, UNKNOWN, MIXED or "no data"
+#      all refuse, and the request is never forwarded.
+#   4. Only POST with JSON, a custom header (blocks cross-site form posts) and the dashboard's own login.
+#   5. The request can only name a scenario from the controller's own list; nothing else is forwarded.
+# The simulator control server (sim/demo_server.py) re-checks its own invariants independently.
+SIM_CONTROL_URL = os.environ.get("SIM_CONTROL_URL", "").rstrip("/")
+SIM_CONTROL_TOKEN = os.environ.get("SIM_CONTROL_TOKEN", "")
+LOOPBACK = ("127.0.0.1", "localhost", "::1")
+
+
+def sim_gate(statuses: dict = None):
+    """(allowed, reason). Pure function of configuration and what the agents themselves report."""
+    if not SIM_CONTROL_URL or not SIM_CONTROL_TOKEN:
+        return False, "simulator controls are not configured on this dashboard (live mode)"
+    host = urlparse(SIM_CONTROL_URL).hostname
+    if host not in LOOPBACK:
+        return False, "refused: the simulator control address is not a loopback address"
+    st = COLLECTOR.snapshot() if statuses is None else statuses
+    live = {k: v for k, v in st.items() if k in URLS or k == "CENTRAL"}
+    if not live:
+        return False, "refused: no agent is reachable, so the data source cannot be established"
+    src = aggregate_source(clean_source(s.get("data_source")) for s in live.values())
+    if src != SIMULATOR:
+        return False, f"refused: the data source is {src}, not SIMULATOR"
+    return True, "ok"
+
+
+def sim_call(method: str, path: str, body: dict = None, timeout: float = 5.0):
+    req = urllib.request.Request(f"{SIM_CONTROL_URL}{path}", method=method,
+                                 data=json.dumps(body).encode() if body is not None else None,
+                                 headers={"X-CR-Sim-Token": SIM_CONTROL_TOKEN, "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.status, json.loads(r.read())
+    except urllib.error.HTTPError as exc:
+        try:
+            return exc.code, json.loads(exc.read())
+        except Exception:
+            return exc.code, {"error": "simulator control server refused the request"}
+    except Exception as exc:
+        return 502, {"error": f"simulator control server unreachable: {exc.__class__.__name__}"}
+
+
+def sim_state() -> dict:
+    ok, why = sim_gate()
+    if not ok:
+        return {"enabled": False, "reason": why, "scenarios": [], "running": None, "last": None}
+    code, body = sim_call("GET", "/state")
+    if code != 200:
+        return {"enabled": False, "reason": body.get("error", "control server error"), "scenarios": [],
+                "running": None, "last": None}
+    return {"enabled": True, "reason": "ok", **body}
+
+
+def sim_action(kind: str, payload: dict):
+    """Returns (http_status, body). Never forwards unless sim_gate() passes at this very moment."""
+    ok, why = sim_gate()
+    if not ok:
+        return 403, {"error": why}
+    if kind == "reset":
+        return sim_call("POST", "/reset", {})
+    code, body = sim_call("GET", "/state")
+    if code != 200:
+        return code, body
+    sid = payload.get("scenario")
+    if not isinstance(sid, str) or sid not in {s["id"] for s in body.get("scenarios", [])}:
+        return 400, {"error": "unknown scenario"}
+    return sim_call("POST", "/start", {"scenario": sid})
+
+
 def metrics() -> list:
     urls = [u.replace("/status", "/metrics") for u in URLS.values()]
     if BASELINE:
         urls.append(f"{BASELINE}/metrics")
     rows = []
     for res in POOL.map(get, urls):
-        rows.extend(res or [])
+        for r in (res or []):
+            rows.append({**r, "data_source": clean_source(r.get("data_source"))})
     return rows
 
 
@@ -455,8 +562,28 @@ class Handler(BaseHTTPRequestHandler):
         body = LOGIN_PAGE.replace(b"__ERR__", (b'<div class="m e">' + err.encode() + b"</div>") if err else b"")
         return self._send(code, body, "text/html; charset=utf-8")
 
+    def _sim_post(self, kind: str):
+        if not AUTH.request_ok(self.headers):
+            return self._send(401, b'{"error":"authentication required"}', "application/json")
+        if self.headers.get("X-CR-Control") != "1" or "application/json" not in (self.headers.get("Content-Type") or ""):
+            return self._send(400, b'{"error":"missing X-CR-Control header or JSON content type"}', "application/json")
+        host, origin = self.headers.get("Host", ""), self.headers.get("Origin")
+        if origin and urlparse(origin).netloc != host:
+            return self._send(403, b'{"error":"cross-origin request refused"}', "application/json")
+        try:
+            n = min(int(self.headers.get("Content-Length") or 0), 1024)
+            payload = json.loads(self.rfile.read(n) or b"{}")
+            if not isinstance(payload, dict):
+                raise ValueError
+        except ValueError:
+            return self._send(400, b'{"error":"bad JSON body"}', "application/json")
+        code, body = sim_action(kind, payload)
+        return self._send(code, json.dumps(body, default=str).encode(), "application/json")
+
     def do_POST(self):
         url = urlparse(self.path)
+        if url.path in ("/api/sim/start", "/api/sim/reset"):
+            return self._sim_post(url.path.rsplit("/", 1)[1])
         if url.path != "/login" or not AUTH.enabled:
             return self._send(404, b"not found", "text/plain")
         if AUTH.locked_out(self._ip()):
@@ -509,6 +636,8 @@ class Handler(BaseHTTPRequestHandler):
                               {"Content-Disposition": f'attachment; filename="{name}"'})
         if p == "/api/metrics":
             return self._json(metrics())
+        if p == "/api/sim/state":
+            return self._json(sim_state())
         if p in ("/", "/index.html"):
             with open(os.path.join(HERE, "index.html"), "rb") as fh:
                 return self._send(200, fh.read(), "text/html; charset=utf-8")

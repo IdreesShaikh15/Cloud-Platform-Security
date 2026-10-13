@@ -41,6 +41,17 @@ STATUS_URLS=http://localhost:50261/status BASELINE_URL=http://localhost:50261 \
 
 ---
 
+### 0b. Simulator with on-dashboard scenario controls
+
+```bash
+python3 sim/demo_server.py --dashboard     # http://localhost:8091 : banner "DEMO — SIMULATED DATA", scenario picker, Start, Reset
+```
+
+Every event, decision and metric row is labelled SIMULATOR / LIVE CLUSTER. The controls exist only against the simulator; the backend refuses
+them for a live cluster (`docs/DASHBOARD.md`). Live scenarios below stay terminal scripts.
+
+---
+
 ## 1. Deploy (distributed mode)
 
 ```bash

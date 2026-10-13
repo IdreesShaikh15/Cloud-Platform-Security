@@ -50,6 +50,8 @@ API_TIMEOUT_S = (3.0, 10.0)
 
 
 class K8sBackend:
+    SOURCE = "LIVE_CLUSTER"          # talks to the real Kubernetes API (agent/resilience/provenance.py)
+
     def __init__(self, healthcare_ns: str, resilience_ns: str, known_good_image: str,
                  api_timeout_s: tuple = API_TIMEOUT_S):
         from kubernetes import client, config  # imported lazily: not needed for local sim
@@ -210,6 +212,7 @@ class FakeBackend:
     reviewed exactly as the real webhook would review it: denied changes raise AdmissionDenied
     and are recorded in `denied`."""
 
+    SOURCE = "SIMULATOR"             # the in-memory fake cluster (agent/resilience/provenance.py)
     ENFORCED_USER = "system:serviceaccount:resilience:resilience-agent"
 
     def __init__(self, recovery_delay_s: float = 3.0,

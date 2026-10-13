@@ -59,6 +59,7 @@ class EventLog:
         self.node = node
         self.clock = clock
         self.boot = uuid.uuid4().hex[:8]         # lets the dashboard notice a restart
+        self.source = "UNKNOWN"                  # SIMULATOR / LIVE_CLUSTER / UNKNOWN: stamped on every event (provenance.py)
         self._lock = threading.Lock()
         self._ring: Deque[dict] = deque(maxlen=maxlen)
         self._seq = 0
@@ -100,7 +101,8 @@ class EventLog:
                     self._last[key] = (now, fingerprint, 0)
                 self._seq += 1
                 ev = {"seq": self._seq, "ts": now, "node": self.node, "category": category,
-                      "target": target, "summary": summary, "details": dict(details or {})}
+                      "target": target, "summary": summary, "details": dict(details or {}),
+                      "data_source": self.source}
                 if suppressed:
                     ev["details"]["suppressed_repeats"] = suppressed
                 self._ring.append(ev)

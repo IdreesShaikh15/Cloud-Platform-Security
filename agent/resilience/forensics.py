@@ -232,7 +232,7 @@ class SnapshotManager:
             snap = {
                 "incident": {"target": target, "workload": workload, "epoch": epoch, "tag": tag,
                              "reason": reason, "captured_by": a.id, "captured_at": now,
-                             "finished_at": a.clock()},
+                             "finished_at": a.clock(), "data_source": a.source},
                 "decision": decision or {},
                 "pods": pods, "logs": logs,
                 "observed": {k: v for k, v in observed.items() if k != "file_hashes"},
@@ -250,7 +250,7 @@ class SnapshotManager:
         except Exception as exc:                        # a snapshot problem must never break recovery
             log.exception("snapshot failed")
             snap = {"incident": {"target": target, "workload": workload, "epoch": epoch, "tag": tag,
-                                 "reason": reason, "captured_by": a.id, "captured_at": now},
+                                 "reason": reason, "captured_by": a.id, "captured_at": now, "data_source": a.source},
                     "decision": decision or {}, "pods": [], "logs": {}, "observed": {},
                     "file_hashes": {}, "scope": SCOPE_STATEMENT,
                     "not_captured": [{"item": "everything", "reason": f"snapshot failed: {exc}"}]}
@@ -321,7 +321,7 @@ class SnapshotManager:
                 i = s["incident"]
                 out.append({"key": key, "target": i["target"], "workload": i["workload"], "epoch": i["epoch"],
                             "tag": i.get("tag", "contain"), "reason": i.get("reason", ""),
-                            "captured_at": i.get("captured_at"), "agent": i.get("captured_by"),
+                            "captured_at": i.get("captured_at"), "agent": i.get("captured_by"), "data_source": i.get("data_source", "UNKNOWN"),
                             "pods": len(s.get("pods", [])),
                             "log_lines": sum(len(l["lines"]) for l in s.get("logs", {}).values()),
                             "not_captured": s.get("not_captured", []), "digest": s.get("digest", "")[:16],

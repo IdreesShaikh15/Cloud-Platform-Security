@@ -52,8 +52,10 @@ class MetricsRecorder:
         self._lock = threading.Lock()
         self.incidents: Dict[str, dict] = {}
         self.events: List[dict] = []
+        self.source = "UNKNOWN"          # set by the owning agent/controller (provenance.py); stamped on every row
 
     def _write(self, rec: dict) -> None:
+        rec["data_source"] = self.source
         self.events.append(rec)
         self.events = self.events[-2000:]
         log.info("METRIC %s", json.dumps(rec))
@@ -109,7 +111,7 @@ class MetricsRecorder:
                 row = {"incident": inc["id"], "scenario": inc["scenario"], "target": inc["target"],
                        "attacker": inc.get("attacker"), "injected_at": inc["injected_at"],
                        "node": self.node_id, "mode": self.mode,
-                       "false_isolation": inc["false_isolation"]}
+                       "false_isolation": inc["false_isolation"], "data_source": self.source}
                 ev = inc["events"]
                 for key, name in DURATIONS.items():
                     row[key] = round(ev[name] - inc["injected_at"], 3) if name in ev else None

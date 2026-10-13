@@ -52,6 +52,8 @@ def _get_json(url: str, timeout: float) -> tuple:
 
 
 class HttpTelemetrySource:
+    SOURCE = "LIVE_CLUSTER"          # polls real workloads over HTTP (agent/resilience/provenance.py)
+
     def __init__(self, cfg: ClusterConfig, timeout_s: float = 1.5):
         self.cfg = cfg
         self.timeout = timeout_s

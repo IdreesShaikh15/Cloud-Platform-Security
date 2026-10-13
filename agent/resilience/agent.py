@@ -33,6 +33,7 @@ from .decisionlog import DecisionLog, digest_of
 from .detection import Detection, Detector, max_confidence
 from .evidence import Action, Evidence, ObsType, ReplayCache, Vote, open_envelope, seal
 from . import actions as act
+from . import provenance as prov
 from .actions import ActionAudit, classify_error
 from .forensics import SnapshotManager
 from .certificate import (ANNOTATION as QC_ANNOTATION, ActionPending, CertificateInvalid,
@@ -107,6 +108,11 @@ class ResilienceAgent:
         self.compromise = compromise or CompromiseSource(path=None)
         self.clock = clock
         self.events = obs.EventLog(node_id, clock)  # observability only
+        # Where this agent's data comes from (SIMULATOR / LIVE_CLUSTER / UNKNOWN): derived from its backend and its
+        # telemetry source, which must agree. Stamped on every event, decision, action record and metric row.
+        self.source = prov.derive(backend, telemetry)
+        self.events.source = self.source
+        self.metrics.source = self.source
         self._transport = None                     # PeerClient, attached later
 
         q = cfg.quorum
@@ -141,6 +147,7 @@ class ResilienceAgent:
         self.decision_log = DecisionLog(decision_log_path)       # tamper-evident (docs/SECURITY.md)
         self.forensics = SnapshotManager(self, snapshot_dir)     # evidence before replacement (docs/RECOVERY.md)
         self.audit = ActionAudit(node_id, audit_log_path, clock)  # every cluster action + its observable result
+        self.audit.source = self.source
         self._rec_seen: Dict[Tuple[str, int, int], float] = {}   # (target, epoch, attempt) -> redeploy first seen in cluster
         self._trust_path = trust_state_path
         self._trust_saved: Optional[str] = None
@@ -738,11 +745,11 @@ class ResilienceAgent:
         v = c.sample
         d = {"t": now, "action": v.action.value, "target": v.target, "epoch": v.epoch,
              "stage": v.stage, "voters": c.voters, "note": note,
-             "justification": justification or {}}
+             "justification": justification or {}, "data_source": self.source}
         self.decisions.append(d)
         self.decision_log.append({"t": now, "action": v.action.value, "target": v.target,
                                   "workload": self.workload(v.target), "epoch": v.epoch, "stage": v.stage,
-                                  "voters": c.voters, "note": note, "proposal": c.action_key,
+                                  "voters": c.voters, "note": note, "proposal": c.action_key, "data_source": self.source,
                                   "justification_digest": digest_of(justification or {})})
         self.states[v.target].last_decision = d
         log.info("QUORUM %s on %s (epoch %d%s) by %s", v.action.value, v.target, v.epoch,
@@ -1213,7 +1220,7 @@ class ResilienceAgent:
                 targets[nid]["display_state"] = (
                     "NEEDS_ATTENTION" if st.attention else "UNKNOWN" if targets[nid]["unknown_action"] else st.phase)
             return {
-                "node": self.id, "mode": "distributed", "time": now,
+                "node": self.id, "mode": "distributed", "time": now, "data_source": self.source,
                 "agent_name": self.cfg.nodes[self.id].agent_name,
                 "compromised": self._comp.mode if self._comp.active else None,
                 "agent_trust": {n: round(self.trust_of(n), 1) for n in self.cfg.nodes},

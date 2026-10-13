@@ -45,7 +45,7 @@
   .chip.sel { background:var(--card2); color:var(--fg); border-color:var(--info); }
   input[type=search] { background:var(--bg); color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:5px 8px; font:inherit; font-size:12px; min-width:200px; flex:1; max-width:340px; }
   #timeline { max-height:460px; overflow-y:auto; margin-top:6px; }
-  .ev { display:grid; grid-template-columns:70px 72px 150px 1fr; gap:8px; padding:5px 8px; border-left:3px solid var(--line);
+  .ev { display:grid; grid-template-columns:70px 72px 215px 1fr; gap:8px; padding:5px 8px; border-left:3px solid var(--line);
         border-bottom:1px solid var(--line); cursor:pointer; font-size:12px; }
   .ev:hover { background:var(--card2); }
   .ev .cat { color:var(--mut); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -65,10 +65,21 @@
   #invreview .rv { background:var(--warn); color:#000; font-weight:600; padding:5px 8px; border-radius:6px; margin:8px 0 2px; }
   .timeleft { display:inline-block; width:70px; height:6px; background:var(--line); border-radius:3px; vertical-align:middle; margin-right:6px; overflow:hidden; }
   .timeleft i { display:block; height:100%; background:var(--info); }
+  /* data provenance: every event, decision and metric row says where it came from (text, not only colour) */
+  #srcbanner { display:none; position:sticky; top:0; z-index:20; text-align:center; font-weight:700; letter-spacing:.04em; padding:7px 10px; margin:-16px -16px 12px; }
+  #srcbanner.SIMULATOR { display:block; background:#d29922; color:#000; }
+  #srcbanner.MIXED, #srcbanner.UNKNOWN { display:block; background:var(--bad); color:#000; }
+  #srcbanner.LIVE_CLUSTER { display:block; background:#1f6f43; color:#fff; font-weight:600; }
+  .src { font-size:10px; font-weight:700; padding:0 5px; border-radius:4px; border:1px solid currentColor; white-space:nowrap; }
+  .src-SIMULATOR { color:#d29922; } .src-LIVE_CLUSTER { color:#3fb950; } .src-UNKNOWN, .src-MIXED { color:#f85149; }
+  #simctl { display:none; border:1px dashed #d29922; } #simctl.on { display:block; }
+  #simctl select, #simctl button { font:inherit; font-size:13px; }
+  #simctl select { background:var(--bg); color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:5px 8px; max-width:420px; }
   #pausebanner { display:none; background:var(--warn); color:#000; font-weight:600; text-align:center; padding:4px; border-radius:6px; margin-top:8px; }
 </style>
 </head>
 <body>
+<div id="srcbanner" role="status"></div>
 <div class="top">
   <div>
     <h1>Distributed Cyber-Resilience Platform</h1>
@@ -83,6 +94,11 @@
 </div>
 <div id="pausebanner">PAUSED - the screen is frozen; events are still being collected and will appear when you resume.</div>
 <div class="grid" id="nodes"></div>
+<section id="simctl"><b>Simulator demo controls</b> <span class="src src-SIMULATOR">SIMULATOR ONLY</span>
+  <span class="mut">(these buttons exist only when this dashboard is connected to the simulator; the backend refuses them for a live cluster. Live scenarios are terminal scripts.)</span>
+  <div class="filters" style="margin-top:8px"><select id="simsel" aria-label="Scenario"></select>
+    <button id="simstart">Start scenario</button> <button id="simreset">Reset simulator</button> <span id="simstat" class="mut"></span></div>
+  <div id="simdesc" class="mut"></div><div id="simlast"></div></section>
 <section id="invsec" style="display:none">
   <b>Investigations</b> <span class="mut">(borderline or disputed evidence is re-checked by all four agents for a few seconds before anyone acts; nothing is isolated by an investigation itself)</span>
   <div id="invreview"></div>
@@ -123,6 +139,8 @@ const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;
 const t = x => x ? new Date(x*1000).toLocaleTimeString() : "-";
 const col = v => v == null ? "var(--line)" : v >= 70 ? "var(--ok)" : v >= 40 ? "var(--warn)" : "var(--bad)";
 const bar = v => `<div class="bar"><i style="width:${v ?? 0}%;background:${col(v)}"></i></div>`;
+const SRC_LABEL = {SIMULATOR:"SIMULATOR", LIVE_CLUSTER:"LIVE CLUSTER", UNKNOWN:"SOURCE UNKNOWN", MIXED:"MIXED SOURCES"};
+const srcTag = x => { x = SRC_LABEL[x] ? x : "UNKNOWN"; return `<span class="src src-${x}" title="Where this record came from, stamped by the agent that produced it">${SRC_LABEL[x]}</span>`; };
 const nb = n => `<span class="nb"><i style="background:var(--node-${esc(n)},var(--mut))"></i>${n === "CENTRAL" ? "CTRL" : esc(n)}</span>`;
 const propText = k => { const [a,tg,ep,st] = String(k).split(":"); return a === "ADVANCE_STAGE" ? `move ${tg} to ${st} (epoch ${ep})` : a === "RETRY_RECOVERY" ? `redeploy ${tg} again, attempt ${st} (epoch ${ep})` : `${a} ${tg} (epoch ${ep})`; };
 
@@ -153,7 +171,7 @@ function evRow(e) {
   const k = String(e.gseq ?? `${e.node}-${e.seq}`);
   return `<div class="ev cat-${e.category}" data-k="${k}" style="border-left-color:var(--node-${esc(e.node)},var(--line))">
     <span class="mut">${t(e.ts)}</span><span>${nb(e.node)}</span>
-    <span class="cat">${ICON[e.category]||""} ${e.category}</span><span>${esc(e.summary)}</span>
+    <span class="cat">${srcTag(e.data_source)} ${ICON[e.category]||""} ${e.category}</span><span>${esc(e.summary)}</span>
     ${openEv.has(k) ? `<div class="det"><pre>${esc(JSON.stringify({target:e.target, ...e.details}, null, 2))}</pre></div>` : ""}</div>`;
 }
 function filtered(list) {
@@ -220,9 +238,48 @@ function renderRecovery(s) {
       <td><span class="tag ${ACT_CLASS[r.outcome] || ""}">${esc(r.outcome.replace(/_/g, " "))}</span></td><td class="mut">${esc(r.detail)}${r.error ? " · " + esc(r.error) : ""}</td></tr>`).join("") : "";
 }
 
+function renderBanner(s) {
+  const b = document.getElementById("srcbanner"), d = s.data_source || "UNKNOWN";
+  b.className = d;
+  b.textContent = d === "SIMULATOR" ? "DEMO — SIMULATED DATA (simulator, not a real cluster)"
+    : d === "LIVE_CLUSTER" ? "LIVE CLUSTER DATA"
+    : d === "MIXED" ? "MIXED DATA SOURCES — simulated and live data are both present; every row is labelled, do not trust totals"
+    : "DATA SOURCE UNKNOWN — provenance could not be established";
+  b.title = Object.entries(s.data_sources || {}).map(([k, v]) => k + ": " + v).join("   ");
+}
+// ---------------------------------------------------------------- simulator demo controls (rendered only when the BACKEND says they are allowed)
+let simBusy = false;
+async function refreshSim() {
+  const box = document.getElementById("simctl");
+  let st; try { st = await (await fetch("api/sim/state")).json(); } catch (e) { return; }
+  box.classList.toggle("on", !!st.enabled);
+  if (!st.enabled) return;
+  const sel = document.getElementById("simsel");
+  if (sel.options.length !== st.scenarios.length) sel.innerHTML = st.scenarios.map(x => `<option value="${esc(x.id)}">${esc(x.title)} (~${x.est_s}s)</option>`).join("");
+  const cur = st.scenarios.find(x => x.id === sel.value);
+  document.getElementById("simdesc").textContent = cur ? `${cur.description} Expected: ${cur.expect}` : "";
+  const busy = st.status !== "idle";
+  document.getElementById("simstart").disabled = busy || st.needs_reset;
+  document.getElementById("simreset").disabled = st.status === "resetting";
+  document.getElementById("simstat").textContent = st.status === "running" ? `running: ${st.running}…` : st.status === "resetting" ? "resetting…"
+    : st.needs_reset ? "press Reset before the next scenario" : "ready";
+  document.getElementById("simlast").innerHTML = st.last ? `<div class="hint">Last scenario: <b>${esc(st.last.scenario)}</b> ${st.last.ok ? '<span class="tag ok">PASS</span>' : '<span class="tag bad">FAIL</span>'} in ${st.last.duration_s}s: ${esc(st.last.detail)}</div>` : "";
+}
+async function simPost(path, body) {
+  if (simBusy) return; simBusy = true;
+  try {
+    const r = await fetch(path, {method: "POST", headers: {"Content-Type": "application/json", "X-CR-Control": "1"}, body: JSON.stringify(body || {})});
+    if (!r.ok) { const j = await r.json().catch(() => ({})); document.getElementById("simstat").textContent = "refused: " + (j.error || r.status); }
+  } finally { simBusy = false; refreshSim(); }
+}
+document.getElementById("simstart").onclick = () => simPost("api/sim/start", {scenario: document.getElementById("simsel").value});
+document.getElementById("simreset").onclick = () => simPost("api/sim/reset", {});
+document.getElementById("simsel").onchange = refreshSim;
+
 function renderState(s) {
   lastState = s;
-  document.getElementById("sub").textContent = `mode: ${s.mode} · data from ${t(s.last_poll)}` + (s.baseline ? " · centralized baseline running" : "");
+  document.getElementById("sub").textContent = `mode: ${s.mode} · data from ${t(s.last_poll)}` + (s.baseline_up ? " · centralized baseline running" : "");
+  renderBanner(s);
   const cc = s.mode === "centralized" && s.central_compromised; if (cc) document.getElementById("sub").textContent += ` · controller compromise simulation: ${cc}`;
   document.getElementById("nodes").innerHTML = Object.entries(s.nodes).map(([id,n]) => `
     <div class="card ${n.display_state === 'NEEDS_ATTENTION' ? 'ISOLATED' : n.phase}" data-node="${id}" title="Open agent ${id}'s view">
@@ -251,11 +308,11 @@ function renderState(s) {
   } else { de.textContent = ""; }
 
   // decisions (expandable)
-  document.getElementById("dec").innerHTML = "<tr><th>time</th><th>action</th><th>target</th><th>epoch</th><th>stage</th><th>signed by</th><th></th></tr>" +
+  document.getElementById("dec").innerHTML = "<tr><th>time</th><th>source</th><th>action</th><th>target</th><th>epoch</th><th>stage</th><th>signed by</th><th></th></tr>" +
     s.decisions.map(d => { const k = `${d.action}:${d.target}:${d.epoch}:${d.stage}`; const open = expandedDec.has(k);
-      return `<tr class="click" data-dec="${esc(k)}"><td>${t(d.t)}</td><td>${d.action}</td><td>${d.target}</td><td>${d.epoch}</td><td>${esc(d.stage)}</td>
+      return `<tr class="click" data-dec="${esc(k)}"><td>${t(d.t)}</td><td>${srcTag(d.data_source)}</td><td>${d.action}</td><td>${d.target}</td><td>${d.epoch}</td><td>${esc(d.stage)}</td>
         <td>${d.voters.map(nb).join(" ")}</td><td class="mut">${open ? "▾ hide" : "▸ why?"}</td></tr>` +
-        (open ? `<tr class="expand"><td colspan="7">${justification(d)}</td></tr>` : ""); }).join("");
+        (open ? `<tr class="expand"><td colspan="8">${justification(d)}</td></tr>` : ""); }).join("");
 
   // pending votes: who voted, who hasn't and why
   const pd = s.pending_detail || {};
@@ -390,17 +447,17 @@ async function refreshMetrics() {
   try {
     const rows = await (await fetch("api/metrics")).json();
     const by = {};
-    for (const r of rows) { const k = r.incident; (by[k] ||= []).push(r); }
+    for (const r of rows) { const k = r.incident + "|" + (r.data_source || "UNKNOWN"); (by[k] ||= []).push(r); }
     const keys = ["ttd_s","tti_s","ttr_s","ttv_s","ttf_s","trust_recovery_s","time_to_flag_s"];
     const min = (rs,k) => { const v = rs.map(r=>r[k]).filter(x=>x!=null); return v.length ? Math.min(...v).toFixed(1) : "-"; };
-    document.getElementById("met").innerHTML = "<tr><th>scenario</th><th>target</th><th>mode</th><th>TTD</th><th>TTI</th><th>TTR</th><th>validated</th><th>full</th><th>trust-recovery</th><th>flag attacker</th><th>false isolation</th><th>availability</th></tr>" +
-      Object.values(by).map(rs => `<tr><td>${esc(rs[0].scenario)}</td><td>${rs[0].target}</td><td>${rs[0].mode}</td>${keys.map(k=>`<td>${min(rs,k)}</td>`).join("")}<td>${rs.some(r=>r.false_isolation)?'<b style="color:var(--bad)">YES</b>':'no'}</td><td>${rs.find(r=>r.availability!=null)?.availability ?? "-"}</td></tr>`).join("");
+    document.getElementById("met").innerHTML = "<tr><th>source</th><th>scenario</th><th>target</th><th>mode</th><th>TTD</th><th>TTI</th><th>TTR</th><th>validated</th><th>full</th><th>trust-recovery</th><th>flag attacker</th><th>false isolation</th><th>availability</th></tr>" +
+      Object.values(by).map(rs => `<tr><td>${srcTag(rs[0].data_source)}</td><td>${esc(rs[0].scenario)}</td><td>${rs[0].target}</td><td>${rs[0].mode}</td>${keys.map(k=>`<td>${min(rs,k)}</td>`).join("")}<td>${rs.some(r=>r.false_isolation)?'<b style="color:var(--bad)">YES</b>':'no'}</td><td>${rs.find(r=>r.availability!=null)?.availability ?? "-"}</td></tr>`).join("");
   } catch (e) {}
 }
 
 // ---------------------------------------------------------------- refresh loop + pause
 async function refresh() {
-  try { renderState(await (await fetch("api/state")).json()); await pullEvents(); if (openAgent) await refreshDrawer(); }
+  try { renderState(await (await fetch("api/state")).json()); await pullEvents(); refreshSim(); if (openAgent) await refreshDrawer(); }
   catch (e) { document.getElementById("sub").textContent = "dashboard backend unreachable: " + e; }
 }
 function start() { refresh(); refreshMetrics(); timers = [setInterval(refresh, 1000), setInterval(refreshMetrics, 5000)]; }
