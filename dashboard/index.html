@@ -75,6 +75,19 @@
   #simctl { display:none; border:1px dashed #d29922; } #simctl.on { display:block; }
   #simctl select, #simctl button { font:inherit; font-size:13px; }
   #simctl select { background:var(--bg); color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:5px 8px; max-width:420px; }
+  /* tabs + summary counters. Severity is always shown as a word and an icon, never by colour alone. */
+  .tabs { display:flex; gap:4px; flex-wrap:wrap; border-bottom:1px solid var(--line); margin:10px 0 4px; }
+  .tabs button { background:transparent; border:1px solid transparent; border-bottom:none; border-radius:6px 6px 0 0; padding:7px 14px; color:var(--mut); }
+  .tabs button[aria-selected="true"] { background:var(--card); color:var(--fg); border-color:var(--line); font-weight:700; box-shadow:inset 0 -2px 0 var(--info); }
+  .tabs button:focus-visible { outline:2px solid var(--info); outline-offset:1px; }
+  .panel[hidden] { display:none; }
+  .badge { font-size:11px; font-weight:700; padding:0 6px; border-radius:9px; background:var(--line); color:var(--fg); }
+  .badge:empty { display:none; } .badge.warn { background:var(--warn); color:#000; } .badge.bad { background:var(--bad); color:#000; }
+  .counters { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px; margin:12px 0 4px; }
+  .tile { background:var(--card); border-radius:8px; padding:10px 12px; border-left:4px solid var(--ok); }
+  .tile.warn { border-color:var(--warn); } .tile.bad { border-color:var(--bad); }
+  .tile .k { font-size:12px; color:var(--mut); } .tile .v { font-size:26px; font-weight:700; line-height:1.15; }
+  .tile .s { font-size:12px; margin-top:2px; } .tile .s b { letter-spacing:.03em; }
   #pausebanner { display:none; background:var(--warn); color:#000; font-weight:600; text-align:center; padding:4px; border-radius:6px; margin-top:8px; }
 </style>
 </head>
@@ -93,19 +106,24 @@
   </div>
 </div>
 <div id="pausebanner">PAUSED - the screen is frozen; events are still being collected and will appear when you resume.</div>
+<nav class="tabs" role="tablist" aria-label="Dashboard sections">
+  <button role="tab" id="tab-overview" data-tab="overview" aria-controls="panel-overview" aria-selected="true">Overview</button>
+  <button role="tab" id="tab-incidents" data-tab="incidents" aria-controls="panel-incidents" aria-selected="false">Incidents <span class="badge" id="badge-incidents"></span></button>
+  <button role="tab" id="tab-investigations" data-tab="investigations" aria-controls="panel-investigations" aria-selected="false">Investigations <span class="badge" id="badge-investigations"></span></button>
+  <button role="tab" id="tab-recovery" data-tab="recovery" aria-controls="panel-recovery" aria-selected="false">Recovery <span class="badge" id="badge-recovery"></span></button>
+  <button role="tab" id="tab-evaluation" data-tab="evaluation" aria-controls="panel-evaluation" aria-selected="false">Evaluation</button>
+  <button role="tab" id="tab-audit" data-tab="audit" aria-controls="panel-audit" aria-selected="false">Audit <span class="badge" id="badge-audit"></span></button>
+</nav>
+
+<div class="panel" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview" data-panel="overview">
+<div class="counters" id="counters" aria-label="Summary counters"></div>
 <div class="grid" id="nodes"></div>
+<div class="hint">Click a node card to open that agent's own view (what it measures, whom it trusts, how it scores the evidence, why it has or hasn't voted).</div>
 <section id="simctl"><b>Simulator demo controls</b> <span class="src src-SIMULATOR">SIMULATOR ONLY</span>
   <span class="mut">(these buttons exist only when this dashboard is connected to the simulator; the backend refuses them for a live cluster. Live scenarios are terminal scripts.)</span>
   <div class="filters" style="margin-top:8px"><select id="simsel" aria-label="Scenario"></select>
     <button id="simstart">Start scenario</button> <button id="simreset">Reset simulator</button> <span id="simstat" class="mut"></span></div>
   <div id="simdesc" class="mut"></div><div id="simlast"></div></section>
-<section id="invsec" style="display:none">
-  <b>Investigations</b> <span class="mut">(borderline or disputed evidence is re-checked by all four agents for a few seconds before anyone acts; nothing is isolated by an investigation itself)</span>
-  <div id="invreview"></div>
-  <table id="inv"></table>
-</section>
-<div class="hint">Click a node card to open that agent's own view (what it measures, whom it trusts, how it scores the evidence, why it has or hasn't voted).</div>
-
 <section>
   <b>Live event timeline</b> <span class="mut" id="evcount"></span>
   <div class="filters" id="nodefilters"></div>
@@ -114,13 +132,38 @@
   <div id="timeline"></div>
   <div class="hint">Newest first. Click an event to see its full details. Each agent logs what <i>it</i> saw and did, so the same moment appears once per agent.</div>
 </section>
+</div>
 
+<div class="panel" id="panel-incidents" role="tabpanel" aria-labelledby="tab-incidents" data-panel="incidents" hidden>
 <section><b>Recent quorum decisions</b> <span class="mut">(click a row to see the evidence and votes that justified it)</span><table id="dec"></table></section>
+<section><b>Pending votes</b> <span class="mut">(need 3 of 4 eligible signed votes; each agent says why it has not voted)</span><div id="pend"></div></section>
+<section><b>Incident metrics</b> <span class="mut">(seconds since injection; min across agents)</span><table id="met"></table></section>
+</div>
+
+<div class="panel" id="panel-investigations" role="tabpanel" aria-labelledby="tab-investigations" data-panel="investigations" hidden>
+<section id="invsec">
+  <b>Investigations</b> <span class="mut">(borderline or disputed evidence is re-checked by all four agents for a few seconds before anyone acts; nothing is isolated by an investigation itself)</span>
+  <div id="invreview"></div>
+  <table id="inv"></table>
+</section>
+<section id="invempty" class="mut" style="display:none">Investigations are switched off in this deployment.</section>
+</div>
+
+<div class="panel" id="panel-recovery" role="tabpanel" aria-labelledby="tab-recovery" data-panel="recovery" hidden>
 <section id="recsec"><b>Evidence snapshots &amp; Kubernetes actions</b> <span class="mut">(a read-only snapshot of the affected workload is saved BEFORE it is replaced; every cluster action records its observable result. A timeout is not a failure: the cluster is checked, and if it cannot be read the result is shown as UNKNOWN.)</span>
   <div id="recunk"></div><table id="snaps"></table><table id="acts" style="margin-top:8px"></table></section>
-<section><b>Pending votes</b> <span class="mut">(need 3 of 4 eligible signed votes; each agent says why it has not voted)</span><div id="pend"></div></section>
+</div>
+
+<div class="panel" id="panel-evaluation" role="tabpanel" aria-labelledby="tab-evaluation" data-panel="evaluation" hidden>
+<section><b>Evaluation</b> <span class="src src-SIMULATOR">SIMULATOR RESULTS</span>
+  <div class="mut" style="margin-top:6px">The evaluation graphs and tables (760 seeded simulator trials, see docs/RESULTS.md) will be shown here in a later step. Until then they are in the repository: <code>results/</code> and <code>docs/RESULTS.md</code>.</div></section>
+</div>
+
+<div class="panel" id="panel-audit" role="tabpanel" aria-labelledby="tab-audit" data-panel="audit" hidden>
+<section><b>Decision-log integrity</b> <span class="mut">(each agent keeps a hash-chained log of the quorum decisions it saw; a changed, deleted or re-ordered record breaks the chain)</span><table id="dlogtab"></table></section>
 <section><b>Rejected messages</b> <span class="mut">(signature / mTLS identity failures)</span><table id="rej"></table></section>
-<section><b>Incident metrics</b> <span class="mut">(seconds since injection; min across agents)</span><table id="met"></table></section>
+<section><b>Event export</b> <span class="mut">every buffered event from every agent, each labelled with its source</span> <a class="btn" href="api/export" download>Export events (JSON)</a></section>
+</div>
 
 <div id="shade"></div>
 <aside id="drawer" aria-label="Agent detail"></aside>
@@ -203,6 +246,7 @@ document.getElementById("nodes").onclick = e => { const c = e.target.closest("[d
 const OUT_CLASS = {CORROBORATED:"bad", FALSE_POSITIVE:"ok", AMBIGUOUS:"warn", UNCERTAIN:"warn", SUPERSEDED:"", MERGED:""};
 function renderInvestigations(iv) {
   const sec = document.getElementById("invsec");
+  document.getElementById("invempty").style.display = iv && iv.enabled ? "none" : "block";     // its own tab: say so when switched off
   if (!iv || !iv.enabled || (!iv.rows.length && !iv.watch.length)) { sec.style.display = iv && iv.enabled ? "block" : "none";
     document.getElementById("inv").innerHTML = iv && iv.enabled ? '<tr><td class="mut">No investigations yet. They start only when evidence is borderline or the agents disagree.</td></tr>' : "";
     document.getElementById("invreview").innerHTML = ""; return; }
@@ -236,6 +280,66 @@ function renderRecovery(s) {
     "<tr><th>time</th><th>agent</th><th>action</th><th>workload</th><th>try</th><th>result</th><th>detail</th></tr>" +
     rec.slice(0, 20).map(r => `<tr><td>${t(r.t)}</td><td>${nb(r.node)}</td><td>${esc(r.action)}</td><td>${esc(r.workload)}</td><td>${r.attempt}</td>
       <td><span class="tag ${ACT_CLASS[r.outcome] || ""}">${esc(r.outcome.replace(/_/g, " "))}</span></td><td class="mut">${esc(r.detail)}${r.error ? " · " + esc(r.error) : ""}</td></tr>`).join("") : "";
+}
+
+// ---------------------------------------------------------------- tabs (hash-routed, keyboard accessible)
+const TABS = ["overview","incidents","investigations","recovery","evaluation","audit"];
+function showTab(name, focus) {
+  if (!TABS.includes(name)) name = "overview";
+  for (const t of TABS) {
+    const b = document.getElementById("tab-" + t), p = document.getElementById("panel-" + t);
+    b.setAttribute("aria-selected", String(t === name)); b.tabIndex = t === name ? 0 : -1; p.hidden = t !== name;
+    if (t === name && focus) b.focus();
+  }
+  try { history.replaceState(null, "", "#" + name); } catch (e) {}
+}
+document.querySelector(".tabs").addEventListener("click", e => { const b = e.target.closest("[data-tab]"); if (b) showTab(b.dataset.tab); });
+document.querySelector(".tabs").addEventListener("keydown", e => {
+  const i = TABS.indexOf((document.activeElement.dataset || {}).tab); if (i < 0) return;
+  const j = e.key === "ArrowRight" ? (i + 1) % TABS.length : e.key === "ArrowLeft" ? (i + TABS.length - 1) % TABS.length : e.key === "Home" ? 0 : e.key === "End" ? TABS.length - 1 : -1;
+  if (j >= 0) { e.preventDefault(); showTab(TABS[j], true); }
+});
+window.addEventListener("hashchange", () => showTab(location.hash.slice(1)));
+
+// ---------------------------------------------------------------- summary counters (numbers come from the backend's summary_view)
+function tile(label, value, sev, word, detail) {
+  const icon = {ok: "✔", warn: "⚠", bad: "✖"}[sev];
+  return `<div class="tile ${sev}" role="group" aria-label="${esc(label)}: ${esc(value)}, ${esc(word)}"><div class="k">${esc(label)}</div><div class="v">${esc(value)}</div>` +
+         `<div class="s"><b>${icon} ${esc(word)}</b>${detail ? " · " + esc(detail) : ""}</div></div>`;
+}
+function renderCounters(m) {
+  const el = document.getElementById("counters");
+  if (!m) { el.innerHTML = ""; return; }
+  const list = a => (a || []).join(", ");
+  const unh = m.workloads_unhealthy, unk = (m.workloads_unknown || []).length;
+  el.innerHTML = [
+    tile("Healthy workloads", `${m.workloads_healthy} of ${m.workloads_total}`, unh ? "warn" : "ok", unh ? "NOT ALL HEALTHY" : "ALL HEALTHY"),
+    tile("Unhealthy workloads", unh, unk ? "bad" : unh ? "bad" : "ok", unh ? "UNHEALTHY" : "NONE", unh ? list(m.unhealthy) + (unk ? ` (${unk} unknown)` : "") : ""),
+    tile("Active incidents", m.incidents_active.length, m.needs_attention.length ? "bad" : m.incidents_active.length ? "warn" : "ok",
+         m.needs_attention.length ? "NEEDS HUMAN" : m.incidents_active.length ? "IN PROGRESS" : "NONE", list(m.incidents_active)),
+    tile("Active investigations", m.investigations_active, m.investigations_review.length ? "warn" : m.investigations_active ? "warn" : "ok",
+         m.investigations_review.length ? "REVIEW NEEDED" : m.investigations_active ? "IN PROGRESS" : "NONE",
+         m.investigations_review.length ? "human review: " + list(m.investigations_review) : ""),
+    tile("Recoveries succeeded", m.recoveries_succeeded, "ok", m.recoveries_succeeded ? "COMPLETED" : "NONE YET", "since the agents started"),
+    tile("Recoveries failed", m.recovery_attempts_failed, m.recoveries_abandoned ? "bad" : m.recovery_attempts_failed ? "warn" : "ok",
+         m.recoveries_abandoned ? "GAVE UP" : m.recovery_attempts_failed ? "RETRIED" : "NONE",
+         `${m.recovery_attempts_failed} failed attempt(s), ${m.recoveries_abandoned} gave up, since the agents started`),
+    tile("Agents connected", `${m.agents_connected} of ${m.agents_total}`, m.agents_unreachable.length ? "bad" : "ok",
+         m.agents_unreachable.length ? "UNREACHABLE" : "ALL CONNECTED", m.agents_unreachable.length ? list(m.agents_unreachable) : ""),
+  ].join("");
+}
+function renderBadges(s) {
+  const m = s.summary || {}, set = (id, n, cls) => { const e = document.getElementById("badge-" + id); e.textContent = n ? String(n) : ""; e.className = "badge " + (n ? cls : ""); };
+  set("incidents", (m.incidents_active || []).length, (m.needs_attention || []).length ? "bad" : "warn");
+  set("investigations", (m.investigations_active || 0) + (m.investigations_review || []).length, (m.investigations_review || []).length ? "warn" : "");
+  set("recovery", (m.needs_attention || []).length + ((s.actions && s.actions.unknown) || []).length, "bad");
+  set("audit", (s.rejections || []).length, "warn");
+}
+function renderDlogTable(dl) {
+  const el = document.getElementById("dlogtab");
+  if (!dl || !dl.checked) { el.innerHTML = '<tr><td class="mut">No decision logs reported.</td></tr>'; return; }
+  el.innerHTML = "<tr><th>agent</th><th>records</th><th>chain</th><th>detail</th></tr>" + Object.entries(dl.agents).map(([a, d]) =>
+    `<tr><td>${nb(a)}</td><td>${d.length}</td><td>${d.ok ? '<span class="tag ok">✔ INTACT</span>' : '<span class="tag bad">✖ BROKEN</span>'}</td><td class="mut">${d.ok ? "" : `first broken record #${esc(d.first_broken)}: ${esc(d.reason)}`}</td></tr>`).join("");
 }
 
 function renderBanner(s) {
@@ -300,6 +404,7 @@ function renderState(s) {
 
   renderInvestigations(s.investigations);
   renderRecovery(s);
+  renderCounters(s.summary); renderBadges(s); renderDlogTable(s.decision_logs);
   const dl = s.decision_logs, de = document.getElementById("dlog");
   if (dl && dl.checked) {
     de.className = "tag " + (dl.ok ? "ok" : "bad");
@@ -469,7 +574,7 @@ document.getElementById("pause").onclick = () => {
   document.getElementById("pausebanner").style.display = paused ? "block" : "none";
   paused ? stop() : start();
 };
-renderFilters(); renderTimeline(); start();
+renderFilters(); renderTimeline(); showTab(location.hash.slice(1)); start();
 </script>
 </body>
 </html>

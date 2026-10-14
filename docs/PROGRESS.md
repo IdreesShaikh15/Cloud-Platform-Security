@@ -296,3 +296,34 @@ New: `agent/resilience/provenance.py`, `sim/scenarios.py`, `sim/demo_server.py`,
 
 ### Commit / push
 * Commit **`91afecc`** ("Dashboard Part 1: ..."), pushed (no force) to `claude/cyber-resilience-platform-xxs3oh` and `claude/inspiring-thompson-ik54a3`.
+
+## Dashboard improvements, Part 2: navigation and overview
+
+**Status: DONE in the simulator and tests; NOT run against a real cluster.** Write-up: `docs/DASHBOARD.md` sections 4-5. No architecture, quorum policy or agent capability changed; all four agents remain identical.
+
+### Correction to Part 1 (found while doing Part 2)
+`docs/DASHBOARD.md` was listed as a Part 1 deliverable and referenced from the README, demo.md and this file, but **it was not actually created in Part 1** (a failing earlier command in the same shell line stopped the file from being written). It now exists, containing the Part 1 sections (1-3, written from the Part 1 implementation) and the Part 2 sections. The Part 1 code and tests were unaffected.
+
+### What was done
+* **Six tabs**: Overview, Incidents, Investigations, Recovery, Evaluation, Audit; hash-routed deep links, arrow/Home/End keys, ARIA tab roles, count badges. Dark theme, source banner, header and agent drawer unchanged. **Every existing panel kept**, moved: Overview (counters, 4 node cards, simulator controls, event timeline), Incidents (decisions, pending votes, incident metrics), Investigations, Recovery (snapshots, Kubernetes actions), Audit (rejected messages, new per-agent decision-log table, event export). Evaluation is a labelled placeholder until Part 4.
+* **Overview counters** (backend `summary_view`): healthy / unhealthy workloads, active incidents, active investigations (+ review needed), recoveries succeeded, recoveries failed (attempts, and gave up), agents connected / unreachable (named). Each tile shows an icon and a word (not colour alone) and has an accessible label. "No data" is never counted as healthy.
+* **Agent counters** (`incidents_opened`, `recoveries_succeeded`, `recovery_attempts_failed`, `recoveries_abandoned`) kept in memory by each agent since it started, exposed on `/status`; observability only, never read by a decision. The dashboard shows the maximum across agents; agents that report none are not guessed.
+
+### Test evidence (commands run, actual results)
+* `python3 -m pytest -q tests` -> **359 passed in 670 s** (349 before + 10 new in `tests/test_dashboard_tabs.py`; 0 failed).
+* `python3 sim/local_demo.py` -> **11 of 11 PASS**.
+* New tests: every pre-existing element is inside exactly the right tab and none is lost; six accessible tabs; counters on synthetic statuses (max across agents, a duplicate investigation counted once, no data = unhealthy, unreachable agents named); agent counters through a CONTAIN -> RETRY -> attention -> HEALTHY lifecycle (counted once each); the real page in Chromium (every tab, arrow/Home/End keys, deep link, counter words incl. UNHEALTHY / NEEDS HUMAN / UNREACHABLE / GAVE UP, badges, no JavaScript errors).
+* Browser check against the real `python3 sim/demo_server.py --dashboard`: ran app-compromise from the page; Overview showed Unhealthy 1 / Active incidents 1 while C was recovering, then Recoveries succeeded 1 and Healthy 4 of 4 afterwards; Incidents and Recovery tabs rendered; no JavaScript errors.
+
+### Files changed
+New: `tests/test_dashboard_tabs.py`, `docs/DASHBOARD.md` (see correction), `docs/img/dashboard-p2-*.png`. Modified: `agent/resilience/agent.py` (counters), `dashboard/{server.py,index.html}`, `docs/PROGRESS.md`.
+
+### Limitations
+* Recovery counters reset when an agent restarts (the largest among agents is shown); they are not a long-term history.
+* The Evaluation tab is a placeholder until Part 4. Nothing in Part 2 was exercised on a real cluster.
+
+### Cluster rebuild / restart for Part 2
+* **Rebuild** `cr-agent:1.0` (new `counters` on `/status`) and `cr-dashboard:1.0` (tabs, counters). **Restart** the agents and the dashboard. No manifest or ConfigMap change. With an old agent image the new dashboard still works but the recovery counters show 0 / "none reported".
+
+### Commit / push
+* See the next line (filled after the push).

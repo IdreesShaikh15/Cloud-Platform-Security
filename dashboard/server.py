@@ -412,6 +412,7 @@ def aggregate() -> dict:
             "baseline_up": base is not None,
             "nodes": nodes, "decisions": uniq[:15], "rejections": rejections,
             "investigations": investigations_view(live),
+            "summary": summary_view(nodes, live, ids, investigations_view(live)),
             "decision_logs": decision_logs_view(live),
             "snapshots": snapshots_view(live), "actions": actions_view(live),
             "pending_votes": {k: v["voters"] for k, v in pending.items()},
@@ -444,6 +445,35 @@ def snapshot_export(sid: str, key: str):
     if sid not in URLS or not SNAP_KEY.match(key):
         return None
     return get(URLS[sid].replace("/status", f"/snapshot/{key}"))
+
+
+def summary_view(nodes: dict, live: dict, ids: list, inv: dict) -> dict:
+    """The Overview counters. Every number is derived from what the agents themselves report; nothing is estimated.
+
+    workloads      healthy = phase HEALTHY and not flagged for a human; anything else is unhealthy ("unknown" when no agent
+                   reports on it)
+    incidents      workloads whose incident is not over (phase other than HEALTHY)
+    investigations rows still ACTIVE, plus workloads under watch that need human review
+    recoveries     counted by the agents since they started (the largest count among agents, so one restarted agent does
+                   not hide history): succeeded = confirmed HEALTHY again after an incident; failed attempts = replacement
+                   pods that failed validation (each retry); abandoned = incidents that now need a human
+    agents         connected = answered the dashboard just now; unreachable = configured but silent"""
+    unhealthy = [n for n, v in nodes.items() if v["phase"] != "HEALTHY" or v.get("display_state") == "NEEDS_ATTENTION"]
+    unknown = [n for n, v in nodes.items() if v["phase"] == "UNKNOWN"]
+    active_inv = [r["target"] for r in (inv or {}).get("rows", []) if r.get("active")]
+    review = [w["target"] for w in (inv or {}).get("watch", []) if w.get("review_needed")]
+    ctr = [s.get("counters") or {} for s in live.values()]
+    top = lambda k: max([c.get(k, 0) for c in ctr] or [0])             # noqa: E731
+    connected = [i for i in ids if i in live]
+    return {"workloads_total": len(nodes), "workloads_healthy": len(nodes) - len(unhealthy), "workloads_unhealthy": len(unhealthy),
+            "unhealthy": unhealthy, "workloads_unknown": unknown,
+            "incidents_active": [n for n, v in nodes.items() if v["phase"] not in ("HEALTHY", "UNKNOWN")],
+            "needs_attention": [n for n, v in nodes.items() if v.get("display_state") == "NEEDS_ATTENTION"],
+            "investigations_active": len(active_inv), "investigations_review": review,
+            "recoveries_succeeded": top("recoveries_succeeded"), "recovery_attempts_failed": top("recovery_attempts_failed"),
+            "recoveries_abandoned": top("recoveries_abandoned"), "incidents_opened": top("incidents_opened"),
+            "agents_total": len(ids), "agents_connected": len(connected), "agents_unreachable": [i for i in ids if i not in live],
+            "counters_reported_by": [sid for sid, s in live.items() if s.get("counters")]}
 
 
 def agent_view(sid: str) -> dict:

@@ -148,6 +148,10 @@ class ResilienceAgent:
         self.forensics = SnapshotManager(self, snapshot_dir)     # evidence before replacement (docs/RECOVERY.md)
         self.audit = ActionAudit(node_id, audit_log_path, clock)  # every cluster action + its observable result
         self.audit.source = self.source
+        # Monotonic counts since this agent started (observability only; never read by a decision). The dashboard's
+        # Overview shows them as 'since the agents started'.
+        self.counters = {"incidents_opened": 0, "recoveries_succeeded": 0, "recovery_attempts_failed": 0,
+                         "recoveries_abandoned": 0}
         self._rec_seen: Dict[Tuple[str, int, int], float] = {}   # (target, epoch, attempt) -> redeploy first seen in cluster
         self._trust_path = trust_state_path
         self._trust_saved: Optional[str] = None
@@ -645,6 +649,7 @@ class ResilienceAgent:
         if st.attention is not None:
             return
         st.attention = {"since": now, "reason": reason, "attempts": st.attempt, "phase": st.phase}
+        self.counters["recoveries_abandoned"] += 1
         w = self.workload(target)
         self.audit.record(action="needs_human_attention", task=f"attention:{target}:{st.epoch}", workload=w,
                           target=target, epoch=st.epoch, outcome=act.ABANDONED, attempt=st.attempt, detail=reason)
@@ -841,6 +846,7 @@ class ResilienceAgent:
             st.phase, st.epoch, st.phase_entered = ISOLATED, v.epoch, now
             st.stage, st.stage_entered = "QUARANTINE", now
             st.attempt, st.attention = 1, None
+            self.counters["incidents_opened"] += 1
             st.contaminated_instance = s.instance_id if s else ""
             self.workload_trust.set(v.target, 0.0)
             self.pool.clear_target(v.target)
@@ -878,6 +884,7 @@ class ResilienceAgent:
             n, epoch, key = int(v.stage), v.epoch, c.action_key
             failure = self._recovery_failure(now, v.target, st) or "validation failed (as judged by the quorum)"
             st.attempt, st.phase, st.phase_entered, st.attention = n, RECOVERING, now, None
+            self.counters["recovery_attempts_failed"] += 1
             d = self._record_decision(c, now, f"recovery attempt {n - 1} failed validation; redeploy again", just)
             self.metrics.event("validation_failed", now, v.target, attempt=n - 1)
             self.certs.on_commit(c, now)
@@ -1182,6 +1189,7 @@ class ResilienceAgent:
                                          nid, {"action": "recovered", "workload": w, "attempt": st.attempt})
                 if st.phase == REINTEGRATING and st.stage == "FULL" and self.backend.current_stage(w) is None:
                     st.phase, st.attention = HEALTHY, None
+                    self.counters["recoveries_succeeded"] += 1
                     self.metrics.event("reintegrated", now, nid)
                     self.events.emit(obs.ACTION, f"Agent {self.id} confirms {w} ({nid}) is HEALTHY: validated, "
                                      f"and the cluster shows the isolation policy is gone.", nid,
@@ -1221,6 +1229,7 @@ class ResilienceAgent:
                     "NEEDS_ATTENTION" if st.attention else "UNKNOWN" if targets[nid]["unknown_action"] else st.phase)
             return {
                 "node": self.id, "mode": "distributed", "time": now, "data_source": self.source,
+                "counters": dict(self.counters),
                 "agent_name": self.cfg.nodes[self.id].agent_name,
                 "compromised": self._comp.mode if self._comp.active else None,
                 "agent_trust": {n: round(self.trust_of(n), 1) for n in self.cfg.nodes},
