@@ -326,4 +326,4 @@ New: `tests/test_dashboard_tabs.py`, `docs/DASHBOARD.md` (see correction), `docs
 * **Rebuild** `cr-agent:1.0` (new `counters` on `/status`) and `cr-dashboard:1.0` (tabs, counters). **Restart** the agents and the dashboard. No manifest or ConfigMap change. With an old agent image the new dashboard still works but the recovery counters show 0 / "none reported".
 
 ### Commit / push
-* See the next line (filled after the push).
+* Commit **`dbe446c`** ("Dashboard Part 2: ..."), pushed (no force) to `claude/cyber-resilience-platform-xxs3oh` and `claude/inspiring-thompson-ik54a3`.
