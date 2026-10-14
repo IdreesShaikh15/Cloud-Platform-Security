@@ -357,4 +357,4 @@ New: `tests/test_incident_detail.py`, `docs/img/dashboard-p3-*.png`. Modified: `
 * **Rebuild** `cr-agent:1.0` (new `next_step` on `/status`) and `cr-dashboard:1.0`. **Restart** the agents and the dashboard. No manifest or ConfigMap change. With old agents the incident view still works but "next step / blocked because" is empty.
 
 ### Commit / push
-* See the next line (filled after the push).
+* Commit **`a57850d`** ("Dashboard Part 3: ..."), pushed (no force) to `claude/cyber-resilience-platform-xxs3oh` and `claude/inspiring-thompson-ik54a3`.
