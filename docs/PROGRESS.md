@@ -378,3 +378,4 @@ New: `tests/test_incident_detail.py`, `docs/img/dashboard-p3-*.png`. Modified: `
 
 ### Cluster rebuild / restart for Part 4
 * **Rebuild** `cr-agent:1.0` and `cr-dashboard:1.0` (`scripts/build-images.sh`). App image unchanged. **Apply** `k8s/resilience/10-config.yaml` (adds `role` keys), `k8s/resilience/00-rbac.yaml` (same values), `k8s/base/10-healthcare-apps.yaml` (comment only). **Restart** agents, dashboard, quorum-webhook (config reread). Run `python3 scripts/gen-workloads.py --check` first.
+* Commit **`f76a37c`** (Dashboard Part 4), pushed (no force) to both branches.
