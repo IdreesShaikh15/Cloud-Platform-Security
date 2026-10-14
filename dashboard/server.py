@@ -31,7 +31,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from collections import Counter, deque
+from collections import Counter, OrderedDict, deque
 from concurrent.futures import ThreadPoolExecutor
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -101,6 +101,12 @@ class Collector:
         self.status: dict = {}                    # source id -> latest status (events stripped)
         self.cursor: dict = {}                    # source id -> (boot, last seq)
         self.events: deque = deque(maxlen=BUFFER)
+        # History for the incident view. The agents only keep short rings (last 15 decisions, 40 action records, 300
+        # events), so the dashboard remembers what it has SEEN (bounded; lost when the dashboard restarts).
+        self.decisions: "OrderedDict" = OrderedDict()   # (agent, action, target, epoch, stage) -> decision
+        self.audit: "OrderedDict" = OrderedDict()       # (agent, record id) -> action record
+        self.snaps: "OrderedDict" = OrderedDict()       # (agent, key) -> snapshot summary
+        self.invs: "OrderedDict" = OrderedDict()        # (agent, investigation id) -> investigation row
         self.gseq = 0
         self.last_poll = 0.0
 
@@ -134,7 +140,33 @@ class Collector:
                     last_seq = max(e["seq"] for e in evs)
                 self.cursor[sid] = (boot, last_seq if last_seq is not None else res.get("event_seq"))
                 self.status[sid] = res
+                self._remember(sid, res)
             self.last_poll = time.time()
+
+    @staticmethod
+    def _keep(store: "OrderedDict", key, value, cap: int) -> None:
+        store[key] = value
+        store.move_to_end(key)
+        while len(store) > cap:
+            store.popitem(last=False)
+
+    def _remember(self, sid: str, res: dict) -> None:
+        ds = clean_source(res.get("data_source"))
+        for d in res.get("decisions", []) or []:
+            self._keep(self.decisions, (sid, d["action"], d["target"], d["epoch"], d["stage"]),
+                       {**d, "node": sid, "data_source": clean_source(d.get("data_source"), res.get("data_source"))}, 1000)
+        for r in ((res.get("actions") or {}).get("recent") or []):
+            self._keep(self.audit, (sid, r["id"]), {**r, "data_source": clean_source(r.get("data_source"), res.get("data_source"))}, 4000)
+        for x in res.get("snapshots") or []:
+            self._keep(self.snaps, (sid, x["key"]), {**x, "agent": sid, "data_source": clean_source(x.get("data_source"), res.get("data_source"))}, 300)
+        inv = res.get("investigations") or {}
+        for r in list(inv.get("active", [])) + list(inv.get("recent", [])):
+            self._keep(self.invs, (sid, r["id"]), {**r, "node": sid, "data_source": ds}, 600)
+
+    def history(self) -> dict:
+        with self.lock:
+            return {"decisions": list(self.decisions.values()), "audit": list(self.audit.values()),
+                    "snaps": list(self.snaps.values()), "invs": list(self.invs.values())}
 
     def run(self):
         while True:
@@ -412,6 +444,7 @@ def aggregate() -> dict:
             "baseline_up": base is not None,
             "nodes": nodes, "decisions": uniq[:15], "rejections": rejections,
             "investigations": investigations_view(live),
+            "incidents": incident_list(statuses),
             "summary": summary_view(nodes, live, ids, investigations_view(live)),
             "decision_logs": decision_logs_view(live),
             "snapshots": snapshots_view(live), "actions": actions_view(live),
@@ -474,6 +507,269 @@ def summary_view(nodes: dict, live: dict, ids: list, inv: dict) -> dict:
             "recoveries_abandoned": top("recoveries_abandoned"), "incidents_opened": top("incidents_opened"),
             "agents_total": len(ids), "agents_connected": len(connected), "agents_unreachable": [i for i in ids if i not in live],
             "counters_reported_by": [sid for sid, s in live.items() if s.get("counters")]}
+
+
+# --------------------------------------------------------------------------- incident detail (Part 3)
+# An INCIDENT is one containment of one workload: (data source, target, epoch >= 1). Everything below is assembled from what
+# the agents reported (decisions, action-audit records, events, investigations, snapshots), never invented.
+# Four things are kept apart for every action, because they are different claims:
+#   PROPOSED    agents signed votes for it
+#   AUTHORIZED  a 3-of-4 quorum committed it (recorded in the decision log)
+#   ATTEMPTED   an executor actually called the Kubernetes API for it
+#   VERIFIED    the cluster was READ afterwards and shows the effect
+VERIFIED_OUTCOMES = {"applied", "already_applied", "applied_after_timeout", "unknown_resolved"}
+ATTEMPTED_OUTCOMES = {"applied", "applied_unconfirmed", "applied_after_timeout", "failed", "not_applied", "unknown",
+                      "unknown_resolved", "abandoned"}
+PRE_WINDOW_S = 120.0                      # events up to this long before containment belong to the incident
+
+
+def parse_task(task: str):
+    """audit task id -> (proposal key, step label), or None for tasks that are not part of a proposal."""
+    p = str(task).split(":")
+    try:
+        if p[0] == "isolate" and len(p) == 3:
+            return f"CONTAIN:{p[1]}:{p[2]}:", "isolate (quarantine policy)"
+        if p[0] == "recover" and len(p) == 4:
+            n = int(p[3])
+            return (f"CONTAIN:{p[1]}:{p[2]}:" if n <= 1 else f"RETRY_RECOVERY:{p[1]}:{p[2]}:{n}"), f"redeploy from the known-good image (attempt {n})"
+        if p[0] == "validated" and len(p) == 3:
+            return f"VALIDATE:{p[1]}:{p[2]}:", "record validation in the cluster"
+        if p[0] == "stage" and len(p) == 4:
+            return f"ADVANCE_STAGE:{p[1]}:{p[2]}:{p[3]}", f"move to {p[3]}"
+    except ValueError:
+        return None
+    return None
+
+
+def proposal_text(key: str) -> str:
+    a, tg, ep, st = (str(key).split(":") + ["", "", "", ""])[:4]
+    return {"CONTAIN": f"contain {tg} (isolate and redeploy)", "VALIDATE": f"accept the recovered {tg} as validated",
+            "ADVANCE_STAGE": f"move {tg} to {st}", "RETRY_RECOVERY": f"redeploy {tg} again (attempt {st})"}.get(a, key)
+
+
+def _incidents_from(hist: dict) -> dict:
+    """(source, target, epoch) -> {"decisions": [...]} for every CONTAIN decision seen."""
+    inc: dict = {}
+    for d in hist["decisions"]:
+        if d["action"] == "CONTAIN" and d["epoch"] >= 1:
+            k = (clean_source(d.get("data_source")), d["target"], d["epoch"])
+            inc.setdefault(k, []).append(d)
+    return inc
+
+
+def _current(statuses: dict, source: str, target: str, epoch: int) -> dict:
+    per, cur = {}, {}
+    for sid, s in statuses.items():
+        if sid not in URLS or clean_source(s.get("data_source")) != source:
+            continue
+        v = (s.get("targets") or {}).get(target)
+        if v:
+            per[sid] = {"phase": v.get("phase"), "stage": v.get("stage"), "epoch": v.get("epoch"), "attempt": v.get("attempt"),
+                        "attention": v.get("attention"), "next_step": v.get("next_step"), "workload_trust": v.get("workload_trust")}
+    mine = {k: v for k, v in per.items() if v["epoch"] == epoch}
+    if mine:
+        ph = Counter(v["phase"] for v in mine.values()).most_common(1)[0][0]
+        cur = {"phase": ph, "stage": Counter(v["stage"] for v in mine.values()).most_common(1)[0][0],
+               "attempt": max((v["attempt"] or 1) for v in mine.values()),
+               "attention": next((v["attention"] for v in mine.values() if v["attention"]), None)}
+        blockers = Counter((v["next_step"] or {}).get("blocked_by") for v in mine.values() if v.get("next_step"))
+        steps = Counter((v["next_step"] or {}).get("step") for v in mine.values() if v.get("next_step"))
+        cur["next_step"] = ({"step": steps.most_common(1)[0][0], "blocked_by": blockers.most_common(1)[0][0],
+                             "agents_agreeing": blockers.most_common(1)[0][1], "agents_reporting": sum(blockers.values())}
+                            if steps else None)
+    return {"per_agent": per, "consensus": cur, "newer_epoch_exists": any((v["epoch"] or 0) > epoch for v in per.values())}
+
+
+def incident_status(decs_all: list, source: str, target: str, epoch: int, current: dict) -> str:
+    full = any(d["action"] == "ADVANCE_STAGE" and d["stage"] == "FULL" and d["epoch"] == epoch and d["target"] == target
+               and clean_source(d.get("data_source")) == source for d in decs_all)
+    c = current.get("consensus") or {}
+    if c.get("attention"):
+        return "NEEDS_HUMAN"
+    if c:
+        return "RESOLVED" if (c.get("phase") == "HEALTHY") else "ACTIVE"
+    if full or current.get("newer_epoch_exists"):
+        return "RESOLVED" if full else "SUPERSEDED"
+    return "UNKNOWN"
+
+
+def incident_list(statuses: dict = None, hist: dict = None) -> list:
+    statuses = COLLECTOR.snapshot() if statuses is None else statuses
+    hist = COLLECTOR.history() if hist is None else hist
+    out = []
+    for (src, tgt, ep), decs in _incidents_from(hist).items():
+        cur = _current(statuses, src, tgt, ep)
+        first = min(decs, key=lambda d: d["t"])
+        cons = cur["consensus"]
+        out.append({"id": f"{src}:{tgt}:{ep}", "source": src, "target": tgt, "epoch": ep, "contained_at": first["t"],
+                    "signers": sorted(set(first.get("voters", []))), "status": incident_status(hist["decisions"], src, tgt, ep, cur),
+                    "phase": cons.get("phase"), "stage": cons.get("stage"), "attempt": cons.get("attempt"),
+                    "workload": next((v.get("workload") for s in statuses.values() for v in [(s.get("targets") or {}).get(tgt)] if v), None)})
+    return sorted(out, key=lambda i: i["contained_at"], reverse=True)[:50]
+
+
+def build_incident(source: str, target: str, epoch: int, statuses: dict = None, hist: dict = None, events: list = None):
+    statuses = COLLECTOR.snapshot() if statuses is None else statuses
+    hist = COLLECTOR.history() if hist is None else hist
+    events = COLLECTOR.all_events() if events is None else events
+    incs = _incidents_from(hist)
+    decs = incs.get((source, target, epoch))
+    if not decs:
+        return None
+    contained_at = min(d["t"] for d in decs)
+    later = [d["t"] for (s_, t_, e_), ds in incs.items() if s_ == source and t_ == target and e_ > epoch for d in ds]
+    earlier = [d["t"] for (s_, t_, e_), ds in incs.items() if s_ == source and t_ == target and e_ < epoch for d in ds]
+    t_end = min(later) if later else float("inf")
+    t_from = max(contained_at - PRE_WINDOW_S, max(earlier) if earlier else 0.0)
+    ev = [e for e in events if clean_source(e.get("data_source")) == source and t_from <= e["ts"] < t_end]
+    cur = _current(statuses, source, target, epoch)
+    status = incident_status(hist["decisions"], source, target, epoch, cur)
+    workload = next((v.get("workload") for s in statuses.values() for v in [(s.get("targets") or {}).get(target)] if v), target)
+
+    # ---- trigger
+    first = min(decs, key=lambda d: d["t"])
+    just = next((d["justification"] for d in sorted(decs, key=lambda d: d["t"]) if d.get("justification")), {}) or {}
+    by_agent: dict = {}
+    for e in just.get("evidence", []) or []:                    # the same observation is re-sent every tick: show it once, with a count
+        rows = by_agent.setdefault(e.get("origin", "?"), [])
+        same = next((r for r in rows if r["type"] == e.get("type") and r["summary"] == e.get("summary")), None)
+        if same:
+            same["count"] += 1
+            same["confidence"] = max(same["confidence"] or 0, e.get("confidence") or 0)
+            same["last_timestamp"] = e.get("timestamp")
+        else:
+            rows.append({"type": e.get("type"), "confidence": e.get("confidence"), "summary": e.get("summary"),
+                         "timestamp": e.get("timestamp"), "last_timestamp": e.get("timestamp"), "count": 1})
+    trigger = {"decision": {k: first.get(k) for k in ("t", "action", "epoch", "voters", "note")}, "score": just.get("score"),
+               "evidence_by_agent": by_agent, "seen_by": sorted({d["node"] for d in decs}),
+               "text": f"Agents {', '.join(first.get('voters', []))} signed votes to contain {workload} ({target}); "
+                       "the evidence they cited is listed per agent."}
+    trig_inv = sorted({v.get("investigation_id") for d in decs for v in (d.get("justification", {}).get("votes") or []) if v.get("investigation_id")})
+    if trig_inv:
+        trigger["investigation_ids"] = trig_inv
+
+    # ---- raw event sections
+    of = lambda cat: [e for e in ev if e["category"] == cat]               # noqa: E731
+    mine = lambda e: e.get("target") == target                              # noqa: E731
+    flag = lambda e: (e.get("details") or {}).get("flag")                   # noqa: E731
+    obs_ = [e for e in of("OBSERVE") if mine(e)]
+    sent = [e for e in of("EVIDENCE_SENT") if mine(e)]
+    recv = [e for e in of("EVIDENCE_RECEIVED") if mine(e)]
+    trust = [e for e in ev if e["category"] in ("TRUST_CHANGE", "FLAG") and flag(e) != "EVIDENCE_REJECTED"]
+    rejected = of("REJECTED") + [e for e in of("FLAG") if flag(e) == "EVIDENCE_REJECTED"]
+    slim = lambda e: {k: e.get(k) for k in ("ts", "node", "category", "target", "summary", "details")}   # noqa: E731
+    sections = {
+        "observations": [slim(e) for e in obs_][-60:],
+        "evidence_sent": [slim(e) for e in sent][-60:], "evidence_received": [slim(e) for e in recv][-60:],
+        "trust_changes": [{**slim(e), "mentions_target": target in (e.get("summary") or "") or (e.get("details") or {}).get("about") == target}
+                          for e in trust][-80:],
+        "rejected": [slim(e) for e in rejected][-60:]}
+
+    # ---- investigations of this workload around the incident
+    invs, seen = [], set()
+    for r in hist["invs"]:
+        if r["target"] == target and clean_source(r.get("data_source")) == source and t_from <= r["started_at"] < t_end and r["id"] not in seen:
+            seen.add(r["id"])
+            agents = {x["node"]: {"state": x["state"], "outcome": x["outcome"], "reason": x["reason"]} for x in hist["invs"] if x["id"] == r["id"]}
+            invs.append({"id": r["id"], "question": r["question"], "trigger": r["trigger"], "started_at": r["started_at"], "initiator": r["initiator"],
+                         "per_agent": agents, "outcomes": dict(Counter(a["outcome"] for a in agents.values() if a["outcome"]))})
+
+    # ---- proposals: votes, who signed, who did not and why
+    keys = {f"{d['action']}:{d['target']}:{d['epoch']}:{d['stage']}" for d in decs_for(hist, source, target, epoch)}
+    for e in ev:
+        pk = (e.get("details") or {}).get("proposal")
+        if pk and e["category"] in ("VOTE_CAST", "VOTE_WITHHELD") and pk.split(":")[1:3] == [target, str(epoch)]:
+            keys.add(pk)
+    for r in hist["audit"]:
+        pt = parse_task(r["task"])
+        if pt and r["target"] == target and r["epoch"] == epoch and clean_source(r.get("data_source")) == source:
+            keys.add(pt[0])
+    proposals = {}
+    for k in sorted(keys, key=lambda k: (decs_t(hist, source, k), k)):
+        ds = [d for d in decs_for(hist, source, target, epoch) if f"{d['action']}:{d['target']}:{d['epoch']}:{d['stage']}" == k]
+        dec = min(ds, key=lambda d: d["t"]) if ds else None
+        votes = {}
+        for d in ds:
+            for v in (d.get("justification", {}).get("votes") or []):
+                votes.setdefault(v["voter"], {"voter": v["voter"], "score": v.get("score"), "ts": v.get("ts")})
+        casts = [e for e in ev if e["category"] == "VOTE_CAST" and (e.get("details") or {}).get("proposal") == k]
+        for e in casts:
+            votes.setdefault(e["node"], {"voter": e["node"], "score": (e.get("details") or {}).get("score"), "ts": e["ts"]})
+        withheld = {}
+        for e in ev:
+            if e["category"] == "VOTE_WITHHELD" and (e.get("details") or {}).get("proposal") == k:
+                withheld[e["node"]] = {"agent": e["node"], "reason": (e.get("details") or {}).get("reason") or e["summary"], "ts": e["ts"]}
+        proposals[k] = {"proposal": k, "text": proposal_text(k), "committed": bool(dec), "committed_at": dec["t"] if dec else None,
+                        "signers": sorted(dec.get("voters", [])) if dec else [], "note": dec.get("note") if dec else None,
+                        "votes": sorted(votes.values(), key=lambda v: v.get("ts") or 0),
+                        "withheld": [w for a, w in sorted(withheld.items()) if a not in votes], "quorum_needed": 3}
+
+    # ---- the four-stage lifecycle of every action
+    rows = {}
+    for r in sorted(hist["audit"], key=lambda r: r["t"]):
+        if r["target"] != target or r["epoch"] != epoch or clean_source(r.get("data_source")) != source:
+            continue
+        pt = parse_task(r["task"])
+        if pt is None:
+            if r["action"] == "needs_human_attention":
+                rows.setdefault(("", "escalate to a human"), []).append(r)
+            continue
+        rows.setdefault(pt, []).append(r)
+    actions = []
+    for (pk, step), recs in rows.items():
+        prop = proposals.get(pk)
+        attempted = [r for r in recs if r["outcome"] in ATTEMPTED_OUTCOMES]
+        verified = [r for r in recs if r["outcome"] in VERIFIED_OUTCOMES]
+        unresolved = [r for r in recs if r["outcome"] == "unknown"] and not verified
+        refused = [r for r in recs if r["outcome"].startswith("refused")]
+        actions.append({
+            "proposal": pk, "step": step,
+            "proposed": {"state": "yes" if prop and prop["votes"] else ("n/a" if not pk else "no"),
+                         "by": [v["voter"] for v in (prop or {}).get("votes", [])]},
+            "authorized": {"state": "yes" if prop and prop["committed"] else ("n/a" if not pk else "no"),
+                           "signers": (prop or {}).get("signers", []), "at": (prop or {}).get("committed_at")},
+            "attempted": ({"state": "n/a", "by": sorted({r["node"] for r in recs}), "tries": 0} if not pk else
+                          {"state": "yes" if attempted else "no", "by": sorted({r["node"] for r in attempted}), "tries": len(attempted)}),
+            "verified": ({"state": "n/a", "by": [], "at": None} if not pk else
+                         {"state": "yes" if verified else ("unknown" if unresolved else "no"),
+                          "by": sorted({r["node"] for r in verified}), "at": min((r["t"] for r in verified), default=None)}),
+            "kind": "escalation" if not pk else "cluster-action",     # an escalation is a record that a human is needed, not a Kubernetes call
+            "refused": [{"node": r["node"], "outcome": r["outcome"], "detail": r["detail"]} for r in refused],
+            "records": [{k: r.get(k) for k in ("node", "t", "outcome", "attempt", "detail", "error", "duration_s")} for r in recs][-12:]})
+    actions.sort(key=lambda a: (min((x["t"] for x in a["records"]), default=0), a["step"]))
+
+    # ---- recovery attempts and the evidence saved before each replacement
+    snaps = [x for x in hist["snaps"] if x["target"] == target and x["epoch"] == epoch and clean_source(x.get("data_source")) == source]
+    attempts = {}
+    for a in actions:
+        if a["step"].startswith("redeploy"):
+            n = int(a["step"].split("attempt ")[1].rstrip(")"))
+            attempts[n] = {"attempt": n, "proposal": a["proposal"], "action": a, "snapshots": [], "retry_reason": None}
+    for x in snaps:
+        tag = x["tag"]
+        n = 1 if tag == "contain" else int(tag.replace("failed", "")) + 1
+        attempts.setdefault(n, {"attempt": n, "proposal": None, "action": None, "snapshots": [], "retry_reason": None})["snapshots"].append(x)
+    for n, at in attempts.items():
+        if n >= 2:
+            at["retry_reason"] = next((x["reason"] for x in snaps if x["tag"] == f"failed{n - 1}"), None)
+    return {"id": f"{source}:{target}:{epoch}", "source": source, "target": target, "epoch": epoch, "workload": workload, "status": status,
+            "window": {"from": t_from, "contained_at": contained_at, "to": None if t_end == float("inf") else t_end},
+            "trigger": trigger, **sections, "investigations": invs, "proposals": list(proposals.values()), "actions": actions,
+            "recovery": {"attempts": [attempts[k] for k in sorted(attempts)], "snapshots": snaps},
+            "current": cur, "limits": "Built from what the dashboard has seen since it started polling; events older than the agents' "
+                                      "rings at that moment are not available."}
+
+
+def decs_for(hist: dict, source: str, target: str, epoch: int) -> list:
+    return [d for d in hist["decisions"] if d["target"] == target and d["epoch"] == epoch and clean_source(d.get("data_source")) == source]
+
+
+def decs_t(hist: dict, source: str, key: str) -> float:
+    a, tg, ep, st = (key.split(":") + ["", "", "", ""])[:4]
+    ts = [d["t"] for d in hist["decisions"] if (d["action"], d["target"], str(d["epoch"]), d["stage"]) == (a, tg, ep, st)
+          and clean_source(d.get("data_source")) == source]
+    return min(ts) if ts else float("inf")
+
 
 
 def agent_view(sid: str) -> dict:
@@ -668,6 +964,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(metrics())
         if p == "/api/sim/state":
             return self._json(sim_state())
+        if p.startswith("/api/incident/"):
+            parts = p.split("/")
+            if len(parts) != 6 or parts[3] not in VALID_SOURCES or parts[4] not in URLS or not parts[5].isdigit():
+                return self._send(404, b'{"error":"no such incident"}', "application/json")
+            inc = build_incident(parts[3], parts[4], int(parts[5]))
+            if inc is None:
+                return self._send(404, b'{"error":"no such incident"}', "application/json")
+            return self._json(inc)
         if p in ("/", "/index.html"):
             with open(os.path.join(HERE, "index.html"), "rb") as fh:
                 return self._send(200, fh.read(), "text/html; charset=utf-8")

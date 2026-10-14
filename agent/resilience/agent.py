@@ -1205,6 +1205,33 @@ class ResilienceAgent:
                          "result": f"error: {exc}"}, key=("trackfail", nid), every=10.0):
                     log.warning("cluster tracking for %s failed: %s", w, exc)
 
+    # ------------------------------------------------------------------ what happens next (observability only)
+    def _next_step(self, nid: str, st: TargetState, now: float) -> Optional[dict]:
+        """The next step of this target's pipeline and, in plain words, WHAT IS BLOCKING it right now.
+        Observability only: the decisions themselves are made by _vote with the same predicates."""
+        tm, q = self.cfg.timers, self.cfg.quorum
+        if st.attention:
+            return {"step": "a human has to act", "blocked_by": st.attention.get("reason", "needs human attention"), "ready": False}
+        if st.phase == ISOLATED:
+            return {"step": "confirm the quarantine in the cluster", "ready": False,
+                    "blocked_by": "waiting for the quarantine NetworkPolicy to be applied and read back from the cluster"}
+        if st.phase == RECOVERING:
+            return {"step": f"replacement pod ready (attempt {st.attempt})", "ready": False,
+                    "blocked_by": f"waiting for the replacement pod of attempt {st.attempt} to be ready and the old pods to be gone"}
+        if st.phase == VALIDATING:
+            ok, why = self.validation_check(nid)
+            return {"step": "validate the replacement", "ready": ok,
+                    "blocked_by": None if ok else f"validation is failing: {why}"}
+        if st.phase == REINTEGRATING:
+            nxt = next_stage(st.stage)
+            if nxt is None:
+                return {"step": "confirm full access", "ready": False,
+                        "blocked_by": "waiting for the cluster to confirm the isolation policy is gone"}
+            why = advance_block_reason(st.stage, now - st.stage_entered, tm.stage_dwell_s, self.workload_trust.get(nid),
+                                       self.local_max(nid), q.evidence_min_conf)
+            return {"step": f"advance to {nxt}", "ready": why is None, "blocked_by": why}
+        return None
+
     # ------------------------------------------------------------------ status
     def status(self, events_since: Optional[int] = None, include_events: bool = True) -> dict:
         with self.lock:
@@ -1224,6 +1251,7 @@ class ResilienceAgent:
                     "recovery": {"attempt": st.attempt, "max_attempts": self.cfg.recovery.max_retries + 1,
                                  "failure": self._recovery_failure(now, nid, st)},
                     "unknown_action": any(r["target"] == nid for r in self.audit.unresolved.values()),
+                    "next_step": self._next_step(nid, st, now),
                 }
                 targets[nid]["display_state"] = (
                     "NEEDS_ATTENTION" if st.attention else "UNKNOWN" if targets[nid]["unknown_action"] else st.phase)

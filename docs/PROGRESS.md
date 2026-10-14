@@ -327,3 +327,34 @@ New: `tests/test_dashboard_tabs.py`, `docs/DASHBOARD.md` (see correction), `docs
 
 ### Commit / push
 * Commit **`dbe446c`** ("Dashboard Part 2: ..."), pushed (no force) to `claude/cyber-resilience-platform-xxs3oh` and `claude/inspiring-thompson-ik54a3`.
+
+## Dashboard improvements, Part 3: incident detail view
+
+**Status: DONE in the simulator and tests; NOT run against a real cluster.** Write-up: `docs/DASHBOARD.md` sections 6-8. No architecture, quorum policy or agent capability changed; all four agents remain identical.
+
+### What was done
+* **Incidents list + one detail view** (Incidents tab; deep link `#incident/<SOURCE>/<target>/<n>`; backend `GET /api/incident/<source>/<target>/<epoch>`). An incident = one quorum containment of one workload; false accusations and closed investigations are not incidents. Sections: where it stands now (phase, stage, attempt, **next step and what blocks it**), what triggered it (signers, W(T), evidence per agent, deduplicated), the **four-stage action table**, votes and who signed (and who did not vote and why), recovery attempts (with snapshots and the reason for each retry), investigations, trust changes and why, rejected evidence, per-agent observations.
+* **Proposed / authorized / attempted / verified are separate columns with separate meanings:** attempted = an executor really called the Kubernetes API (an agent that found the effect already done did **not** attempt it); verified = the cluster was read and shows the effect; `applied_unconfirmed` is attempted but not verified; an unreadable timeout is UNKNOWN until a later read settles it; refusals (stale incident, invalid certificate) are listed, not counted as attempts; "escalate to a human" is n/a for the cluster stages.
+* **Agent: `next_step` on `/status`** (what is blocking each phase, using the same predicates as voting: stage dwell, workload trust, anomaly, validation, cluster confirmation). Observability only.
+* **Dashboard history store:** the agents' rings are short (15 decisions, 40 action records, 300 events), so the dashboard remembers what it polled (bounded; lost on dashboard restart).
+
+### Bug found and fixed while testing with real agent data
+My first version showed the "escalate to a human" record as an ATTEMPTED cluster action (4 tries, VERIFIED NO), because escalation records share an outcome name with failed attempts. Now it is a separate row kind with n/a stages, and a test asserts it. Also checked: the "REFUSED" entries on a retry are real `refused_stale` records from lower-ranked executors dropping a task that a higher-ranked one had already completed.
+
+### Test evidence (commands run, actual results)
+* `python3 -m pytest -q tests` -> **380 passed in 779 s** (359 before + 21 new in `tests/test_incident_detail.py`; 0 failed).
+* `python3 sim/local_demo.py` -> **11 of 11 PASS**.
+* New tests: the four-stage semantics on synthetic histories (already-applied, waiting, timeout-unknown then resolved, unconfirmed, refused, proposed-only), status words, event windowing and source separation, trust / rejected / investigation sections, recovery attempts and retry reasons, bad ids rejected (404), history survives the agents' short rings and is bounded, the agent's `next_step` for every phase, **three end-to-end runs through the real simulated agents** (genuine compromise: every action passes all four stages with 3+ signers and ends RESOLVED; false accusation: no incident; failed validation: 3 attempts each with a snapshot, retry reasons, NEEDS HUMAN, why it is stuck), and the real page in Chromium (list, open, every section, UNKNOWN and unverified shown, back, deep link, unknown incident, no JavaScript errors).
+* Browser check against the real `python3 sim/demo_server.py --dashboard` for validation-retry and failed-validation: detail opened by clicking the incident; screenshots in `docs/img/dashboard-p3-*.png`; no JavaScript errors.
+
+### Files changed
+New: `tests/test_incident_detail.py`, `docs/img/dashboard-p3-*.png`. Modified: `agent/resilience/agent.py` (`next_step`), `dashboard/{server.py,index.html}`, `docs/DASHBOARD.md`, `docs/PROGRESS.md`.
+
+### Limitations
+* History is only what the dashboard has seen since it started polling; an earlier incident is incomplete or absent (the page says so). Events are tied to an incident by time window (up to 120 s before containment until the next incident of that workload), not by an incident number. Trust changes are agent-trust changes in the window; only the current workload trust is available. Not run on a real cluster.
+
+### Cluster rebuild / restart for Part 3
+* **Rebuild** `cr-agent:1.0` (new `next_step` on `/status`) and `cr-dashboard:1.0`. **Restart** the agents and the dashboard. No manifest or ConfigMap change. With old agents the incident view still works but "next step / blocked because" is empty.
+
+### Commit / push
+* See the next line (filled after the push).

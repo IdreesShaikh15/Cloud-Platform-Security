@@ -118,3 +118,54 @@ not guessed at; `counters_reported_by` lists who did.
 `tests/test_dashboard_tabs.py` (10 tests) checks that every element the page had before is inside exactly the right tab, the counter
 definitions on synthetic and real agent states, the agent-side counters through a recovery lifecycle, and drives the real page in
 Chromium (clicking every tab, arrow/Home/End keys, deep link, counter words, no JavaScript errors).
+
+---
+
+# Part 3: the incident detail view
+
+## 6. What an "incident" is, and how to open one
+
+An **incident** is one containment of one workload: a quorum committed CONTAIN for it (incident number = the workload's incident version, `#1`, `#2`...).
+A lone accusation, a false alarm or an investigation that closed as a false positive is **not** an incident (it stays in the Investigations tab and the timeline).
+
+Incidents tab -> **Incidents** table (newest first; source, workload, contained at, status, current phase/stage, recovery attempt, who signed). Click a row
+(or use the deep link `#incident/<SOURCE>/<target>/<number>`, e.g. `#incident/SIMULATOR/C/1`) to open one view; "All incidents" or the Incidents tab returns to the list.
+The view refreshes while open. Status words: IN PROGRESS, RESOLVED, NEEDS HUMAN, SUPERSEDED (a newer incident replaced it), UNKNOWN (no agent reports it and it never finished).
+
+## 7. What the view shows
+
+| Section | What it answers | Where the data comes from |
+|---|---|---|
+| Where it stands now | phase, stage, recovery attempt, **the next step and exactly what is blocking it** (and how many agents give that reason) | each agent's new `next_step` on `/status`, computed with the same predicates the voting uses (dwell time, workload trust, anomaly, validation, cluster confirmation) |
+| What triggered it | who signed the CONTAIN, the weighted score W(T), the evidence each agent cited (repeats collapsed with a count), investigations the votes cite | the committed decision's justification |
+| Actions: **proposed -> authorized -> attempted -> verified** | the four stages of every isolate / redeploy / validate / stage change, separately (below) | votes, the decision log, and each agent's action-audit records |
+| Votes and who signed | per proposal: committed or not, the 3+ signers, every signed vote, and which agents did **not** vote and why | decisions, VOTE_CAST / VOTE_WITHHELD events |
+| Recovery attempts | per attempt: the redeploy's four stages, why it was retried, the evidence snapshot(s) saved before it (what could **not** be captured, export button) | audit records, snapshots |
+| Investigations | investigations of this workload around the incident and each agent's outcome | investigation rows |
+| Trust changes and why | agent-trust changes and suspicion flags while the incident ran, with their stated reason; those whose reason names this workload are marked | TRUST_CHANGE / FLAG events |
+| Rejected evidence and messages | evidence ignored from an excluded agent, signature / identity rejections | REJECTED events, FLAG `EVIDENCE_REJECTED` |
+| What each agent observed and exchanged | per-agent observations, evidence sent, evidence received and checked | OBSERVE / EVIDENCE_* events |
+
+### The four stages are four different claims
+
+| Stage | Means | Is NOT |
+|---|---|---|
+| **PROPOSED** | agents signed votes for the action | not yet agreed |
+| **AUTHORIZED** | a 3-of-4 quorum committed it (certificate issued, recorded in the decision log) | not yet done |
+| **ATTEMPTED** | an executor really called the Kubernetes API for it. Only the executor(s) that tried count: an agent that found the effect already in place did **not** attempt it | an agent that waited, or whose request was refused (stale incident, invalid certificate) did not attempt it; refusals are listed separately |
+| **VERIFIED** | after acting (or before, if it was already done) the cluster was **read** and shows the effect | `applied_unconfirmed` (the call returned but the confirming read failed) is attempted, **not** verified. A timeout that could not be read is **UNKNOWN**, shown as such, until a later read settles it |
+
+"Escalate to a human" is shown as an action row with n/a for the cluster stages, because it is a record that a person is needed, not a Kubernetes call.
+
+## 8. Honest limits of the incident view
+
+* **History is what the dashboard has seen.** The agents only keep short rings (15 decisions, 40 action records, 300 events), so the dashboard remembers what it polled (bounded: 1000 decisions, 4000 action records, 5000 events; lost when the dashboard restarts). An incident that happened before the dashboard started polling is incomplete or absent; the page says so.
+* **Events are tied to an incident by time**, from up to 120 s before containment (the evidence window) until the next incident of that workload. Events do not carry an incident number.
+* **Trust changes** are agent-trust changes during the window, not a per-incident history of workload trust (only its current value is available).
+* Each agent reports its own copy of the incident; where agents differ, "agents report this reason" shows how many agree.
+* Tested in the simulator and with synthetic data; not run on a real cluster.
+
+Tests: `tests/test_incident_detail.py` (21 tests): the four-stage semantics (including already-applied, waiting, timeout-unknown, unconfirmed, refused, proposed-only), the status words,
+event windowing and source separation, sections, bounded history, bad ids, the agent's `next_step`, three end-to-end runs through the real simulated agents
+(genuine compromise: every action goes through all four stages with 3+ signers; false accusation: no incident; failed validation: 3 attempts with snapshots, NEEDS HUMAN, why it is stuck),
+and the page in Chromium (list, open, all sections, UNKNOWN and unverified shown, back, deep link, unknown incident, no JavaScript errors).
