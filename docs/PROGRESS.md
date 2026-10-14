@@ -358,3 +358,23 @@ New: `tests/test_incident_detail.py`, `docs/img/dashboard-p3-*.png`. Modified: `
 
 ### Commit / push
 * Commit **`a57850d`** ("Dashboard Part 3: ..."), pushed (no force) to `claude/cyber-resilience-platform-xxs3oh` and `claude/inspiring-thompson-ik54a3`.
+
+## Dashboard improvements, Part 4: Evaluation tab and configurable workloads
+
+**Status: DONE in the simulator and tests; NOT run against a real cluster.** Write-ups: `docs/DASHBOARD.md` sections 9-10, `docs/WORKLOADS.md`. No architecture, quorum policy or defaults changed; all four agents remain identical.
+
+### What was done
+* **4a Evaluation tab:** `docs/RESULTS.md` rendered as written with the eight figures from `results/` and every table, under a "SIMULATOR RESULTS" banner. Strict figure-name check; dashboard image gets only RESULTS.md, summary.md and figures (`scripts/stage-dashboard.sh`, used by `scripts/build-images.sh`).
+* **4b Workloads in one file:** `config/workloads.json` (defaults = original four names/roles), validated by `agent/resilience/workloads.py` (all problems listed; duplicates/unknown roles/invalid or reserved names rejected; explicit missing file is an error). `scripts/gen-workloads.py --check/--write/--names` renders `10-healthcare-apps.yaml`, the node entries of `10-config.yaml`, and the RBAC `resourceNames`. Simulator, scenarios, evaluate.py and reset.sh read the same file. Agents report `role` on `/status`; node cards show a role chip only when it differs from the name. Agent config loader rejects two nodes naming one workload.
+* Default output equals the committed manifests apart from: a "GENERATED" comment line, `"role"` keys in the agent config, and RBAC lists collapsed to one marked line (same values).
+
+### Test evidence (commands run, actual results)
+* `python3 -m pytest -q tests` -> **437 passed in 791 s** (380 + 21 evaluation + 36 workloads; 0 failed).
+* `python3 sim/local_demo.py` -> **11 of 11 PASS**.
+* `python3 scripts/gen-workloads.py --check` -> configuration OK, all 3 generated files up to date.
+
+### Limitations
+* Only the four existing roles can be renamed/reassigned; no fifth workload. Renamed manifests are tested by generation and simulation, not applied to a real cluster. Evaluation figures are simulator results.
+
+### Cluster rebuild / restart for Part 4
+* **Rebuild** `cr-agent:1.0` and `cr-dashboard:1.0` (`scripts/build-images.sh`). App image unchanged. **Apply** `k8s/resilience/10-config.yaml` (adds `role` keys), `k8s/resilience/00-rbac.yaml` (same values), `k8s/base/10-healthcare-apps.yaml` (comment only). **Restart** agents, dashboard, quorum-webhook (config reread). Run `python3 scripts/gen-workloads.py --check` first.

@@ -6,7 +6,9 @@ PROFILE="${PROFILE:-cr-platform}"
 
 docker build -t cr-healthcare-app:1.0 -t cr-healthcare-app:known-good "$ROOT/apps"
 docker build -t cr-agent:1.0 "$ROOT/agent"
-docker build -t cr-dashboard:1.0 "$ROOT/dashboard"
+STAGE="$(mktemp -d)"; trap 'rm -rf "$STAGE"' EXIT
+"$ROOT/scripts/stage-dashboard.sh" "$STAGE"        # dashboard + the evaluation graphs/text, nothing else
+docker build -t cr-dashboard:1.0 "$STAGE"
 
 for img in cr-healthcare-app:1.0 cr-healthcare-app:known-good cr-agent:1.0 cr-dashboard:1.0; do
   echo ">> loading $img into all nodes of $PROFILE"

@@ -11,8 +11,10 @@ import time
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Tuple
 
+from world import WORKLOADS  # noqa: E402  (names come from config/workloads.json)
+
 NODES = ("A", "B", "C", "D")
-WORKLOAD_C = "records-api"
+WORKLOAD_C = WORKLOADS["C"]
 
 
 @dataclass(frozen=True)
@@ -146,11 +148,11 @@ def failed_validation(r: Runner) -> Tuple[bool, str]:
 
 
 CATALOGUE: Dict[str, Tuple[Scenario, Callable[[Runner], Tuple[bool, str]]]] = {s.id: (s, f) for s, f in [
-    (Scenario("app-compromise", "Genuine compromise of records-api (C)",
+    (Scenario("app-compromise", f"Genuine compromise of {WORKLOADS['C']} (C)",
               "Simulated exfiltration, file tampering and failed logins on node C.",
               "The quorum contains C, a clean replacement is validated, then C climbs back through every stage.", 40), app_compromise),
     (Scenario("false-accusation", "A compromised agent falsely accuses a healthy node",
-              "Agent A signs fabricated evidence about auth-service (B).",
+              f"Agent A signs fabricated evidence about {WORKLOADS['B']} (B).",
               "A lone liar cannot reach 3 votes: B is never isolated and A is flagged SUSPECT.", 25, True), false_accusation),
     (Scenario("forge-evidence", "An agent tries to forge another agent's signature",
               "Agent A claims to be B while signing with its own key.",

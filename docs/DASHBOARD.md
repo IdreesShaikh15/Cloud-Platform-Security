@@ -169,3 +169,14 @@ Tests: `tests/test_incident_detail.py` (21 tests): the four-stage semantics (inc
 event windowing and source separation, sections, bounded history, bad ids, the agent's `next_step`, three end-to-end runs through the real simulated agents
 (genuine compromise: every action goes through all four stages with 3+ signers; false accusation: no incident; failed validation: 3 attempts with snapshots, NEEDS HUMAN, why it is stuck),
 and the page in Chromium (list, open, all sections, UNKNOWN and unverified shown, back, deep link, unknown incident, no JavaScript errors).
+
+
+# Part 4: the Evaluation tab and configurable workloads
+
+## 9. The Evaluation tab
+
+Shows `docs/RESULTS.md` as written (headings, plain-English explanations, tables) with the eight committed figures from `results/`, under a banner **"SIMULATOR RESULTS"**. Nothing is computed or invented by the dashboard: `GET /api/evaluation` parses the committed markdown (every table cell is checked against it in `tests/test_evaluation_tab.py`) and `GET /api/eval/figure/<name>.png` serves only files matching `^[A-Za-z0-9_]{1,60}\.png$` that resolve inside the evaluation directory. Files are looked up in `$EVAL_DIR`, `./evaluation` (inside the dashboard image, staged by `scripts/stage-dashboard.sh` - only RESULTS.md, summary.md and figures, no certificates), or the repository layout. If the files are missing the tab says so. These are simulator results, not measurements of a live cluster, and the tab says so; live runs stay terminal scripts.
+
+## 10. Configurable workloads
+
+One file, `config/workloads.json`, documented in `docs/WORKLOADS.md`. Node cards show a `role:` chip when the role differs from the workload name (agents report `role` on `/status`).

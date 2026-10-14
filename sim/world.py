@@ -33,7 +33,12 @@ from resilience.admission import AdmissionPolicy  # noqa: E402
 from resilience.response import FakeBackend  # noqa: E402
 from resilience.simhooks import Compromise, CompromiseSource  # noqa: E402
 
-WORKLOADS = {"A": "patient-portal", "B": "auth-service", "C": "records-api", "D": "database"}
+from resilience import workloads as _wlcfg  # noqa: E402  (config/workloads.json, or $WORKLOADS_CONFIG)
+
+WL = _wlcfg.load()
+WORKLOADS = {w.node: w.name for w in WL.workloads}
+ROLES = {w.node: w.role for w in WL.workloads}
+AUTH_NODE = WL.node_of_role("auth-service")          # the workload that counts failed logins per source IP
 BASELINE_HASHES = {"app.py": "a" * 64, "telemetry.py": "b" * 64, "static/index.html": "c" * 64}
 ATTACK_KINDS = ("exfil", "tamper", "bruteforce")
 
@@ -148,7 +153,7 @@ class FakeWorld:
             if "tamper" in a.attacks:
                 hashes["static/index.html"] = "f" * 64
             auth = {}
-            if nid == "B":  # auth-service counts failures by source ip
+            if nid == AUTH_NODE:  # the auth-service role counts failures by source ip
                 for other in self.apps.values():
                     if "bruteforce" in other.attacks:
                         auth[other.ip] = int(20 * max(0.0, now - other.attack_started))
@@ -198,7 +203,7 @@ def fast_config(base_port: int, investigation: Optional[InvestigationParams] = N
     nodes = {n: NodeSpec(node_id=n, agent_name=f"agent-{n.lower()}",
                          agent_addr=f"localhost:{base_port + i}",
                          status_url=f"http://localhost:{base_port + 100 + i}/status",
-                         workload=WORKLOADS[n], telemetry_url="sim://")
+                         workload=WORKLOADS[n], telemetry_url="sim://", role=ROLES[n])
              for i, n in enumerate(NODE_IDS)}
     return ClusterConfig(
         nodes=nodes, baseline_hashes=dict(BASELINE_HASHES),

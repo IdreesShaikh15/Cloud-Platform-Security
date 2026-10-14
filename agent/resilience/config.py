@@ -23,7 +23,7 @@ class NodeSpec:
     status_url: str            # http://.../status (read-only, for the dashboard)
     workload: str              # "patient-portal" (Deployment + Service name)
     telemetry_url: str         # http://patient-portal.healthcare.svc:8080
-
+    role: str = ""             # which behaviour the workload runs (config/workloads.json); "" = not declared
 
 @dataclass
 class Timers:
@@ -182,6 +182,10 @@ def load_cluster_config(path: Optional[str] = None) -> ClusterConfig:
         recovery=_dc(RecoveryParams, raw.get("recovery")),
         client_stats_url=raw.get("client_stats_url"),
     )
+    names = [n.workload for n in nodes.values()]
+    dup = sorted({w for w in names if names.count(w) > 1})
+    if dup:                                      # defence in depth: the generator already refuses this
+        raise ValueError(f"conflicting workload definitions: {', '.join(dup)} used by more than one node")
     hashes_path = raw.get("baseline_hashes_path") or os.environ.get(
         "BASELINE_HASHES", "/etc/resilience/hashes/known-good-hashes.json")
     if hashes_path and os.path.exists(hashes_path):

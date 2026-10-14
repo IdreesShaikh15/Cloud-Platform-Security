@@ -95,6 +95,7 @@ data:
           "agent_addr": "agent-a.resilience.svc.cluster.local:50051",
           "status_url": "http://agent-a.resilience.svc.cluster.local:8081/status",
           "workload": "patient-portal",
+          "role": "patient-portal",
           "telemetry_url": "http://patient-portal.healthcare.svc.cluster.local:8080"
         },
         "B": {
@@ -102,6 +103,7 @@ data:
           "agent_addr": "agent-b.resilience.svc.cluster.local:50051",
           "status_url": "http://agent-b.resilience.svc.cluster.local:8081/status",
           "workload": "auth-service",
+          "role": "auth-service",
           "telemetry_url": "http://auth-service.healthcare.svc.cluster.local:8080"
         },
         "C": {
@@ -109,6 +111,7 @@ data:
           "agent_addr": "agent-c.resilience.svc.cluster.local:50051",
           "status_url": "http://agent-c.resilience.svc.cluster.local:8081/status",
           "workload": "records-api",
+          "role": "records-api",
           "telemetry_url": "http://records-api.healthcare.svc.cluster.local:8080"
         },
         "D": {
@@ -116,6 +119,7 @@ data:
           "agent_addr": "agent-d.resilience.svc.cluster.local:50051",
           "status_url": "http://agent-d.resilience.svc.cluster.local:8081/status",
           "workload": "database",
+          "role": "database",
           "telemetry_url": "http://database.healthcare.svc.cluster.local:8080"
         }
       }

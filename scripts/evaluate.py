@@ -39,7 +39,7 @@ sys.path.insert(0, os.path.join(ROOT, "sim"))
 OUT_DIR = os.path.join(ROOT, "results")
 RAW = os.path.join(OUT_DIR, "raw", "trials.jsonl")
 NODES = ["A", "B", "C", "D"]
-WORKLOADS = {"A": "patient-portal", "B": "auth-service", "C": "records-api", "D": "database"}
+from world import WORKLOADS  # noqa: E402  (names come from config/workloads.json)
 KINDS = ("exfil", "tamper", "bruteforce")
 PORT_BASE = 52000
 MARKER = "TRIAL_RESULT "

@@ -41,7 +41,7 @@ import time
 import uuid
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from world import LocalBaseline, LocalCluster, fast_config, sim_investigation  # noqa: E402
+from world import WORKLOADS, LocalBaseline, LocalCluster, fast_config, sim_investigation  # noqa: E402
 
 import grpc  # noqa: E402 - after world.py has put agent/ on sys.path
 from resilience.proto import resilience_pb2 as pb  # noqa: E402
@@ -60,7 +60,7 @@ def show_metrics(agent_or_ctl):
 
 
 def app_compromise(c: LocalCluster) -> bool:
-    banner("SCENARIO 1: genuine compromise of Node C (records-api)")
+    banner(f"SCENARIO 1: genuine compromise of Node C ({WORKLOADS['C']})")
     c.mark("app-compromise", "C")
     c.world.attack("C")
     ok = c.wait_until(lambda: all(p != "HEALTHY" for p in c.phases("C").values()), 15)
@@ -256,7 +256,7 @@ def ambiguous(enabled: bool = True) -> bool:
 def _rec_cluster(bad_recoveries: int, port: int) -> LocalCluster:
     c = LocalCluster(base_port=port, cfg=fast_config(port, validate_timeout_s=6)).start()
     time.sleep(2)
-    c.world.bad_recoveries["records-api"] = bad_recoveries
+    c.world.bad_recoveries[WORKLOADS["C"]] = bad_recoveries
     return c
 
 
@@ -306,7 +306,7 @@ def failed_validation() -> bool:
         phases = c.phases("C")
         tags, leaked = _snapshot_report(c)
         rec = _recoveries(c)
-        quarantined = (c.backend.policies.get("records-api") or {}).get("stage") == "QUARANTINE"
+        quarantined = (c.backend.policies.get(WORKLOADS["C"]) or {}).get("stage") == "QUARANTINE"
         print(f"  needs human attention on all agents: {ok}  attempts={att}  phases={phases}  redeploys={rec}  "
               f"still quarantined: {quarantined}  snapshots={tags}  secret leaked: {leaked}")
         print("  reason:", c.agents["B"].states["C"].attention)

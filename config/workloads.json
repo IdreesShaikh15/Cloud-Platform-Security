@@ -1,0 +1,9 @@
+{
+  "client": "client",
+  "workloads": {
+    "A": {"name": "patient-portal", "role": "patient-portal", "description": "web front end; calls the auth service and the records API"},
+    "B": {"name": "auth-service",   "role": "auth-service",   "description": "login and token verification; counts failed logins per source IP"},
+    "C": {"name": "records-api",    "role": "records-api",    "description": "token-protected patient records; reads from the database"},
+    "D": {"name": "database",       "role": "database",       "description": "synthetic patient records store"}
+  }
+}

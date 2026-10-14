@@ -1,4 +1,5 @@
 # Healthcare workloads: one per resilience node (Minikube node labelled resilience.io/zone).
+# GENERATED from config/workloads.json by scripts/gen-workloads.py: edit the configuration, not this file.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

@@ -509,6 +509,177 @@ def summary_view(nodes: dict, live: dict, ids: list, inv: dict) -> dict:
             "counters_reported_by": [sid for sid, s in live.items() if s.get("counters")]}
 
 
+# --------------------------------------------------------------------------- evaluation tab (Part 4)
+# Shows the committed evaluation (results/ graphs, docs/RESULTS.md text and tables) exactly as written. Nothing is
+# recomputed or rephrased here, so the tab cannot say more than the evaluation does. It is ALWAYS labelled simulator
+# results (the evaluation only ever ran in the simulator).
+FIG_NAME = __import__("re").compile(r"^[A-Za-z0-9_]{1,60}\.png$")
+
+
+def eval_locations() -> dict:
+    """Where the evaluation files are: $EVAL_DIR, the image's ./evaluation, or the repository layout (results/ + docs/)."""
+    cands = []
+    if os.environ.get("EVAL_DIR"):
+        d = os.environ["EVAL_DIR"]
+        cands.append({"figs": d, "md": os.path.join(d, "RESULTS.md"), "summary": os.path.join(d, "summary.md")})
+    d = os.path.join(HERE, "evaluation")
+    cands.append({"figs": d, "md": os.path.join(d, "RESULTS.md"), "summary": os.path.join(d, "summary.md")})
+    root = os.path.dirname(HERE)
+    cands.append({"figs": os.path.join(root, "results"), "md": os.path.join(root, "docs", "RESULTS.md"),
+                  "summary": os.path.join(root, "results", "summary.md")})
+    for c in cands:
+        if os.path.isfile(c["md"]):
+            return c
+    return {}
+
+
+def parse_markdown_blocks(lines: list) -> list:
+    """The small Markdown subset docs/RESULTS.md uses -> ordered blocks (paragraph, bullets, numbered, table, image, code, quote)."""
+    out, i, n = [], 0, len(lines)
+    img = __import__("re").compile(r"^!\[(.*?)\]\((.*?)\)\s*$")
+    while i < n:
+        ln = lines[i]
+        if not ln.strip() or ln.strip().startswith("<!--"):
+            i += 1
+            continue
+        if ln.startswith("```"):
+            j = i + 1
+            while j < n and not lines[j].startswith("```"):
+                j += 1
+            out.append({"type": "code", "text": "\n".join(lines[i + 1:j])})
+            i = j + 1
+            continue
+        m = img.match(ln.strip())
+        if m:
+            out.append({"type": "image", "alt": m.group(1), "name": os.path.basename(m.group(2))})
+            i += 1
+            continue
+        if ln.lstrip().startswith("|"):
+            rows = []
+            while i < n and lines[i].lstrip().startswith("|"):
+                cells = [c.strip() for c in lines[i].strip().strip("|").split("|")]
+                if not all(set(c) <= set("-: ") for c in cells):          # skip the |---|---| separator row
+                    rows.append(cells)
+                i += 1
+            if rows:
+                out.append({"type": "table", "head": rows[0], "rows": rows[1:]})
+            continue
+        if ln.startswith(">"):
+            q = []
+            while i < n and lines[i].startswith(">"):
+                q.append(lines[i].lstrip("> ").rstrip())
+                i += 1
+            out.append({"type": "quote", "text": " ".join(x for x in q if x)})
+            continue
+        bullet = __import__("re").match(r"^(\*|-) (.*)$", ln)
+        number = __import__("re").match(r"^\d+\. (.*)$", ln)
+        if bullet or number:
+            items, kind = [], ("bullets" if bullet else "numbered")
+            rx = __import__("re").compile(r"^(\*|-) (.*)$" if bullet else r"^\d+\. (.*)$")
+            while i < n and rx.match(lines[i]):
+                item = rx.match(lines[i]).groups()[-1]
+                i += 1
+                while i < n and lines[i].startswith("  ") and lines[i].strip() and not rx.match(lines[i]):
+                    item += " " + lines[i].strip()
+                    i += 1
+                items.append(item)
+            out.append({"type": kind, "items": items})
+            continue
+        para = []
+        while i < n and lines[i].strip() and not lines[i].startswith(("```", "|", ">", "![")) \
+                and not __import__("re").match(r"^(\*|-) |^\d+\. ", lines[i]) and not lines[i].strip().startswith("<!--"):
+            para.append(lines[i].strip())
+            i += 1
+        if para:
+            out.append({"type": "p", "text": " ".join(para)})
+        else:
+            i += 1
+    return out
+
+
+def parse_results_md(text: str) -> dict:
+    re = __import__("re")
+    title, intro, sections, cur, sub = "", [], [], None, None
+    buf: list = []
+
+    def flush():
+        nonlocal buf
+        blocks = parse_markdown_blocks(buf)
+        if sub is not None:
+            sub["blocks"] = blocks
+        elif cur is not None:
+            cur["blocks"] = blocks
+        else:
+            intro.extend(blocks)
+        buf = []
+    for ln in text.split("\n"):
+        if ln.startswith("# ") and not title:
+            title = ln[2:].strip()
+        elif ln.startswith("## "):
+            flush()
+            m = re.match(r"^## (\d+)\.\s*(.*)$", ln)
+            cur = {"id": m.group(1) if m else "", "title": (m.group(2) if m else ln[3:]).strip(), "blocks": [], "subsections": []}
+            sub = None
+            sections.append(cur)
+        elif ln.startswith("### ") and cur is not None:
+            flush()
+            m = re.match(r"^### ([\d.]+)\s*(.*)$", ln)
+            sub = {"id": m.group(1) if m else "", "title": (m.group(2) if m else ln[4:]).strip(), "blocks": []}
+            cur["subsections"].append(sub)
+        else:
+            buf.append(ln)
+    flush()
+    return {"title": title, "intro": intro, "sections": sections}
+
+
+_EVAL_CACHE: dict = {}
+
+
+def evaluation_view() -> dict:
+    loc = eval_locations()
+    note = ("SIMULATOR RESULTS. Measured in the simulator (simulated telemetry and Kubernetes API; real agents, quorum and certificates). "
+            "Nothing here was measured on a real cluster.")
+    if not loc:
+        return {"available": False, "data_source": SIMULATOR, "notice": note,
+                "message": "The evaluation results are not included in this deployment. Generate them with `python3 scripts/evaluate.py` "
+                           "(docs/RESULTS.md and results/), then rebuild the dashboard image."}
+    try:
+        mt = os.path.getmtime(loc["md"])
+        key = (loc["md"], mt)
+        if _EVAL_CACHE.get("key") != key:
+            with open(loc["md"], encoding="utf-8") as fh:
+                doc = parse_results_md(fh.read())
+            figs = sorted(f for f in os.listdir(loc["figs"]) if FIG_NAME.match(f)) if os.path.isdir(loc["figs"]) else []
+            meta = {"generated_at": mt, "figures": figs, "trials": None, "errors": None, "summary_file": os.path.isfile(loc["summary"])}
+            if meta["summary_file"]:
+                with open(loc["summary"], encoding="utf-8") as fh:
+                    st = fh.read()
+                tot = 0
+                for ln in st.split("\n"):
+                    cells = [c.strip() for c in ln.strip().strip("|").split("|")]
+                    if ln.startswith("|") and len(cells) == 5 and cells[2].isdigit() and cells[3].isdigit():
+                        tot += int(cells[2])
+                meta["trials"] = tot or None
+                m = __import__("re").search(r"(All (\d+) trials produced a result \(0 errors\)|(\d+) of (\d+) trials errored)", st)
+                meta["errors_text"] = m.group(1) if m else None
+            _EVAL_CACHE.update(key=key, doc=doc, meta=meta)
+        return {"available": True, "data_source": SIMULATOR, "notice": note, **_EVAL_CACHE["doc"], "meta": _EVAL_CACHE["meta"]}
+    except (OSError, ValueError) as exc:
+        return {"available": False, "data_source": SIMULATOR, "notice": note, "message": f"The evaluation files could not be read: {exc.__class__.__name__}"}
+
+
+def eval_figure(name: str):
+    """(bytes) of one PNG from the evaluation figure directory, or None. Only plain *.png names that exist there."""
+    loc = eval_locations()
+    if not loc or not FIG_NAME.match(name or ""):
+        return None
+    path = os.path.join(loc["figs"], name)
+    if os.path.dirname(os.path.realpath(path)) != os.path.realpath(loc["figs"]) or not os.path.isfile(path):
+        return None
+    with open(path, "rb") as fh:
+        return fh.read()
+
+
 # --------------------------------------------------------------------------- incident detail (Part 3)
 # An INCIDENT is one containment of one workload: (data source, target, epoch >= 1). Everything below is assembled from what
 # the agents reported (decisions, action-audit records, events, investigations, snapshots), never invented.
@@ -964,6 +1135,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(metrics())
         if p == "/api/sim/state":
             return self._json(sim_state())
+        if p == "/api/evaluation":
+            return self._json(evaluation_view())
+        if p.startswith("/api/eval/figure/"):
+            png = eval_figure(p.rsplit("/", 1)[1])
+            if png is None:
+                return self._send(404, b"not found", "text/plain")
+            return self._send(200, png, "image/png")
         if p.startswith("/api/incident/"):
             parts = p.split("/")
             if len(parts) != 6 or parts[3] not in VALID_SOURCES or parts[4] not in URLS or not parts[5].isdigit():

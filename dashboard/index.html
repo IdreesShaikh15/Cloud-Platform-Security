@@ -99,6 +99,12 @@
   details.rec { margin-top:3px; } details.rec summary { cursor:pointer; color:var(--mut); font-size:12px; }
   .blocked { background:var(--card2); border-left:4px solid var(--warn); padding:8px 10px; border-radius:6px; margin:6px 0; }
   tr.click.sel td { background:var(--card2); }
+  /* evaluation tab */
+  .evbanner { background:#d29922; color:#000; font-weight:700; padding:8px 12px; border-radius:6px; margin:10px 0; }
+  .evcard { background:var(--card); border-radius:8px; padding:12px 14px; margin-top:12px; }
+  .evcard h3 { margin:0 0 8px; font-size:15px; } .evcard img { max-width:100%; height:auto; background:#fff; border-radius:6px; display:block; margin:8px 0; }
+  .evcard p, .evcard li { line-height:1.5; max-width:110ch; } .evcard table { margin:8px 0; } .evcard code, .evbox code { background:var(--card2); padding:0 4px; border-radius:3px; }
+  details.evd { background:var(--card); border-radius:8px; padding:8px 14px; margin-top:12px; } details.evd > summary { cursor:pointer; font-weight:700; }
   #pausebanner { display:none; background:var(--warn); color:#000; font-weight:600; text-align:center; padding:4px; border-radius:6px; margin-top:8px; }
 </style>
 </head>
@@ -171,8 +177,7 @@
 </div>
 
 <div class="panel" id="panel-evaluation" role="tabpanel" aria-labelledby="tab-evaluation" data-panel="evaluation" hidden>
-<section><b>Evaluation</b> <span class="src src-SIMULATOR">SIMULATOR RESULTS</span>
-  <div class="mut" style="margin-top:6px">The evaluation graphs and tables (760 seeded simulator trials, see docs/RESULTS.md) will be shown here in a later step. Until then they are in the repository: <code>results/</code> and <code>docs/RESULTS.md</code>.</div></section>
+<div id="evalbox"><div class="mut">Open this tab to load the evaluation.</div></div>
 </div>
 
 <div class="panel" id="panel-audit" role="tabpanel" aria-labelledby="tab-audit" data-panel="audit" hidden>
@@ -305,6 +310,7 @@ function showTab(name, focus) {
   if (parts[0] === "incident" && parts.length === 4) { setIncident(parts.slice(1).join(":")); name = "incidents"; }
   else { if (openInc) setIncident(null); }
   if (!TABS.includes(name)) name = "overview";
+  if (name === "evaluation") loadEvaluation();
   for (const t of TABS) {
     const b = document.getElementById("tab-" + t), p = document.getElementById("panel-" + t);
     b.setAttribute("aria-selected", String(t === name)); b.tabIndex = t === name ? 0 : -1; p.hidden = t !== name;
@@ -456,6 +462,41 @@ function setIncident(id) {
   if (id) { document.getElementById("incdetail").innerHTML = '<div class="mut">loading...</div>'; refreshIncident(); }
 }
 
+// ---------------------------------------------------------------- evaluation tab (shows docs/RESULTS.md + results/ exactly as written)
+let evalLoaded = false;
+const md = s => esc(s).replace(/&lt;br&gt;/g, "<br>").replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>").replace(/(^|[^*\w])\*([^*\s][^*]*?)\*(?!\w)/g, "$1<i>$2</i>");
+function evBlock(b) {
+  if (b.type === "p") return `<p>${md(b.text)}</p>`;
+  if (b.type === "bullets") return `<ul>${b.items.map(i => `<li>${md(i)}</li>`).join("")}</ul>`;
+  if (b.type === "numbered") return `<ol>${b.items.map(i => `<li>${md(i)}</li>`).join("")}</ol>`;
+  if (b.type === "quote") return `<p class="mut">${md(b.text)}</p>`;
+  if (b.type === "code") return `<pre>${esc(b.text)}</pre>`;
+  if (b.type === "table") return `<div style="overflow-x:auto"><table><tr>${b.head.map(h => `<th>${md(h)}</th>`).join("")}</tr>${b.rows.map(r => `<tr>${r.map(c => `<td>${md(c)}</td>`).join("")}</tr>`).join("")}</table></div>`;
+  if (b.type === "image") return `<img src="api/eval/figure/${encodeURIComponent(b.name)}" alt="${esc(b.alt)}">`;
+  return "";
+}
+const evBlocks = bl => (bl || []).map(evBlock).join("");
+function renderEvaluation(v) {
+  const box = document.getElementById("evalbox");
+  const banner = `<div class="evbanner" role="note">${srcTag("SIMULATOR")} ${esc(v.notice)}</div>`;
+  if (!v.available) { box.innerHTML = banner + `<section><b>Evaluation</b><div class="mut" style="margin-top:6px">${md(v.message || "")}</div></section>`; return; }
+  const sec = id => (v.sections || []).find(s => s.id === id);
+  const m = v.meta || {};
+  const about = ["1", "2", "3"].map(sec).filter(Boolean).map(s => `<details class="evd"><summary>${esc(s.title)}</summary>${evBlocks(s.blocks)}</details>`).join("");
+  const ten = sec("0"), res = sec("4"), lim = sec("5");
+  box.innerHTML = banner +
+    `<div class="mut">${esc(v.title)} · ${m.trials ? m.trials + " seeded trials" : "trials: unknown"} · ${esc(m.errors_text || "")} · files from ${t(m.generated_at)} · ${(m.figures || []).length} graphs</div>` +
+    (ten ? `<section class="evcard"><h3>${esc(ten.title)}</h3>${evBlocks(ten.blocks.filter(b => b.type !== "code").slice(0, 1))}</section>` : "") +
+    (res ? res.subsections.map(x => { const img = (x.blocks || []).filter(b => b.type === "image"), rest = (x.blocks || []).filter(b => b.type !== "image");
+        return `<section class="evcard" id="ev-${esc(x.id.replace(/\./g, "-"))}"><h3>${esc(x.id)} ${esc(x.title)} ${srcTag("SIMULATOR")}</h3>${evBlocks(img)}${evBlocks(rest)}</section>`; }).join("") : "") +
+    (lim ? `<section class="evcard"><h3>${esc(lim.title)}</h3>${evBlocks(lim.blocks)}</section>` : "") + about;
+}
+async function loadEvaluation() {
+  if (evalLoaded) return; evalLoaded = true;
+  try { renderEvaluation(await (await fetch("api/evaluation")).json()); }
+  catch (e) { evalLoaded = false; document.getElementById("evalbox").innerHTML = '<div class="mut">Could not load the evaluation.</div>'; }
+}
+
 function renderBanner(s) {
   const b = document.getElementById("srcbanner"), d = s.data_source || "UNKNOWN";
   b.className = d;
@@ -501,7 +542,7 @@ function renderState(s) {
   const cc = s.mode === "centralized" && s.central_compromised; if (cc) document.getElementById("sub").textContent += ` · controller compromise simulation: ${cc}`;
   document.getElementById("nodes").innerHTML = Object.entries(s.nodes).map(([id,n]) => `
     <div class="card ${n.display_state === 'NEEDS_ATTENTION' ? 'ISOLATED' : n.phase}" data-node="${id}" title="Open agent ${id}'s view">
-      <div class="row"><b>${nb(id)} · ${esc(n.workload)}</b><span>${n.watch ? '<span class="tag warn" title="Under watch after an unresolved investigation: heightened monitoring, human review needed. Nothing is isolated.">WATCH · review</span> ' : ''}<span class="tag ${n.display_state === 'NEEDS_ATTENTION' ? 'bad' : n.display_state === 'UNKNOWN' ? 'warn' : ''}">${esc((n.display_state || n.phase).replace('_', ' '))}</span></span></div>
+      <div class="row"><b>${nb(id)} · ${esc(n.workload)}${n.role && n.role !== n.workload ? ` <span class="tag" title="the behaviour this workload runs (configured in config/workloads.json)">role: ${esc(n.role)}</span>` : ""}</b><span>${n.watch ? '<span class="tag warn" title="Under watch after an unresolved investigation: heightened monitoring, human review needed. Nothing is isolated.">WATCH · review</span> ' : ''}<span class="tag ${n.display_state === 'NEEDS_ATTENTION' ? 'bad' : n.display_state === 'UNKNOWN' ? 'warn' : ''}">${esc((n.display_state || n.phase).replace('_', ' '))}</span></span></div>
       ${s.mode === "centralized" ? `<div class="mut" style="margin:6px 0">centralized mode: this node is watched only by the single central controller (no agents, no votes, no trust scores, no staged return: straight back to full access)</div>` : `
       ${n.attention ? `<div class="rv">NEEDS HUMAN ATTENTION: ${esc(n.attention.reason)}. Stays quarantined; NOT healthy.</div>` : ""}
       ${n.attempt > 1 && n.phase !== "HEALTHY" ? `<div class="mut">recovery attempt ${n.attempt} of ${n.recovery ? n.recovery.max_attempts : "?"}${n.recovery && n.recovery.failure ? " · last attempt failed: " + esc(n.recovery.failure) : ""}</div>` : ""}

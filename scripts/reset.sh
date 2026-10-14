@@ -5,7 +5,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 kubectl -n healthcare delete networkpolicy -l app.kubernetes.io/managed-by=resilience-agents --ignore-not-found
 kubectl -n resilience delete configmap cr-attack-marker --ignore-not-found
-for d in patient-portal auth-service records-api database client; do
+# workload names come from config/workloads.json (defaults: patient-portal auth-service records-api database, and the client probe)
+for d in $(python3 "$ROOT/scripts/gen-workloads.py" --names); do
   for k in epoch phase stage isolated-epoch recovered-epoch recovery-requested-at recovery-attempt qc action authorized-by qc-votes; do
     kubectl -n healthcare annotate deploy "$d" "resilience.io/$k-" >/dev/null 2>&1 || true
   done

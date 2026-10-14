@@ -1240,7 +1240,7 @@ class ResilienceAgent:
             for nid, st in self.states.items():
                 s = self.snaps.get(nid)
                 targets[nid] = {
-                    **asdict(st), "workload": self.workload(nid),
+                    **asdict(st), "workload": self.workload(nid), "role": self.cfg.nodes[nid].role,
                     "workload_trust": round(self.workload_trust.get(nid), 1),
                     "reachable": bool(s and s.reachable), "healthy": bool(s and s.healthy),
                     "instance_id": s.instance_id if s else "",
