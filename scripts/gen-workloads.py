@@ -125,6 +125,18 @@ def render_config(wl: "W.Workloads", text: str) -> str:
             if k == "workload":
                 new["workload"], new["role"] = w.name, w.role
         new["telemetry_url"] = f"http://{w.name}.healthcare.svc.cluster.local:8080"
+        for k in ("display_name", "provides", "depends_on", "recovery_priority", "priority_rationale"):     # presentation only
+            new.pop(k, None)
+        if w.display_name:
+            new["display_name"] = w.display_name
+        if w.provides:
+            new["provides"] = w.provides
+        if w.depends_on:
+            new["depends_on"] = wl.node_depends_on(w.node)
+        if w.recovery_priority:
+            new["recovery_priority"] = w.recovery_priority
+        if w.priority_rationale:
+            new["priority_rationale"] = w.priority_rationale
         cfg["nodes"][w.node] = new
     if "client_stats_url" in cfg:
         cfg["client_stats_url"] = f"http://{wl.client}.healthcare.svc.cluster.local:8080/stats"

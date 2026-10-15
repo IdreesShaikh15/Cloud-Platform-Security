@@ -24,6 +24,9 @@ Scenarios
                      replacement validates, and C is reintegrated (never shown healthy before that)
   failed-validation  every replacement pod of Node C fails validation: bounded retries, then the
                      incident is marked NEEDS HUMAN ATTENTION; C stays quarantined, never healthy
+  obstruct           agent A is compromised and WITHHOLDS its votes while the EHR API (Node C) is genuinely
+                     compromised: B, C and D still reach 3-of-4 and finish the whole cycle; A's withheld
+                     votes are on record with the reason. No new trust rule: A's trust is NOT reduced
   baseline           the centralized controller under the same two attacks
   controller-crash   the centralized controller is killed, then Node C is genuinely
                      compromised: no detection or response occurs at all (single point
@@ -60,7 +63,7 @@ def show_metrics(agent_or_ctl):
 
 
 def app_compromise(c: LocalCluster) -> bool:
-    banner(f"SCENARIO 1: genuine compromise of Node C ({WORKLOADS['C']})")
+    banner(f"SCENARIO 1: patient records being copied out of the {WORKLOADS['C']} (Node C; all patient data is synthetic)")
     c.mark("app-compromise", "C")
     c.world.attack("C")
     ok = c.wait_until(lambda: all(p != "HEALTHY" for p in c.phases("C").values()), 15)
@@ -74,7 +77,7 @@ def app_compromise(c: LocalCluster) -> bool:
 
 
 def false_accusation(c: LocalCluster) -> bool:
-    banner("SCENARIO 2: resilience node A compromised, falsely accuses healthy Node B")
+    banner(f"SCENARIO 2: security agent A is compromised and falsely accuses the healthy {WORKLOADS['B']} (B)")
     c.compromise_agent("A", "B")
     flagged = c.wait_until(lambda: all(c.agents[n].agent_trust.get("A") < 50 for n in "BCD"), 40)
     time.sleep(2)
@@ -348,6 +351,23 @@ def controller_crash(with_status: bool = False) -> bool:
     return no_response
 
 
+def obstruct() -> bool:
+    banner(f"SCENARIO 12: agent A is compromised and withholds its votes while the {WORKLOADS['C']} (C) is attacked")
+    import scenarios
+    c = LocalCluster(base_port=50601, cfg=fast_config(50601, sim_investigation())).start()
+    time.sleep(2)
+    try:
+        ok, detail = scenarios.obstruct(scenarios.Runner(c, lambda: False))
+        f = scenarios.obstruct_facts(c)
+        print(f"  {detail}")
+        print(f"  CONTAIN voters seen by B, C, D: {f['contain_voters']}")
+        print(f"  A voted: {f['attacker_voted']};  proposals A withheld: {f['withheld_events']}")
+        print(f"  honest agents' trust in A (no rule penalises a missing vote): {f['trust_in_attacker']}")
+        return ok
+    finally:
+        c.stop()
+
+
 def baseline() -> bool:
     banner("SCENARIO 4: centralized baseline under the same attacks")
     b = LocalBaseline()
@@ -375,6 +395,7 @@ def baseline() -> bool:
 
 CLUSTER_SCENARIOS = ("app-compromise", "false-accusation", "forge-evidence", "agent-crash")
 INVESTIGATION_SCENARIOS = ("transient-blip", "slow-burn", "ambiguous")
+OBSTRUCT_SCENARIOS = ("obstruct",)
 RECOVERY_SCENARIOS = ("validation-retry", "failed-validation")
 BASELINE_SCENARIOS = ("baseline", "controller-crash")
 
@@ -383,7 +404,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("scenario", nargs="?", default="all",
                     choices=["all", *CLUSTER_SCENARIOS, *INVESTIGATION_SCENARIOS, *RECOVERY_SCENARIOS,
-                             *BASELINE_SCENARIOS])
+                             *OBSTRUCT_SCENARIOS, *BASELINE_SCENARIOS])
     ap.add_argument("--no-investigation", action="store_true",
                     help="run the investigation scenarios with the feature switched off (comparison)")
     ap.add_argument("--serve", action="store_true",
@@ -428,6 +449,8 @@ def main():
         results["validation-retry"] = validation_retry()
     if a.scenario in ("all", "failed-validation"):
         results["failed-validation"] = failed_validation()
+    if a.scenario in ("all", "obstruct"):
+        results["obstruct"] = obstruct()
     if a.scenario in ("all", "baseline"):
         results["baseline"] = baseline()
     if a.scenario in ("all", "controller-crash"):

@@ -548,8 +548,13 @@ def aggregate() -> dict:
         last = max(decisions, key=lambda d: d["t"]) if decisions else None
         peer_views = [s["agent_trust"].get(nid) for p, s in live.items() if p != nid]
         own = live.get(nid, {}).get("targets", {}).get(nid, {})
+        v0 = views[0] if views else {}
         nodes[nid] = {
             "workload": views[0]["workload"] if views else "?",
+            # presentation metadata reported by the agents (config/workloads.json); display only
+            "display_name": v0.get("display_name") or (v0.get("workload") or "?"),
+            "provides": v0.get("provides") or "", "depends_on": list(v0.get("depends_on") or []),
+            "recovery_priority": v0.get("recovery_priority") or 0, "priority_rationale": v0.get("priority_rationale") or "",
             "agent_up": nid in live,
             "agent_compromised_sim": (live.get(nid) or {}).get("compromised"),
             "phase": phase, "stage": stage,

@@ -203,7 +203,10 @@ def fast_config(base_port: int, investigation: Optional[InvestigationParams] = N
     nodes = {n: NodeSpec(node_id=n, agent_name=f"agent-{n.lower()}",
                          agent_addr=f"localhost:{base_port + i}",
                          status_url=f"http://localhost:{base_port + 100 + i}/status",
-                         workload=WORKLOADS[n], telemetry_url="sim://", role=ROLES[n])
+                         workload=WORKLOADS[n], telemetry_url="sim://", role=ROLES[n],
+                         display_name=WL.display(n), provides=WL.by_node()[n].provides, depends_on=WL.node_depends_on(n),
+                         recovery_priority=WL.by_node()[n].recovery_priority,
+                         priority_rationale=WL.by_node()[n].priority_rationale)
              for i, n in enumerate(NODE_IDS)}
     return ClusterConfig(
         nodes=nodes, baseline_hashes=dict(BASELINE_HASHES),

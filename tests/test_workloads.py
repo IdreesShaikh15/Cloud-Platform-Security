@@ -211,3 +211,76 @@ def test_dashboard_card_shows_role_only_when_it_differs():
 def test_docs_exist_and_name_the_one_file():
     t = open(os.path.join(ROOT, "docs", "WORKLOADS.md"), encoding="utf-8").read()
     assert "config/workloads.json" in t and "gen-workloads.py" in t
+
+
+# ---- healthcare presentation metadata (Phase C): display names, dependencies, recovery priority. Presentation only.
+def test_healthcare_presentation_defaults():
+    wl = W.load()
+    assert [wl.display(n) for n in "ABCD"] == ["Patient Portal", "Login & Access Service", "Electronic Health Records (EHR) API", "Clinical Database"]
+    assert {w.node: w.name for w in wl.workloads} == HISTORICAL                    # internal identifiers unchanged
+    assert wl.node_depends_on("A") == ["B", "C"] and wl.node_depends_on("C") == ["B", "D"]
+    assert wl.node_depends_on("B") == [] and wl.node_depends_on("D") == []
+    assert sorted(w.recovery_priority for w in wl.workloads) == [1, 2, 3, 4]
+    assert all(w.priority_rationale and w.provides for w in wl.workloads)
+
+
+def test_dependencies_in_the_config_match_what_the_apps_actually_call():
+    """apps/src/app.py: the portal calls auth + records; records calls auth (/verify) + database; auth and database call nothing."""
+    src = open(os.path.join(ROOT, "apps", "src", "app.py"), encoding="utf-8").read()
+    portal = src[src.index('if ROLE == "patient-portal":'):src.index('if ROLE == "client" and path')]
+    records = src[src.index('if ROLE == "records-api"'):src.index('if ROLE == "patient-portal":')]
+    assert "AUTH_URL" in portal and "RECORDS_URL" in portal and "DATABASE_URL" not in portal
+    assert "AUTH_URL" in records and "DATABASE_URL" in records and "RECORDS_URL" not in records
+    wl = W.load()
+    assert set(wl.by_node()["A"].depends_on) == {"auth-service", "records-api"}
+    assert set(wl.by_node()["C"].depends_on) == {"auth-service", "database"}
+
+
+@pytest.mark.parametrize("mut,frag", [
+    (lambda d: d["workloads"]["A"].update(depends_on=["nope"]), "unknown role"),
+    (lambda d: d["workloads"]["A"].update(depends_on=["patient-portal"]), "cannot depend on itself"),
+    (lambda d: d["workloads"]["A"].update(depends_on=["auth-service", "auth-service"]), "more than once"),
+    (lambda d: d["workloads"]["B"].update(depends_on=["patient-portal"]), "cycle"),
+    (lambda d: d["workloads"]["B"].update(recovery_priority=1), "different priority"),
+    (lambda d: d["workloads"]["B"].pop("recovery_priority"), "different priority"),
+    (lambda d: d["workloads"]["B"].update(recovery_priority=9), "whole number"),
+    (lambda d: d["workloads"]["B"].update(recovery_priority=True), "whole number"),
+    (lambda d: d["workloads"]["B"].update(display_name="x" * 61), "display_name"),
+    (lambda d: d["workloads"]["B"].update(display_name=5), "display_name"),
+    (lambda d: d["workloads"]["B"].update(provides="a\nb"), "provides"),
+    (lambda d: d["workloads"]["B"].update(depends_on="auth-service"), "list of roles"),
+])
+def test_invalid_presentation_metadata_rejected(mut, frag):
+    d = copy.deepcopy(W.DEFAULTS)
+    mut(d)
+    assert any(frag in e for e in errors_of(d)), errors_of(d)
+
+
+def test_presentation_metadata_is_optional():
+    d = copy.deepcopy(W.DEFAULTS)
+    for w in d["workloads"].values():
+        for k in ("display_name", "provides", "depends_on", "recovery_priority", "priority_rationale"):
+            w.pop(k, None)
+    wl = W.validate(d)
+    assert wl.display("A") == "patient-portal" and wl.node_depends_on("A") == []
+
+
+def test_presentation_metadata_never_changes_the_names_in_the_manifests():
+    base = gen.generate(W.load())
+    d = copy.deepcopy(W.DEFAULTS)
+    for n, w in d["workloads"].items():
+        w["display_name"] = "Renamed " + n
+    other = gen.generate(W.validate(d))
+    assert other[gen.APPS] == base[gen.APPS] and other[gen.RBAC] == base[gen.RBAC]      # only the agent config text differs
+    assert other[gen.CONFIG] != base[gen.CONFIG] and "Renamed A" in other[gen.CONFIG]
+
+
+def test_agent_config_and_status_carry_the_metadata(tmp_path):
+    text = open(os.path.join(ROOT, "k8s", "resilience", "10-config.yaml"), encoding="utf-8").read()
+    body = text.split("config.json: |\n", 1)[1]
+    j = json.loads("\n".join(l[4:] for l in body.splitlines() if l.startswith("    ")))
+    p = tmp_path / "c.json"
+    p.write_text(json.dumps(j))
+    c = load_cluster_config(str(p))
+    assert c.nodes["C"].display_name == "Electronic Health Records (EHR) API" and c.nodes["C"].depends_on == ["B", "D"]
+    assert c.nodes["D"].recovery_priority == 1 and c.nodes["A"].provides == "show patient records"

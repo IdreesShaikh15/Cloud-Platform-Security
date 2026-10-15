@@ -4,6 +4,8 @@
 # signature). It only flips a behaviour switch inside our own agent.
 #   scripts/simulate-compromised-agent.sh A B                   # false accusation
 #   scripts/simulate-compromised-agent.sh A C forge-evidence    # impersonation attempt
+#   scripts/simulate-compromised-agent.sh A C obstruct          # A withholds every vote about C (nothing is fabricated or sent;
+#                                                               # it changes only agent A's own behaviour, never the cluster)
 #   scripts/simulate-compromised-agent.sh A restore             # back to honest
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

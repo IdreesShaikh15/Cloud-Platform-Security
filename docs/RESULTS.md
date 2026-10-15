@@ -8,7 +8,7 @@
 > not, what survives a failure. Every graph is stamped "Simulator results".
 
 
-## 0. The results in ten lines (all simulator results; numbers from the tables below)
+## 0. The results in twelve lines (all simulator results; numbers from the tables below)
 
 1. Every scenario trial (80 of 80) ran through detection, isolation, recovery and reintegration; a genuine attack was isolated in about 1.2 s and back at full access in about 18.5 s of simulator time.
 2. One lying agent never isolated a healthy workload (0/20); a lying *central controller* did every time (20/20). With the controller crashed, a real attack was not contained (0/20); with one agent crashed it was (20/20).
@@ -19,7 +19,9 @@
 7. The targeted investigation did **not** reduce false isolations in my transient mix (4/20 both ways); it made real slow-burn attacks isolate sooner (20/20 pairs, median 4.2 s earlier) and turned silent ambiguity into a human-review flag.
 8. In a mixed run, no genuine attack was missed (0/30), but 50% of benign transients were isolated, all of them ones that 3 or more agents saw. A threshold detector cannot tell a unanimous benign spike from an attack.
 9. Agent CPU/memory in the simulator is tiny (about 0.1-1% of a core, 2-4 MB per agent), which says little about real clusters.
-10. Nothing here was measured on a real cluster.
+10. An optional **persistence re-check** (an agent waits 6 s before voting to isolate; off by default) lowered false isolations in my benign mix from 12/20 to 9/20: it filtered every short blip (3/11 isolated without it, 0/11 with it) and not one of the 9 long bursts. It adds about 6 s to isolating a network-only attack (median 1.04 s to 7.01 s) and nothing to attacks that include a file change or an unexpected process, and an attacker that sends 3 s bursts every 5 s is never contained with the wait on (0/20, against 20/20 with it off).
+11. One compromised agent that **withholds every vote** about the attacked workload could not stop containment: the other three agents contained and fully recovered it in 20/20 trials (3 signers each), its vote was never counted (0/20), and nothing penalised it (the lowest trust any honest agent gave it was 100) because the platform has no rule for a missing vote.
+12. Nothing here was measured on a real cluster.
 
 Everything in this file is produced by one command, so you can reproduce and check it:
 
@@ -51,7 +53,7 @@ The tables below the `<!-- BEGIN -->` markers are **rewritten by the script**; t
   overhead experiment (section 4.7) runs alone for that reason.
 
 <!-- BEGIN:errors -->
-All 760 trials produced a result (0 errors).
+All 960 trials produced a result (0 errors).
 <!-- END:errors -->
 
 <!-- BEGIN:overview -->
@@ -94,6 +96,16 @@ All 760 trials produced a result (0 errors).
 | overhead | idle | 20 | 0 | 8000-8019 |
 | overhead | attack | 20 | 0 | 8100-8119 |
 | overhead | central-idle | 20 | 0 | 8200-8219 |
+| recheck | benign-r0 | 20 | 0 | 9000-9019 |
+| recheck | benign-r6 | 20 | 0 | 9000-9019 |
+| recheck | genuine-r0 | 20 | 0 | 9100-9119 |
+| recheck | genuine-r6 | 20 | 0 | 9100-9119 |
+| recheck | netexfil-r0 | 20 | 0 | 9200-9219 |
+| recheck | netexfil-r6 | 20 | 0 | 9200-9219 |
+| recheck | pulse-r0 | 20 | 0 | 9300-9319 |
+| recheck | pulse-r6 | 20 | 0 | 9300-9319 |
+| obstruct | obstruct | 20 | 0 | 9500-9519 |
+| obstruct | control | 20 | 0 | 9500-9519 |
 <!-- END:overview -->
 
 ## 2. Definitions (start event, end event, denominator)
@@ -143,6 +155,8 @@ costly one: a healthy workload is cut off.
 | **crash** | 4, 3 or 2 agents alive, then a genuine attack | 3 x 20 |
 | **mixed** | 30 genuine attacks and 30 benign transients, random strength and visibility | 60 |
 | **overhead** | 4 agents idle; 4 agents during an attack; one central controller idle | 3 x 20, run alone |
+| **recheck** | `quorum.persist_recheck_s` = 0 s (off) vs 6 s on identical inputs: benign transients (the mixed-run mix), genuine attacks (random kinds), sustained network-only exfiltration, network-only exfiltration in 3 s bursts every 5 s | 8 x 20 |
+| **obstruct** | a genuine attack while one random agent withholds every vote about the target, against the same inputs with nobody obstructing | 2 x 20 |
 
 ## 4. Results
 
@@ -324,6 +338,68 @@ or a long weak burst seen by all) are run through the full platform. The four ba
 transients here were *chosen* to straddle the detection thresholds (the connection rule rates nothing up to 8 connections, then 0.5 at 9, rising to 1.0 at 24; the normal level is about 2), so some are harmless and some look
 exactly like an attack. A production environment with calmer or noisier benign traffic would give different rates. The table that splits benign trials by strength shows where the line is. **What the data shows.** All 30 genuine attacks raised an alarm and were isolated (0/30 missed, 95% CI 0-11%). Of the 30 benign transients 29 raised an alarm (a false-alarm rate of 97%, which is expected: almost all were above the 8-connection threshold by construction) and **15 (50%, CI 33-67%) led to an isolation**. Precision at isolation level was 67%. The stratified table shows what decides it: **no benign transient was ever isolated when only 1-2 agents saw it (0 of 12 trials), and 15 of 18 were isolated when 3-4 agents saw it** (all four of the strong ones, 11 of 14 of the moderate ones; the 3 that were not were all at the weak end, 9.8-11.9 connections). In other words the platform's protection against false isolation is that **a benign disturbance has to be visible to three agents at once**. A transient that all agents see above the threshold is, to a threshold detector, indistinguishable from an attack. In the simulator partial visibility is a modelling choice (the `observers` set); in a real cluster all four agents poll the same endpoints, so most real spikes would be visible to all of them, and the 50% should be read as a stress-test bound for a deliberately hostile benign mix, not a prediction. This is the platform's main accuracy limit (Phase 2's investigation helps weak or disputed evidence, not unanimous ones).
 
+### 4.9 The persistence re-check: what it buys and what it costs
+
+`quorum.persist_recheck_s` is **off by default (0 s)**; every other result in this file was measured with it off. When it is on, an agent whose own
+reading of a workload is a network or failed-login anomaly waits until that reading has lasted the given time before it votes to isolate. Each agent decides for itself, so the 3-of-4 rule is
+untouched, and while it waits it has simply not voted (a missing vote is never approval; the dashboard shows "re-checking ... waiting Ns more"). An agent that itself sees a **file change or an unexpected
+process** never waits, because those do not come and go like a traffic spike. Each experiment ran 20 trials per arm with the **same seeds** for the 0 s and 6 s arms, so the "extra time" column compares the same inputs.
+
+**Benign transients** (the same mix as section 4.8: 70% short blips seen by 1-4 agents, 30% long bursts seen by all; 20 trials):
+
+<!-- BEGIN:recheck_benign -->
+| Wait before voting | Benign transients | Workload isolated (false isolation) | Short blips (under 6 s) isolated | Long bursts (8-12 s) isolated |
+|---|---|---|---|---|
+| 0 s (off, the default) | 20 | 12/20 = 60% (95% CI 39-78%) | 3/11 | 9/9 |
+| 6 s | 20 | 9/20 = 45% (95% CI 26-66%) | 0/11 | 9/9 |
+<!-- END:recheck_benign -->
+
+**Real attacks** (extra time = isolation time with the 6 s wait minus isolation time without it, same inputs):
+
+<!-- BEGIN:recheck_attacks -->
+| Real attack | Wait before voting | Trials | Contained | Time to isolate (s) | Extra time vs 0 s, same inputs (s) |
+|---|---|---|---|---|---|
+| random mix of attack kinds (file change, unexpected process, failed logins) | 0 s | 20 | 20/20 = 100% (95% CI 84-100%) | median 1.06 (IQR 1.06-1.54, min 1.05, max 2.04, n=20) | - |
+| random mix of attack kinds (file change, unexpected process, failed logins) | 6 s | 20 | 20/20 = 100% (95% CI 84-100%) | median 1.06 (IQR 1.05-1.08, min 1.04, max 7.54, n=20) | median -0.0 (IQR -0.0-0.0, min -0.5, max 6.0, n=20) |
+| network-only exfiltration (no process, no file change), sustained | 0 s | 20 | 20/20 = 100% (95% CI 84-100%) | median 1.04 (IQR 1.04-1.05, min 1.00, max 1.54, n=20) | - |
+| network-only exfiltration (no process, no file change), sustained | 6 s | 20 | 20/20 = 100% (95% CI 84-100%) | median 7.01 (IQR 7.01-7.01, min 6.52, max 7.04, n=20) | median 6.0 (IQR 5.8-6.0, min 5.5, max 6.0, n=20) |
+| network-only exfiltration in 3 s bursts every 5 s (stays under the wait) | 0 s | 20 | 20/20 = 100% (95% CI 84-100%) | median 1.04 (IQR 1.04-1.05, min 1.00, max 1.54, n=20) | - |
+| network-only exfiltration in 3 s bursts every 5 s (stays under the wait) | 6 s | 20 | 0/20 = 0% (95% CI 0-16%) | n/a (no trial reached it) | n/a (no trial reached it) |
+<!-- END:recheck_attacks -->
+
+<!-- BEGIN:recheck_split -->
+| Genuine attack kinds | Trials | Extra time to isolate with the 6 s wait (s) |
+|---|---|---|
+| failed logins only (no file or process signal) | 3 | median 5.5 (IQR 5.5-5.8, min 5.5, max 6.0, n=3) |
+| anything that includes a file change or an unexpected process | 17 | median -0.0 (IQR -0.0-0.0, min -0.5, max 0.0, n=17) |
+<!-- END:recheck_split -->
+
+**What the data shows.** With the wait on, 9 of 20 benign transients were still isolated instead of 12 of 20: **every short blip was filtered (0 of 11, against 3 of 11 without the wait), and none of the 9 long
+bursts was** (they last 8-12 s, longer than the wait, and are indistinguishable from a slow attack by their network signal alone). Removing them would need a wait of 12-13 s, which would delay every network-only
+attack by as long. **The cost:** a sustained network-only attack is isolated at a median of 7.0 s instead of 1.0 s (about the wait, 5.5-6.0 s extra); attacks that include a file change or an unexpected process were not delayed (median extra 0.0 s; the few
+-0.5 s are the half-second polling interval); in the random mix the only attacks delayed were the 3 that were failed logins only (median 5.5 s extra). **The limit that matters:** an attacker who keeps each burst shorter than the wait is **never**
+contained: the pulsing network-only exfiltration (3 s on, 2 s off, for 30 s) was contained in 20 of 20 trials with the wait off and 0 of 20 with it on. So the setting trades a little extra exposure time for real
+network-only attacks, and a way to evade it, against fewer false isolations of brief spikes. It is therefore **off by default** and is a per-deployment decision. All simulator results; real clusters have different traffic.
+
+### 4.10 An agent that withholds its vote ("obstruct")
+
+One compromised agent (random agent, random target workload, random attack kinds; it may even be the target's own agent) **refuses to vote** about the target: no CONTAIN, VALIDATE, stage or retry vote is signed or sent for it.
+No made-up "all clear" evidence is sent and no new trust rule was added: the agent simply does not take part. The control arm runs the same inputs with nobody obstructing. It changes only that agent's own behaviour; it can also be
+switched on live with `scripts/simulate-compromised-agent.sh <agent> <target> obstruct` (nothing is fabricated or sent, no cluster resource is touched).
+
+<!-- BEGIN:obstruct -->
+| Variant | Trials | Contained by the other three | Full cycle completed | Time to isolate (s) | Time to full access (s) | Fewest signers on the CONTAIN decision | Obstructing agent's vote counted | Withheld proposals (median) | Lowest trust any honest agent gave it | Other workload wrongly isolated |
+|---|---|---|---|---|---|---|---|---|---|---|
+| one agent withholds its votes | 20 | 20/20 = 100% (95% CI 84-100%) | 20/20 = 100% (95% CI 84-100%) | median 1.5 (IQR 1.4-1.5, min 1.1, max 2.0, n=20) | median 19.0 (IQR 19.0-19.5, min 18.5, max 20.0, n=20) | 3 | 0/20 | 6 | 100.0 | 0/20 |
+| nobody obstructs (same inputs) | 20 | 20/20 = 100% (95% CI 84-100%) | 20/20 = 100% (95% CI 84-100%) | median 1.1 (IQR 1.1-1.5, min 0.6, max 2.0, n=20) | median 18.5 (IQR 18.0-19.0, min 18.0, max 19.5, n=20) | 3 | 17/20 | 0 | 100.0 | 0/20 |
+<!-- END:obstruct -->
+
+**What the data shows.** The other three agents contained and fully recovered the workload in 20 of 20 trials, with exactly 3 signers on the CONTAIN decision (the whole quorum, no slack), the obstructing agent's vote was never counted in any
+of them (0 of 20), each obstructing agent's 6 withheld proposals (median) were recorded with the reason, and no other workload was wrongly isolated. Obstruction cost about 0.4 s of median isolation time (1.5 s against 1.1 s) and about
+0.5 s to full access (19.0 s against 18.5 s), small next to the 0.5 s polling interval and the 20 trials. In the control rows the "vote counted" column only says whether the randomly chosen agent happened to be among the signers. **A limitation, stated plainly:** the obstructing agent
+was **not penalised** (lowest trust any honest agent gave it: 100). The platform lowers an agent's trust only when its *positive claims* are contradicted; a withheld vote is not a claim, so it is shown and logged but costs the agent nothing. With one obstructing agent there is no slack: if a
+second agent were also silent or obstructing, nothing would be contained (section 4.5).
+
 ## 5. Honest limitations of this evaluation
 
 * **Simulated telemetry.** A "genuine attack" is a simulated signal pattern (outbound connections, a modified file hash, a suspicious process, failed logins). Nothing real is attacked or made to misbehave. The detector is a threshold
@@ -331,6 +407,7 @@ exactly like an attack. A production environment with calmer or noisier benign t
 * **Benign and attack mixes are my choice**, so the false-positive/negative rates are illustrations of behaviour under a stated mix, not estimates of real-world rates.
 * **Seeds fix inputs, not timings** (section 1). With 20 trials per variant, small differences between medians are noise; differences are only worth quoting where the confidence intervals or interquartile ranges do not overlap.
 * **No real Kubernetes:** no real pod start times, no Calico enforcement, no API latency; those are what `scripts/verify-isolation.sh`, `verify-rbac.sh` and `verify-webhook.sh` are for.
-* **Silent agents are crashed agents** (the simulator has no "stay alive but refuse to vote" mode); for the liveness question they are equivalent.
+* **Silent agents are crashed agents** in the fault-tolerance experiment (4.5); an agent that stays alive and refuses to vote is covered separately by section 4.10 (one agent only).
+* **The persistence re-check results (4.9) depend on my benign mix and on the burst lengths I chose** (blips 1-6 s, bursts 8-12 s, pulses of 3 s); they show the mechanism, the cost and the evasion, not a rate for any real environment.
 * Parallel trials share one machine; the CPU/memory experiment is serial for that reason, but it is still a single-process approximation.
 * The 2-of-4 safety break shown in the "deceived" test is a property of any 3-of-4 quorum, not a bug: see `docs/SECURITY.md` section 1.

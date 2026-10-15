@@ -58,11 +58,15 @@ EXPERIMENTS = {
     "crash": (["alive4", "alive3", "alive2"], 420, False),
     "mixed": (["genuine", "benign"], 240, False),
     "overhead": (["idle", "attack", "central-idle"], 120, True),
+    # healthcare phase C: the persistence re-check (quorum.persist_recheck_s = 0 s vs 6 s, identical seeds) and obstruction
+    "recheck": ([f"{t}-{r}" for t in ("benign", "genuine", "netexfil", "pulse") for r in ("r0", "r6")], 120, False),
+    "obstruct": (["obstruct", "control"], 240, False),
 }
 EXTRA_TRIALS = {("mixed", "genuine"): 10, ("mixed", "benign"): 10}     # mixed run uses 30 per class by default
 TRUST_LIE_AT, TRUST_RESTORE_AT, TRUST_END = 3.0, 33.0, 123.0      # seconds: lying starts / stops, trial ends
 SEED_BASE = {"scenario": 1000, "trust": 2000, "dvc": 3000, "investigation": 4000, "fault": 5000, "crash": 6000,
-             "mixed": 7000, "overhead": 8000}
+             "mixed": 7000, "overhead": 8000, "recheck": 9000, "obstruct": 9500}
+RECHECK_WAIT = {"r0": 0.0, "r6": 6.0}                                  # quorum.persist_recheck_s of the two arms
 
 
 # --------------------------------------------------------------------------------------------- worker helpers
@@ -80,9 +84,10 @@ def cpu_s() -> float:
     return r.ru_utime + r.ru_stime
 
 
-def build(port: int, investigation: bool = True, validate_timeout_s: float = 30):
+def build(port: int, investigation: bool = True, validate_timeout_s: float = 30, persist_recheck_s: float = 0.0):
     from world import LocalCluster, fast_config, sim_investigation
     cfg = fast_config(port, sim_investigation(enabled=investigation), validate_timeout_s=validate_timeout_s)
+    cfg.quorum.persist_recheck_s = persist_recheck_s
     c = LocalCluster(base_port=port, cfg=cfg).start()
     time.sleep(2)
     return c
@@ -528,7 +533,78 @@ def w_overhead(variant, seed, port):
         stop()
 
 
-WORKERS = {"scenario": w_scenario, "trust": w_trust, "dvc": w_dvc, "investigation": w_investigation,
+def w_recheck(variant, seed, port):
+    """Same inputs for the 0 s and 6 s arms of a type (same seed). benign: the mixed-run benign transients; genuine: random
+    attack kinds; netexfil: a sustained NETWORK-ONLY exfiltration (no process, no file change); pulse: network-only exfiltration
+    in 3 s bursts every 5 s, i.e. an attacker who stays under the wait."""
+    typ, arm = variant.rsplit("-", 1)
+    persist = RECHECK_WAIT[arm]
+    rng = random.Random(seed)
+    target = rng.choice(NODES)
+    c = build(port, persist_recheck_s=persist)
+    try:
+        c.mark("recheck", target)
+        res = {"persist_s": persist, "target": target}
+        if typ == "benign":
+            if rng.random() < 0.7:
+                res.update(benign_kind="blip", observers="".join(sorted(rng.sample(NODES, rng.choice([1, 2, 3, 4])))),
+                           level=round(rng.uniform(6, 36), 1), duration=round(rng.uniform(1, 6), 2))
+                c.world.inject_connections(target, lambda x, l=res["level"]: l, observers=set(res["observers"]), duration=res["duration"])
+            else:
+                res.update(benign_kind="burst", observers="ABCD", level=round(rng.uniform(9, 16), 1), duration=round(rng.uniform(8, 12), 2))
+                c.world.inject_connections(target, lambda x, l=res["level"]: l, duration=res["duration"])
+            time.sleep(18)
+            hit = max_epoch(c, target) >= 1
+        elif typ == "genuine":
+            kinds = tuple(rng.sample(KINDS, rng.choice([1, 2, 3])))
+            c.world.attack(target, kinds)
+            res["kinds"] = "+".join(kinds)
+            hit = bool(c.wait_until(lambda: max_epoch(c, target) >= 1, 40))
+        else:
+            fn = (lambda x: 30.0) if typ == "netexfil" else (lambda x: 30.0 if (x % 5.0) < 3.0 else 2.0)
+            c.world.inject_connections(target, fn)
+            hit = bool(c.wait_until(lambda: max_epoch(c, target) >= 1, 40 if typ == "netexfil" else 30))
+        if hit and typ != "benign":
+            time.sleep(3)                                   # let the isolation action be applied and timed on every agent
+        m = incident_min(c, "recheck")
+        res.update(isolated=bool(hit), tti_s=m["tti_s"], outcome="completed")
+        return res
+    finally:
+        c.stop()
+
+
+def w_obstruct(variant, seed, port):
+    """A genuine compromise while one agent withholds every vote about the target (variant 'obstruct'), against the same
+    inputs with nobody obstructing ('control'). The attacker and the target are drawn from the seed (they may coincide)."""
+    rng = random.Random(seed)
+    attacker, target = rng.choice(NODES), rng.choice(NODES)
+    kinds = tuple(rng.sample(KINDS, rng.choice([1, 2, 3])))
+    honest = [n for n in NODES if n != attacker]
+    c = build(port)
+    try:
+        if variant == "obstruct":
+            c.compromise_agent(attacker, target, mode="obstruct")
+        c.mark("obstruct", target, attacker=attacker if variant == "obstruct" else None)
+        c.world.attack(target, kinds)
+        contained = bool(c.wait_until(lambda: all(c.agents[n].states[target].epoch >= 1 for n in honest), 30))
+        full = contained and bool(c.wait_until(lambda: fully_reintegrated(c, target, NODES), 120))
+        voters = {n: next((d["voters"] for d in c.agents[n].decisions if d["action"] == "CONTAIN" and d["target"] == target), None)
+                  for n in honest}
+        m = incident_min(c, "obstruct")
+        other = any(max(a.states[o].epoch for a in c.agents.values()) >= 1 for o in NODES if o != target)
+        return {"attacker": attacker, "target": target, "kinds": "+".join(kinds), "contained": contained, "reintegrated": full,
+                "tti_s": m["tti_s"], "ttf_s": m["ttf_s"],
+                "attacker_voted": any(attacker in (v or []) for v in voters.values()),
+                "min_signers": min((len(v) for v in voters.values() if v), default=0),
+                "withheld_proposals": len(c.agents[attacker].obstructed),
+                "min_trust_in_attacker": round(min(c.agents[n].agent_trust.get(attacker) for n in honest), 1),
+                "other_workload_isolated": other,
+                "outcome": "completed" if full else ("contained_not_reintegrated" if contained else "not_contained")}
+    finally:
+        c.stop()
+
+
+WORKERS = {"recheck": w_recheck, "obstruct": w_obstruct, "scenario": w_scenario, "trust": w_trust, "dvc": w_dvc, "investigation": w_investigation,
            "fault": w_fault, "crash": w_crash, "mixed": w_mixed, "overhead": w_overhead}
 
 
@@ -570,6 +646,10 @@ def group_index(exp: str, variant: str, variants: list) -> int:
         return [t for t in dict.fromkeys(v.rsplit("-", 1)[0] for v in variants)].index(variant.rsplit("-", 1)[0])
     if exp == "dvc":
         return [t for t in dict.fromkeys(v.split("-")[0] for v in variants)].index(variant.split("-")[0])
+    if exp == "recheck":          # r0 and r6 of one type see identical inputs
+        return [t for t in dict.fromkeys(v.rsplit("-", 1)[0] for v in variants)].index(variant.rsplit("-", 1)[0])
+    if exp == "obstruct":         # obstruct and control see identical inputs
+        return 0
     return variants.index(variant)
 
 
@@ -1068,6 +1148,51 @@ def tables(rows) -> dict:
                      f"{dist([r.get('ttf_s') for r in rs])} | {max([r.get('max_contain_votes_seen', 0) for r in rs] or [0])} | "
                      f"{sum(1 for r in rs if r.get('other_workload_isolated'))}/{len(rs)} |")
     t["crash"] = "\n".join(s)
+    # --- persistence re-check (quorum.persist_recheck_s: 0 s vs 6 s, paired seeds)
+    d = by(rows, "recheck")
+    arm = lambda typ, a: ok(d.get(f"{typ}-{a}", []))            # noqa: E731
+    s = ["| Wait before voting | Benign transients | Workload isolated (false isolation) | Short blips (under 6 s) isolated | Long bursts (8-12 s) isolated |", "|---|---|---|---|---|"]
+    for a, lab in (("r0", "0 s (off, the default)"), ("r6", "6 s")):
+        rs = arm("benign", a)
+        if rs:
+            bl, bu = [r for r in rs if r.get("benign_kind") == "blip"], [r for r in rs if r.get("benign_kind") == "burst"]
+            s.append(f"| {lab} | {len(rs)} | {pct(sum(1 for r in rs if r.get('isolated')), len(rs))} | "
+                     f"{sum(1 for r in bl if r.get('isolated'))}/{len(bl)} | {sum(1 for r in bu if r.get('isolated'))}/{len(bu)} |")
+    t["recheck_benign"] = "\n".join(s)
+    s = ["| Real attack | Wait before voting | Trials | Contained | Time to isolate (s) | Extra time vs 0 s, same inputs (s) |", "|---|---|---|---|---|---|"]
+    def paired(typ):
+        a0 = {r["seed"]: r for r in arm(typ, "r0") if r.get("tti_s") is not None}
+        return [r["tti_s"] - a0[r["seed"]]["tti_s"] for r in arm(typ, "r6") if r.get("tti_s") is not None and r["seed"] in a0]
+    for typ, lab in (("genuine", "random mix of attack kinds (file change, unexpected process, failed logins)"),
+                     ("netexfil", "network-only exfiltration (no process, no file change), sustained"),
+                     ("pulse", "network-only exfiltration in 3 s bursts every 5 s (stays under the wait)")):
+        for a, wl in (("r0", "0 s"), ("r6", "6 s")):
+            rs = arm(typ, a)
+            if rs:
+                extra = dist(paired(typ), 1) if a == "r6" else "-"
+                s.append(f"| {lab} | {wl} | {len(rs)} | {pct(sum(1 for r in rs if r.get('isolated')), len(rs))} | {dist([r.get('tti_s') for r in rs], 2)} | {extra} |")
+    t["recheck_attacks"] = "\n".join(s)
+    gen_ = {a: {r["seed"]: r for r in arm("genuine", a)} for a in ("r0", "r6")}
+    bf = [sd for sd, r in gen_["r0"].items() if r.get("kinds") == "bruteforce"]
+    other = [sd for sd in gen_["r0"] if sd not in bf]
+    def extra_for(seeds):
+        return [gen_["r6"][sd]["tti_s"] - gen_["r0"][sd]["tti_s"] for sd in seeds
+                if sd in gen_["r6"] and gen_["r6"][sd].get("tti_s") is not None and gen_["r0"][sd].get("tti_s") is not None]
+    s = ["| Genuine attack kinds | Trials | Extra time to isolate with the 6 s wait (s) |", "|---|---|---|",
+         f"| failed logins only (no file or process signal) | {len(bf)} | {dist(extra_for(bf), 1)} |",
+         f"| anything that includes a file change or an unexpected process | {len(other)} | {dist(extra_for(other), 1)} |"]
+    t["recheck_split"] = "\n".join(s)
+    # --- obstruction: one compromised agent withholds every vote about the target
+    d = by(rows, "obstruct")
+    s = ["| Variant | Trials | Contained by the other three | Full cycle completed | Time to isolate (s) | Time to full access (s) | Fewest signers on the CONTAIN decision | Obstructing agent's vote counted | Withheld proposals (median) | Lowest trust any honest agent gave it | Other workload wrongly isolated |", "|---|---|---|---|---|---|---|---|---|---|---|"]
+    for v, lab in (("obstruct", "one agent withholds its votes"), ("control", "nobody obstructs (same inputs)")):
+        rs = ok(d.get(v, []))
+        if rs:
+            s.append(f"| {lab} | {len(rs)} | {pct(sum(1 for r in rs if r.get('contained')), len(rs))} | {pct(sum(1 for r in rs if r.get('reintegrated')), len(rs))} | "
+                     f"{dist([r.get('tti_s') for r in rs])} | {dist([r.get('ttf_s') for r in rs])} | {min((r.get('min_signers', 0) for r in rs), default=0)} | "
+                     f"{sum(1 for r in rs if r.get('attacker_voted'))}/{len(rs)} | {fmt(quant([r.get('withheld_proposals', 0) for r in rs], .5), 0)} | "
+                     f"{fmt(min((r.get('min_trust_in_attacker', 100) for r in rs), default=None), 1)} | {sum(1 for r in rs if r.get('other_workload_isolated'))}/{len(rs)} |")
+    t["obstruct"] = "\n".join(s)
     # --- overhead
     d = by(rows, "overhead")
     s = ["| Configuration | Trials | CPU, % of one core, per unit | Memory added per unit (MB) | Whole process RSS (MB) |", "|---|---|---|---|---|"]

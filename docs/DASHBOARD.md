@@ -214,3 +214,14 @@ switching pages is a full reload with no state carried over.
 * Not run against a real cluster: the connected Live page is covered by stand-in agents that serve the same JSON (the tests), and screenshots of it can only come from your cluster.
 * The port-forwards of `scripts/laptop-dashboard.sh` are re-opened in a loop, but a forward to a deleted agent pod takes about a second or two to re-attach.
 * Switching pages reloads the page; the demo page's history is kept by the dashboard process, the live page's too (both lost when the dashboard restarts).
+
+# Healthcare Phase C: healthcare presentation on the dashboard
+
+* **Names:** each node card shows the presentation name (Patient Portal, Login & Access Service, Electronic Health Records (EHR) API,
+  Clinical Database) with the internal Kubernetes name beside it in grey. The names, roles, dependencies and recovery order come from
+  `config/workloads.json` (see `docs/WORKLOADS.md`) through the agents' `/status`, so nothing is hard-coded in the page. Internal ids, signed messages,
+  logs and every security rule are unchanged (the incident view, drawers and audit still use the internal names; Phase D reworks that wording).
+* **Services panel (Overview):** one row per workload: what it calls, what stops working while it is isolated (computed from the dependencies: every
+  service that calls it, directly or through another), "ISOLATED NOW" while it is, and the suggested recovery order with its rationale. The recovery order is **display only**: it does not change what the agents do. If the agents do not report this metadata (older image) the panel stays hidden; nothing is invented.
+* **Synthetic data:** a permanent chip "SYNTHETIC DATA ONLY: no real patient information" sits beside the Demo / Live toggle on both pages.
+* **Scenarios** in the Demo Mode picker are described in healthcare terms (`sim/scenarios.py`), and a new one, "A compromised agent refuses to vote while the EHR API is attacked", shows the withheld votes in the incident view's "did not vote, and why" column with the reason (`docs/img/dashboard-pC-04-obstruct-incident.png`).

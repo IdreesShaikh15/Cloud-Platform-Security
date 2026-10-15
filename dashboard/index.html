@@ -121,6 +121,7 @@
 <nav id="modebar" aria-label="Choose the data source">
   <a id="mode-demo" href="?mode=demo" title="Simulated data only. Scenario controls are here.">Demo Mode</a>
   <a id="mode-live" href="?mode=live" title="The real test cluster only. Read-only: no scenario controls.">Live Monitoring</a>
+  <span class="tag warn" id="synth" title="Every patient record in this platform is made up (apps/src/app.py: synthetic_patients). No real patient information is stored, shown or attacked.">SYNTHETIC DATA ONLY: no real patient information</span>
   <span class="mut" id="modehint"></span>
 </nav>
 <section id="notconn"><b id="notconn-title"></b><div class="mut" id="notconn-why"></div></section>
@@ -150,6 +151,9 @@
 <div class="counters" id="counters" aria-label="Summary counters"></div>
 <div class="grid" id="nodes"></div>
 <div class="hint">Click a node card to open that agent's own view (what it measures, whom it trusts, how it scores the evidence, why it has or hasn't voted).</div>
+<section id="depsec" hidden><b>Services, what depends on them, and what isolating each one means</b>
+  <span class="mut">(from config/workloads.json, display only. "Suggested recovery order" is for a human operator: it does not change what the agents do, each incident is recovered in parallel.)</span>
+  <table id="deptable"></table></section>
 <section id="simctl"><b>Simulator demo controls</b> <span class="src src-SIMULATOR">SIMULATOR ONLY</span>
   <span class="mut">(these buttons exist only when this dashboard is connected to the simulator; the backend refuses them for a live cluster. Live scenarios are terminal scripts.)</span>
   <div class="filters" style="margin-top:8px"><select id="simsel" aria-label="Scenario"></select>
@@ -579,15 +583,42 @@ document.getElementById("simstart").onclick = () => simPost("api/sim/start", {sc
 document.getElementById("simreset").onclick = () => simPost("api/sim/reset", {});
 document.getElementById("simsel").onchange = refreshSim;
 
+// ---------------------------------------------------------------- dependencies and the impact of isolating each workload
+function dependentsOf(id, nodes) {
+  const seen = new Set(), todo = [id];
+  while (todo.length) { const x = todo.pop(); for (const [k, n] of Object.entries(nodes)) if ((n.depends_on || []).includes(x) && !seen.has(k)) { seen.add(k); todo.push(k); } }
+  return [...seen];
+}
+const ORD = ["", "1st", "2nd", "3rd", "4th"];
+function renderDependencies(nodes) {
+  const sec = document.getElementById("depsec"), ids = Object.keys(nodes);
+  const known = ids.some(i => (nodes[i].depends_on || []).length || nodes[i].provides);
+  sec.hidden = !known;                                    // agents that do not report this metadata: nothing is invented
+  if (!known) return;
+  const dn = i => esc(nodes[i].display_name || nodes[i].workload);
+  const order = ids.slice().sort((a, b) => (nodes[a].recovery_priority || 9) - (nodes[b].recovery_priority || 9));
+  document.getElementById("deptable").innerHTML = "<tr><th>service</th><th>it calls</th><th>while it is isolated</th><th>suggested recovery order · why</th></tr>" +
+    order.map(id => {
+      const n = nodes[id], deps = dependentsOf(id, nodes), now = ["ISOLATED", "RECOVERING", "VALIDATING"].includes(n.phase);
+      const calls = (n.depends_on || []).map(d => `${nb(d)} ${dn(d)}`).join(", ") || '<span class="mut">nothing</span>';
+      const impact = deps.length ? deps.map(d => `the ${dn(d)} cannot ${esc(nodes[d].provides || "do its job")}`).join("; ")
+        : `no other service depends on it; its own job (${esc(n.provides || "its function")}) stops`;
+      return `<tr><td>${nb(id)} <b>${dn(id)}</b></td><td>${calls}</td>
+        <td>${now ? '<span class="tag bad">ISOLATED NOW</span> ' : ""}${impact}.</td>
+        <td>${n.recovery_priority ? `<b>${ORD[n.recovery_priority] || n.recovery_priority}</b> · ` : ""}<span class="mut">${esc(n.priority_rationale || "no rationale configured")}</span></td></tr>`;
+    }).join("");
+}
+
 function renderState(s) {
   lastState = s;
   if (s.configured === false || !(s.connection || {}).connected) { renderBanner(s); document.getElementById("sub").textContent = CH === "live" ? "Live Monitoring" : "Demo Mode"; return; }
   document.getElementById("sub").textContent = `mode: ${s.mode} · data from ${t(s.last_poll)}` + (s.baseline_up ? " · centralized baseline running" : "");
   renderBanner(s);
   const cc = s.mode === "centralized" && s.central_compromised; if (cc) document.getElementById("sub").textContent += ` · controller compromise simulation: ${cc}`;
+  renderDependencies(s.nodes);
   document.getElementById("nodes").innerHTML = Object.entries(s.nodes).map(([id,n]) => `
     <div class="card ${n.display_state === 'NEEDS_ATTENTION' ? 'ISOLATED' : n.phase}" data-node="${id}" title="Open agent ${id}'s view">
-      <div class="row"><b>${nb(id)} · ${esc(n.workload)}${n.role && n.role !== n.workload ? ` <span class="tag" title="the behaviour this workload runs (configured in config/workloads.json)">role: ${esc(n.role)}</span>` : ""}</b><span>${n.watch ? '<span class="tag warn" title="Under watch after an unresolved investigation: heightened monitoring, human review needed. Nothing is isolated.">WATCH · review</span> ' : ''}<span class="tag ${n.display_state === 'NEEDS_ATTENTION' ? 'bad' : n.display_state === 'UNKNOWN' ? 'warn' : ''}">${esc((n.display_state || n.phase).replace('_', ' '))}</span></span></div>
+      <div class="row"><b>${nb(id)} · ${esc(n.display_name || n.workload)}${n.display_name && n.display_name !== n.workload ? ` <span class="mut" title="the internal Kubernetes name of this workload">(${esc(n.workload)})</span>` : ""}${n.role && n.role !== n.workload ? ` <span class="tag" title="the behaviour this workload runs (configured in config/workloads.json)">role: ${esc(n.role)}</span>` : ""}</b><span>${n.watch ? '<span class="tag warn" title="Under watch after an unresolved investigation: heightened monitoring, human review needed. Nothing is isolated.">WATCH · review</span> ' : ''}<span class="tag ${n.display_state === 'NEEDS_ATTENTION' ? 'bad' : n.display_state === 'UNKNOWN' ? 'warn' : ''}">${esc((n.display_state || n.phase).replace('_', ' '))}</span></span></div>
       ${s.mode === "centralized" ? `<div class="mut" style="margin:6px 0">centralized mode: this node is watched only by the single central controller (no agents, no votes, no trust scores, no staged return: straight back to full access)</div>` : `
       ${n.attention ? `<div class="rv">NEEDS HUMAN ATTENTION: ${esc(n.attention.reason)}. Stays quarantined; NOT healthy.</div>` : ""}
       ${n.attempt > 1 && n.phase !== "HEALTHY" ? `<div class="mut">recovery attempt ${n.attempt} of ${n.recovery ? n.recovery.max_attempts : "?"}${n.recovery && n.recovery.failure ? " · last attempt failed: " + esc(n.recovery.failure) : ""}</div>` : ""}

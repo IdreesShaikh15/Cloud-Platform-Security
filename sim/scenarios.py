@@ -11,10 +11,11 @@ import time
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Tuple
 
-from world import WORKLOADS  # noqa: E402  (names come from config/workloads.json)
+from world import WL, WORKLOADS  # noqa: E402  (names come from config/workloads.json)
 
 NODES = ("A", "B", "C", "D")
 WORKLOAD_C = WORKLOADS["C"]
+D = {n: WL.display(n) for n in NODES}            # what the dashboard calls each workload (Patient Portal, ...)
 
 
 @dataclass(frozen=True)
@@ -126,6 +127,33 @@ def ambiguous(r: Runner) -> Tuple[bool, str]:
     return bool(done and never and len(flagged) == 4), f"human-review flag on {len(flagged)} of 4 agents; nothing isolated: {never}"
 
 
+def obstruct_facts(c, attacker: str = "A", target: str = "C") -> dict:
+    """What happened to the CONTAIN decision on `target` while `attacker` withheld its votes (read from the agents themselves)."""
+    honest = [n for n in NODES if n != attacker]
+    voters = {n: next((d["voters"] for d in c.agents[n].decisions if d["action"] == "CONTAIN" and d["target"] == target), None) for n in honest}
+    withheld = list(c.agents[attacker].obstructed)
+    return {"contain_voters": voters, "attacker_voted": any(attacker in (v or []) for v in voters.values()),
+            "withheld_events": len(withheld), "withheld_example": withheld[0] if withheld else "",
+            "trust_in_attacker": {n: round(c.agents[n].agent_trust.get(attacker), 1) for n in honest}}
+
+
+def obstruct(r: Runner) -> Tuple[bool, str]:
+    c = r.c
+    c.compromise_agent("A", "C", mode="obstruct")           # A refuses to vote about C (it changes only A's own behaviour)
+    c.mark("obstruct", "C", attacker="A")
+    c.world.attack("C")                                     # a genuine compromise of C
+    honest = "BCD"
+    contained = r.wait(lambda: r.all(lambda a: a.states["C"].phase != "HEALTHY", honest), 30)
+    full = contained and r.wait(lambda: r.all(lambda a: a.states["C"].phase == "HEALTHY" and a.states["C"].epoch == 1
+                                              and a.states["C"].stage == "FULL"), 120)
+    f = obstruct_facts(c)
+    c.restore_agent("A")
+    ok = bool(full and not f["attacker_voted"] and f["withheld_events"] > 0 and all(v and len(v) >= 3 for v in f["contain_voters"].values()))
+    return ok, (f"B, C and D contained C without A (voters {sorted(next(iter(f['contain_voters'].values())) or [])}); A's withheld votes are on record "
+                f"({f['withheld_events']} events); full cycle completed: {bool(full)}" if ok else
+                f"contained: {contained}; full cycle: {bool(full)}; A voted: {f['attacker_voted']}; withheld events: {f['withheld_events']}")
+
+
 def validation_retry(r: Runner) -> Tuple[bool, str]:
     c = r.c
     c.world.bad_recoveries[WORKLOAD_C] = 1
@@ -148,33 +176,37 @@ def failed_validation(r: Runner) -> Tuple[bool, str]:
 
 
 CATALOGUE: Dict[str, Tuple[Scenario, Callable[[Runner], Tuple[bool, str]]]] = {s.id: (s, f) for s, f in [
-    (Scenario("app-compromise", f"Genuine compromise of {WORKLOADS['C']} (C)",
-              "Simulated exfiltration, file tampering and failed logins on node C.",
-              "The quorum contains C, a clean replacement is validated, then C climbs back through every stage.", 40), app_compromise),
-    (Scenario("false-accusation", "A compromised agent falsely accuses a healthy node",
-              f"Agent A signs fabricated evidence about {WORKLOADS['B']} (B).",
-              "A lone liar cannot reach 3 votes: B is never isolated and A is flagged SUSPECT.", 25, True), false_accusation),
-    (Scenario("forge-evidence", "An agent tries to forge another agent's signature",
-              "Agent A claims to be B while signing with its own key.",
-              "The forged envelopes are rejected and A's trust drops.", 12, True), forge_evidence),
-    (Scenario("agent-crash", "Agent D crashes, then C is compromised",
-              "One of four agents is killed, then C is attacked.",
-              "The three survivors still form a quorum and finish the whole cycle. Press Reset afterwards (D stays down).", 45, True), agent_crash),
-    (Scenario("transient-blip", "A short blip seen by two agents",
-              "A brief connection spike on C that only A and B see.",
-              "The agents investigate, close it as a false positive, and isolate nothing.", 20), transient_blip),
-    (Scenario("slow-burn", "A weak anomaly that persists and grows",
-              "Visible to A and B first, to C and D five seconds later.",
-              "The investigation confirms it persists and the quorum contains C.", 40), slow_burn),
-    (Scenario("ambiguous", "A weak persistent signal that only two agents confirm",
-              "No attack is injected; the evidence stays unresolved.",
+    (Scenario("app-compromise", f"Patient records being copied out of the {D['C']}",
+              f"Simulated copying of (synthetic) patient records out of the {D['C']}, a tampered file and repeated failed logins.",
+              f"Three of the four security agents agree to isolate the {D['C']}; a clean replacement is checked; normal access is restored in stages.", 40), app_compromise),
+    (Scenario("false-accusation", f"A security agent falsely accuses the {D['B']}",
+              f"Agent A, which is compromised, signs made-up evidence that the {D['B']} is under attack.",
+              f"One liar cannot reach 3 agreeing agents: the {D['B']} is never isolated and agent A is marked SUSPECT.", 25, True), false_accusation),
+    (Scenario("forge-evidence", "A compromised security agent pretends to be another agent",
+              "Agent A claims to be agent B while signing with its own key.",
+              "The forged messages fail verification and are rejected; A's trust drops.", 12, True), forge_evidence),
+    (Scenario("agent-crash", f"A security agent goes offline, then the {D['C']} is attacked",
+              f"One of the four agents is stopped, then the {D['C']} is attacked.",
+              "The three remaining agents still reach agreement and finish the whole cycle. Press Reset afterwards (agent D stays down).", 45, True), agent_crash),
+    (Scenario("transient-blip", f"A short traffic spike on the {D['C']} seen by two agents",
+              f"A brief jump in connections from the {D['C']} that only agents A and B see, like a busy moment.",
+              "The agents investigate, close it as a false alarm and isolate nothing.", 20), transient_blip),
+    (Scenario("slow-burn", f"Slow, quiet copying out of the {D['C']}",
+              "A weak signal that A and B see first and C and D see five seconds later, and that keeps growing.",
+              f"The investigation confirms it persists and the agents agree to isolate the {D['C']}.", 40), slow_burn),
+    (Scenario("ambiguous", f"An unexplained weak signal on the {D['C']}",
+              "No attack is injected; only two agents keep seeing something faint.",
               "A human-review flag is raised; nothing is isolated.", 30), ambiguous),
-    (Scenario("validation-retry", "The first replacement pod fails validation",
-              "Then the retry passes.",
-              "An evidence snapshot is saved, recovery is retried with back-off, and C is reintegrated.", 60), validation_retry),
-    (Scenario("failed-validation", "Every replacement pod fails validation",
-              "Recovery is retried a bounded number of times.",
-              "The incident is marked NEEDS HUMAN ATTENTION and C stays quarantined. Press Reset afterwards.", 90, True), failed_validation),
+    (Scenario("validation-retry", f"The first replacement {D['C']} fails its health check",
+              "The attack is real; the first clean replacement does not come up healthy.",
+              "Evidence is saved, recovery is retried, the second replacement passes and normal access is restored in stages.", 60), validation_retry),
+    (Scenario("failed-validation", f"Every replacement {D['C']} fails its health check",
+              "Recovery is retried a limited number of times.",
+              f"The incident is marked NEEDS HUMAN ATTENTION and the {D['C']} stays isolated. Press Reset afterwards.", 90, True), failed_validation),
+    (Scenario("obstruct", f"A compromised agent refuses to vote while the {D['C']} is attacked",
+              f"Agent A withholds every vote about the {D['C']} while its records are being copied out. No made-up evidence is sent: A simply does not take part.",
+              f"The other three agents still reach agreement and isolate and recover the {D['C']}. A's withheld votes are shown with the reason. "
+              "A's trust is not reduced (the platform has no rule for a missing vote).", 45), obstruct),
 ]}
 
 

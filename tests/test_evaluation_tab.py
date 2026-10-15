@@ -11,6 +11,7 @@ from http.server import ThreadingHTTPServer
 import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+N_TRIALS = sum(1 for l in open(os.path.join(ROOT, "results", "raw", "trials.jsonl")) if l.strip())      # every recorded trial
 RESULTS_MD = open(os.path.join(ROOT, "docs", "RESULTS.md"), encoding="utf-8").read()
 FIGS = ["fig1_timing_boxplots.png", "fig2_trust_trajectory.png", "fig3_distributed_vs_centralized.png", "fig4_investigation_on_off.png",
         "fig5_fault_tolerance_boundary.png", "fig6_agent_crash.png", "fig7_overhead.png", "fig8_false_positive_negative.png"]
@@ -70,17 +71,20 @@ def test_the_real_evaluation_is_complete_and_labelled_simulator(monkeypatch):
     assert v["available"] and v["data_source"] == "SIMULATOR" and v["notice"].startswith("SIMULATOR RESULTS")
     assert "Nothing here was measured on a real cluster" in v["notice"]
     sec = {s["id"]: s for s in v["sections"]}
-    assert len(sec["0"]["blocks"][0]["items"]) == 10                                # the ten-line summary
+    assert len(sec["0"]["blocks"][0]["items"]) == 12                                # the twelve-line summary
     exps = sec["4"]["subsections"]
-    assert [e["id"] for e in exps] == [f"4.{i}" for i in range(1, 9)]
-    for e in exps:
+    assert [e["id"] for e in exps] == [f"4.{i}" for i in range(1, 11)]
+    for e in exps[8:]:                                                                # 4.9 persistence re-check, 4.10 obstruct: tables + text, no graph
+        kinds = [b["type"] for b in e["blocks"]]
+        assert "table" in kinds and "p" in kinds and "image" not in kinds, e["id"]
+    for e in exps[:8]:
         kinds = [b["type"] for b in e["blocks"]]
         assert "image" in kinds and "table" in kinds and "p" in kinds, e["id"]       # graph + summary table + plain-English explanation
         para = " ".join(b["text"] for b in e["blocks"] if b["type"] == "p")
         assert "How to read it" in para or "How to read it, and why to be careful" in para, e["id"]
     assert len([b for b in exps[7]["blocks"] if b["type"] == "table"]) == 2         # 4.8 has the mixed table and the strata table
     assert len(sec["5"]["blocks"][0]["items"]) >= 6                                  # the limitations
-    assert v["meta"]["trials"] == 760 and "0 errors" in v["meta"]["errors_text"] and len(v["meta"]["figures"]) == 8
+    assert v["meta"]["trials"] == N_TRIALS and "0 errors" in v["meta"]["errors_text"] and len(v["meta"]["figures"]) == 8
 
 
 def test_nothing_on_the_tab_is_invented_every_table_cell_is_in_the_document(monkeypatch):
@@ -98,7 +102,7 @@ def test_nothing_on_the_tab_is_invented_every_table_cell_is_in_the_document(monk
                     assert b["text"].split(" ")[0] in RESULTS_MD
     assert cells > 200
     # and the numbers the page leads with are the evaluation's own
-    assert "760" in RESULTS_MD and "20/20" in RESULTS_MD
+    assert str(N_TRIALS) in RESULTS_MD and "20/20" in RESULTS_MD
 
 
 def test_every_graph_is_served_as_a_png(monkeypatch, serve):
@@ -196,7 +200,7 @@ def test_evaluation_tab_in_a_browser(monkeypatch, serve):
         text = pg.inner_text("#evalbox")
         assert "SIMULATOR RESULTS" in text and "Nothing here was measured on a real cluster" in text
         assert pg.locator("#evalbox img").count() == 8 and pg.locator("#evalbox table").count() >= 12
-        for want in ("4.1 Detection, isolation", "4.8 False positives", "760 seeded trials", "0 errors", "Honest limitations", "How to read it"):
+        for want in ("4.1 Detection, isolation", "4.8 False positives", f"{N_TRIALS} seeded trials", "0 errors", "Honest limitations", "How to read it"):
             assert want in text, want
         assert pg.locator("#evalbox .evbanner").is_visible()
         assert pg.evaluate("location.hash") == "#evaluation"

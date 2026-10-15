@@ -11,13 +11,16 @@ Modes:
                     about a healthy node, and vote CONTAIN against it
   forge-evidence    additionally try to impersonate another node (claim
                     signer=B while signing with A's key) - receivers reject it
+  obstruct          withhold every vote about the target workload (CONTAIN, VALIDATE, stage moves, retries). Nothing is signed or
+                    sent for it, and no "all clear" evidence is invented: the agent simply refuses to take part. The other three
+                    agents are a quorum without it. It only changes THIS agent's own behaviour; it never touches the cluster.
   (anything else / file absent)  behave honestly
 
 The agent still uses its *real* key and mTLS identity - this models an
 insider whose credentials are intact but whose logic is malicious, which is
 exactly the case signatures alone cannot stop and the quorum must.
 
-Out of scope (future work): "go silent" and "block legitimate isolation".
+Out of scope (future work): "go silent" (stop sending evidence too) and blocking the executor's own action.
 """
 from __future__ import annotations
 
@@ -38,6 +41,9 @@ class Compromise:
                                                       "FILE_INTEGRITY", "AUTH"])
     confidence: float = 0.95
     impersonate: str = "B"
+
+    def obstructing(self, target: str) -> bool:
+        return self.mode == "obstruct" and self.target == target
 
     @property
     def active(self) -> bool:

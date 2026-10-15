@@ -24,6 +24,12 @@ class NodeSpec:
     workload: str              # "patient-portal" (Deployment + Service name)
     telemetry_url: str         # http://patient-portal.healthcare.svc:8080
     role: str = ""             # which behaviour the workload runs (config/workloads.json); "" = not declared
+    # presentation only (config/workloads.json); nothing in the agents' decisions reads these
+    display_name: str = ""
+    provides: str = ""
+    depends_on: List[str] = field(default_factory=list)    # NODE ids this workload calls
+    recovery_priority: int = 0
+    priority_rationale: str = ""
 
 @dataclass
 class Timers:
@@ -57,6 +63,8 @@ class QuorumParams:
     local_min_conf: float = 0.5        # own observation needed before voting
     score_threshold: float = 0.6       # weighted score W(T) needed to vote CONTAIN
     diversity_bonus: float = 0.15      # per extra corroborated observation type
+    persist_recheck_s: float = 0.0     # 0 = off. > 0: a network/auth-only anomaly must have lasted this long (seen by this
+                                       # agent continuously) before it votes to CONTAIN; file/process changes are never delayed
 
     @property
     def quorum(self) -> int:

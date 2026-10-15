@@ -21,6 +21,13 @@
 | `role` | The behaviour the container runs. The app image implements exactly four roles (`patient-portal`, `auth-service`, `records-api`, `database`) and each is used by exactly one workload, because the services find each other by role. |
 | `client` | Name of the synthetic availability probe. |
 | `description` | Free text (at most 200 characters). |
+| `display_name` | *(optional, presentation only)* What the dashboard calls it, at most 60 characters, e.g. "Patient Portal". |
+| `provides` | *(optional, presentation only)* What it does for patients or staff, at most 80 characters, e.g. "show patient records"; used in the "while it is isolated" sentences. |
+| `depends_on` | *(optional, presentation only)* The **roles** this workload calls. Must be known roles, no duplicates, not itself, no cycles. The impact of isolating X is everything that calls X, directly or through another. |
+| `recovery_priority` | *(optional, presentation only)* 1-4, all different (or all absent): the suggested order for a human operator. It does **not** change what the agents do. |
+| `priority_rationale` | *(optional, presentation only)* Why, at most 200 characters; shown next to the order. Write about dependencies, not clinical urgency. |
+
+The presentation fields never name, select or isolate anything and never change the Kubernetes manifests or RBAC (a test renders the manifests with different display names and checks they are identical); they reach the dashboard through the agents' config (`10-config.yaml`) and `/status`. See `docs/HEALTHCARE.md`.
 
 Namespaces (`healthcare`, `resilience`), the quorum, thresholds and workload defaults are **not** configurable here.
 

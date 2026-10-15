@@ -136,6 +136,8 @@ class ResilienceAgent:
         self._comp = Compromise()
         # Observability-only bookkeeping (never read by decisions).
         self.vote_reasons: Dict[str, dict] = {}
+        self.obstructed: List[str] = []                   # proposals this agent withheld under the simulated "obstruct" compromise
+        self._anomaly_since: Dict[str, float] = {}       # target -> when this agent's own anomaly reading began (persist_recheck_s)
         self._flags: Dict[str, Tuple[bool, bool]] = {n: (False, False) for n in cfg.nodes}
         self._score_seen: Dict[str, bool] = {}
         self.inv = InvestigationManager(self)       # targeted investigation (docs/INVESTIGATION.md)
@@ -322,6 +324,17 @@ class ResilienceAgent:
               score: float = 0.0, evidence_ids=(), why: str = "", investigation_id: str = "") -> None:
         key = f"{action.value}:{target}:{epoch}:{stage}"
         if self.votes.is_committed(key):
+            return
+        if self._comp.obstructing(target):
+            # [simulated compromise] "obstruct": this agent refuses to vote on this workload. Nothing is signed or sent, and
+            # it is said so, loudly: a missing vote is never approval (the other three agents are the quorum).
+            why_ = (f"[simulated compromise] obstruction: this agent is withholding its vote to {obs.proposal_text(key)}")
+            self._note_vote(action.value, target, epoch, stage, False, why_)
+            if key not in self.obstructed:
+                self.obstructed = (self.obstructed + [key])[-60:]
+            self.events.emit(obs.VOTE_WITHHELD, f"Agent {self.id} is not voting: {why_}.", target,
+                             {"proposal": key, "action": action.value, "reason": why_, "obstruction": True},
+                             key=("obstruct", key), fingerprint="obstruct")
             return
         if now - self.my_votes.get(key, -1e9) < REVOTE_EVERY_S:
             return
@@ -556,7 +569,16 @@ class ResilienceAgent:
                 self.scores[target] = score
                 self._log_score(target, score)
                 local = self.local_max(target)
-                if should_vote_contain(local, score, q):
+                self._track_anomaly(target, now, local)
+                wait = self._recheck_wait(target, now) if should_vote_contain(local, score, q) else 0.0
+                if wait > 0:
+                    # persist_recheck_s: a network/auth-only anomaly must last before this agent votes. A vote is simply not
+                    # cast yet (never approval); file and process changes are never delayed.
+                    why = (f"re-checking: the anomaly on {target} has lasted {now - self._anomaly_since[target]:.0f}s; waiting "
+                           f"{wait:.0f}s more (persist_recheck_s={q.persist_recheck_s:g}) to see whether it is only a short spike")
+                    self._note_vote("CONTAIN", target, st.epoch + 1, "", False, why)
+                    self._log_withheld("CONTAIN", target, st.epoch + 1, "", "persistence_recheck", why)
+                elif should_vote_contain(local, score, q):
                     self._note_vote("CONTAIN", target, st.epoch + 1, "", True,
                                     f"sees the anomaly itself (confidence {local:.2f}) and "
                                     f"W({target})={score.total:.2f} >= {q.score_threshold:g}")
@@ -579,6 +601,7 @@ class ResilienceAgent:
                 if st.phase == HEALTHY:
                     self.inv.evaluate(now, target, score)
             else:
+                self._anomaly_since.pop(target, None)
                 self.scores[target] = ScoreBreakdown(0.0)
                 self._note_vote("CONTAIN", target, st.epoch + 1, "", False,
                                 f"{target} is already being handled (phase {st.phase})")
@@ -616,6 +639,24 @@ class ResilienceAgent:
                 self._note_vote("ADVANCE_STAGE", target, st.epoch, nxt, False, why)
                 self._log_withheld("ADVANCE_STAGE", target, st.epoch, nxt, why.split(" ")[0], why)
         self._log_excluded_votes(pending)
+
+    def _track_anomaly(self, target: str, now: float, local: float) -> None:
+        """When this agent's OWN observation of `target` first went (and stayed) at or above local_min_conf."""
+        if local >= self.cfg.quorum.local_min_conf:
+            self._anomaly_since.setdefault(target, now)
+        else:
+            self._anomaly_since.pop(target, None)
+
+    def _recheck_wait(self, target: str, now: float) -> float:
+        """Seconds this agent still waits before it may vote CONTAIN (0 = may vote). Off when persist_recheck_s is 0. Never
+        delays when this agent itself sees a file change or an unexpected process: those do not come and go like a traffic spike."""
+        p = self.cfg.quorum.persist_recheck_s
+        if p <= 0:
+            return 0.0
+        for d in self.latest.get(target, []):
+            if d.observation in (ObsType.FILE_INTEGRITY, ObsType.PROCESS) and d.confidence >= self.cfg.quorum.local_min_conf:
+                return 0.0
+        return max(0.0, p - (now - self._anomaly_since.get(target, now)))
 
     def _recovery_failure(self, now: float, target: str, st: TargetState) -> Optional[str]:
         """Why the current recovery attempt has FAILED (None = not failed (yet)). Failure is judged only
@@ -1241,6 +1282,10 @@ class ResilienceAgent:
                 s = self.snaps.get(nid)
                 targets[nid] = {
                     **asdict(st), "workload": self.workload(nid), "role": self.cfg.nodes[nid].role,
+                    "display_name": self.cfg.nodes[nid].display_name or self.workload(nid),
+                    "provides": self.cfg.nodes[nid].provides, "depends_on": list(self.cfg.nodes[nid].depends_on),
+                    "recovery_priority": self.cfg.nodes[nid].recovery_priority,
+                    "priority_rationale": self.cfg.nodes[nid].priority_rationale,
                     "workload_trust": round(self.workload_trust.get(nid), 1),
                     "reachable": bool(s and s.reachable), "healthy": bool(s and s.healthy),
                     "instance_id": s.instance_id if s else "",
@@ -1259,7 +1304,8 @@ class ResilienceAgent:
                 "node": self.id, "mode": "distributed", "time": now, "data_source": self.source,
                 "counters": dict(self.counters),
                 "agent_name": self.cfg.nodes[self.id].agent_name,
-                "compromised": self._comp.mode if self._comp.active else None,
+                "compromised": self._comp.mode if (self._comp.active or self._comp.mode == "obstruct") else None,
+                "obstructed_votes": list(self.obstructed),
                 "cluster": self._cluster_view(),
                 "telemetry": self._telemetry_view(now),
                 "agent_trust": {n: round(self.trust_of(n), 1) for n in self.cfg.nodes},

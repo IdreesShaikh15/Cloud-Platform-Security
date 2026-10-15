@@ -154,8 +154,8 @@ def main(argv=None):
     vl.add_argument("path", nargs="?", default=None)
     c = sub.add_parser("compromise")
     c.add_argument("--mode", default="false-accusation",
-                   choices=["false-accusation", "forge-evidence"])
-    c.add_argument("--target", required=True, help="node id to falsely accuse (A-D)")
+                   choices=["false-accusation", "forge-evidence", "obstruct"])
+    c.add_argument("--target", required=True, help="node id to falsely accuse (A-D); for obstruct, the node whose votes are withheld")
     c.add_argument("--confidence", type=float, default=0.95)
     c.add_argument("--types", default="", help="comma list, default all four types")
     c.add_argument("--impersonate", default="B", help="node to impersonate (forge-evidence)")

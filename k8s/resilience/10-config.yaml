@@ -97,7 +97,15 @@ data:
           "status_url": "http://agent-a.resilience.svc.cluster.local:8081/status",
           "workload": "patient-portal",
           "role": "patient-portal",
-          "telemetry_url": "http://patient-portal.healthcare.svc.cluster.local:8080"
+          "telemetry_url": "http://patient-portal.healthcare.svc.cluster.local:8080",
+          "display_name": "Patient Portal",
+          "provides": "show patient records",
+          "depends_on": [
+            "B",
+            "C"
+          ],
+          "recovery_priority": 4,
+          "priority_rationale": "Nothing else depends on it; once the services it calls are healthy it works again."
         },
         "B": {
           "agent_name": "agent-b",
@@ -105,7 +113,11 @@ data:
           "status_url": "http://agent-b.resilience.svc.cluster.local:8081/status",
           "workload": "auth-service",
           "role": "auth-service",
-          "telemetry_url": "http://auth-service.healthcare.svc.cluster.local:8080"
+          "telemetry_url": "http://auth-service.healthcare.svc.cluster.local:8080",
+          "display_name": "Login & Access Service",
+          "provides": "sign people in and check their access",
+          "recovery_priority": 2,
+          "priority_rationale": "Every access to records is checked here; the Patient Portal and the EHR API both need it."
         },
         "C": {
           "agent_name": "agent-c",
@@ -113,7 +125,15 @@ data:
           "status_url": "http://agent-c.resilience.svc.cluster.local:8081/status",
           "workload": "records-api",
           "role": "records-api",
-          "telemetry_url": "http://records-api.healthcare.svc.cluster.local:8080"
+          "telemetry_url": "http://records-api.healthcare.svc.cluster.local:8080",
+          "display_name": "Electronic Health Records (EHR) API",
+          "provides": "serve patient records",
+          "depends_on": [
+            "B",
+            "D"
+          ],
+          "recovery_priority": 3,
+          "priority_rationale": "The Patient Portal needs it to show records; it also needs the Login & Access Service and the database."
         },
         "D": {
           "agent_name": "agent-d",
@@ -121,7 +141,11 @@ data:
           "status_url": "http://agent-d.resilience.svc.cluster.local:8081/status",
           "workload": "database",
           "role": "database",
-          "telemetry_url": "http://database.healthcare.svc.cluster.local:8080"
+          "telemetry_url": "http://database.healthcare.svc.cluster.local:8080",
+          "display_name": "Clinical Database",
+          "provides": "store patient records",
+          "recovery_priority": 1,
+          "priority_rationale": "It holds the records every other service reads; restoring it first lets the others recover against a healthy source."
         }
       }
     }
