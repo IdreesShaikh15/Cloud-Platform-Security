@@ -323,3 +323,10 @@ Edit the ConfigMap and `kubectl -n resilience rollout restart deploy` to change 
 The on-demand attack-injection script for making an *application* workload actually misbehave
 (deliverable 10) is not part of this codebase, deliberately: nothing in this repository makes a real workload misbehave. Genuine-compromise scenarios run in the simulator. Scenarios B, B′ and the baseline comparison, which
 target the security layer itself, are fully scripted above.
+
+
+## Two pages (Demo Mode / Live Monitoring)
+
+`python3 sim/demo_server.py --dashboard` now opens the dashboard with two pages: **Demo Mode** (this simulator) and **Live Monitoring**
+(a real cluster, only if `LIVE_STATUS_URLS` is set; otherwise it says it is not configured). They never share data. On your laptop with
+a cluster use `scripts/laptop-dashboard.sh` (see `docs/LIVE_DEMO.md`). `STATUS_URLS=...` (above) still works for a single source.

@@ -1260,6 +1260,8 @@ class ResilienceAgent:
                 "counters": dict(self.counters),
                 "agent_name": self.cfg.nodes[self.id].agent_name,
                 "compromised": self._comp.mode if self._comp.active else None,
+                "cluster": self._cluster_view(),
+                "telemetry": self._telemetry_view(now),
                 "agent_trust": {n: round(self.trust_of(n), 1) for n in self.cfg.nodes},
                 "targets": targets,
                 "pending_votes": self.votes.pending(),
@@ -1294,6 +1296,23 @@ class ResilienceAgent:
                 "event_seq": self.events.seq,
                 "events": self.events.recent(since=events_since) if include_events else [],
             }
+
+    def _cluster_view(self) -> dict:
+        """Cluster identity for the Live page (display only): the configured name plus what the backend reports."""
+        info = getattr(self.backend, "cluster_info", None)
+        try:
+            extra = info() if callable(info) else {}
+        except Exception:
+            extra = {}
+        return {"name": self.cfg.cluster_name, **{k: v for k, v in extra.items() if isinstance(v, str)}}
+
+    def _telemetry_view(self, now: float) -> dict:
+        """How fresh this agent's view of the workloads is (display only): age of its newest and oldest workload reading."""
+        times = [s.time for s in self.snaps.values() if s is not None]
+        return {"age_s": round(max(0.0, now - max(times)), 1) if times else None,
+                "oldest_age_s": round(max(0.0, now - min(times)), 1) if times else None,
+                "reachable": sum(1 for s in self.snaps.values() if s is not None and s.reachable),
+                "total": len(self.cfg.nodes)}
 
     def _pending_detail(self) -> Dict[str, dict]:
         tp = self.cfg.trust

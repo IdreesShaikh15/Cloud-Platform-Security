@@ -131,6 +131,7 @@ class ClusterConfig:
     healthcare_namespace: str = "healthcare"
     resilience_namespace: str = "resilience"
     known_good_image: str = "cr-healthcare-app:known-good"
+    cluster_name: str = ""            # shown on the Live Monitoring page as the cluster identity (display only)
     baseline_hashes: Dict[str, str] = field(default_factory=dict)
     process_allowlist: List[str] = field(default_factory=lambda: ["python", "python3"])
     timers: Timers = field(default_factory=Timers)
@@ -173,6 +174,7 @@ def load_cluster_config(path: Optional[str] = None) -> ClusterConfig:
         healthcare_namespace=raw.get("healthcare_namespace", "healthcare"),
         resilience_namespace=raw.get("resilience_namespace", "resilience"),
         known_good_image=raw.get("known_good_image", "cr-healthcare-app:known-good"),
+        cluster_name=str(raw.get("cluster_name", ""))[:60],
         process_allowlist=raw.get("process_allowlist", ["python", "python3"]),
         timers=_dc(Timers, raw.get("timers")),
         trust=_dc(TrustParams, raw.get("trust")),

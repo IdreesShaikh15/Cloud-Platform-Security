@@ -6,7 +6,8 @@ new events into one timeline buffer. The dashboard has no write path to
 anything.
 
   GET /                 page
-  GET /api/state        aggregated view (JSON)
+  GET /api/channels     which pages (demo / live) this deployment has
+  GET /api/state        aggregated view (JSON); every data endpoint takes ?channel=demo|live
   GET /api/events       merged event timeline; ?since=<gseq>&limit=<n>
   GET /api/agent/<id>   one agent's full view + its recent events
   GET /api/export       every buffered event from every agent, as a JSON download
@@ -16,9 +17,14 @@ anything.
   POST /api/sim/start   {"scenario": id}   both refused unless the dashboard is wired to the simulator
   POST /api/sim/reset                      AND every reachable agent reports data_source SIMULATOR
 
-Local use (against the simulator):
-  STATUS_URLS=http://localhost:50251/status,... [BASELINE_URL=http://localhost:50261] \\
-      python3 dashboard/server.py
+Two pages, never mixed (docs/DASHBOARD.md, docs/LIVE_DEMO.md): each channel has its own agents, collector, history and
+incidents and accepts ONLY its own data_source (demo: SIMULATOR, live: LIVE_CLUSTER); only the demo channel can have simulator
+controls.
+  DEMO_STATUS_URLS=http://127.0.0.1:50251/status,... [SIM_CONTROL_URL=... SIM_CONTROL_TOKEN=...] \\
+  LIVE_STATUS_URLS=http://127.0.0.1:18081/status,...  python3 dashboard/server.py       # presenter's laptop: both pages
+  (nothing set: the in-cluster dashboard reads /etc/resilience/config.json and serves the Live page only)
+Single source (compatibility, scripts/sim-dashboard.sh):
+  STATUS_URLS=http://localhost:50251/status,... [BASELINE_URL=http://localhost:50261] python3 dashboard/server.py
 """
 from __future__ import annotations
 
@@ -74,11 +80,6 @@ def aggregate_source(sources) -> str:
     return next(iter(s)) if len(s) == 1 else MIXED
 
 
-URLS = agent_urls()
-BASELINE = os.environ.get("BASELINE_URL", "").rstrip("/")
-SOURCES = dict(URLS, **({"CENTRAL": f"{BASELINE}/status"} if BASELINE else {}))
-
-
 def get(url: str):
     try:
         with urllib.request.urlopen(url, timeout=1.5) as r:
@@ -96,8 +97,12 @@ def median(vals):
 class Collector:
     """Polls every source, caches its latest status, merges events."""
 
-    def __init__(self):
+    def __init__(self, channel: "Channel" = None):
+        self.channel = channel
         self.lock = threading.Lock()
+        self.rejected: dict = {}                  # source id -> the data_source it claimed, when that is not what this channel accepts
+        self.dropped_events = 0                   # events / records refused because their source is not this channel's
+        self.received: dict = {}                  # source id -> local time its latest status arrived (freshness, clock-skew free)
         self.status: dict = {}                    # source id -> latest status (events stripped)
         self.cursor: dict = {}                    # source id -> (boot, last seq)
         self.events: deque = deque(maxlen=BUFFER)
@@ -119,12 +124,22 @@ class Collector:
         return sid, res
 
     def poll_once(self) -> None:
-        results = list(POOL.map(lambda kv: self._fetch(*kv), SOURCES.items()))
+        results = list(POOL.map(lambda kv: self._fetch(*kv), self.channel.sources.items()))
         with self.lock:
             for sid, res in results:
                 if res is None:
                     self.status.pop(sid, None)
                     continue
+                if not self._accepts(clean_source(res.get("data_source"))):
+                    # THE SEPARATION RULE: a channel only ever holds data stamped with its own source. Anything else
+                    # (simulated data on the live channel, live data on the demo channel, unknown, mixed) is discarded
+                    # here, before it can reach any view, history, event list or incident.
+                    self.status.pop(sid, None)
+                    self.rejected[sid] = clean_source(res.get("data_source"))
+                    continue
+                self.rejected.pop(sid, None)
+                self._scrub(res)
+                self.received[sid] = time.time()
                 evs = res.pop("events", []) or []
                 boot = res.get("event_boot")
                 last_boot, last_seq = self.cursor.get(sid, (None, None))
@@ -132,6 +147,9 @@ class Collector:
                     last_seq = None
                 for e in evs:
                     if last_seq is not None and e["seq"] <= last_seq:
+                        continue
+                    if not self._accepts(clean_source(e.get("data_source"), res.get("data_source"))):
+                        self.dropped_events += 1
                         continue
                     self.gseq += 1
                     self.events.append({**e, "gseq": self.gseq, "source": sid,
@@ -143,6 +161,30 @@ class Collector:
                 self._remember(sid, res)
             self.last_poll = time.time()
 
+    def _scrub(self, res: dict) -> None:
+        """Remove, from the status this channel is about to keep, every stamped record that belongs to another source (a
+        simulated decision inside a live agent's status, say). The status as a whole was already accepted by its own stamp."""
+        for key in ("decisions", "snapshots"):
+            rows = res.get(key)
+            if isinstance(rows, list):
+                keep = [r for r in rows if not isinstance(r, dict) or self._accepts(clean_source(r.get("data_source"), res.get("data_source")))]
+                self.dropped_events += len(rows) - len(keep)
+                res[key] = keep
+        acts = res.get("actions")
+        if isinstance(acts, dict) and isinstance(acts.get("recent"), list):
+            keep = [r for r in acts["recent"] if not isinstance(r, dict) or self._accepts(clean_source(r.get("data_source"), res.get("data_source")))]
+            self.dropped_events += len(acts["recent"]) - len(keep)
+            acts["recent"] = keep
+        for k, v in list((res.get("targets") or {}).items()):          # the 'last decision' shown on a node card
+            ld = v.get("last_decision") if isinstance(v, dict) else None
+            if isinstance(ld, dict) and not self._accepts(clean_source(ld.get("data_source"), res.get("data_source"))):
+                v["last_decision"] = None
+                self.dropped_events += 1
+
+    def _accepts(self, source: str) -> bool:
+        exp = self.channel.expect if self.channel else None
+        return exp is None or source == exp
+
     @staticmethod
     def _keep(store: "OrderedDict", key, value, cap: int) -> None:
         store[key] = value
@@ -153,12 +195,23 @@ class Collector:
     def _remember(self, sid: str, res: dict) -> None:
         ds = clean_source(res.get("data_source"))
         for d in res.get("decisions", []) or []:
-            self._keep(self.decisions, (sid, d["action"], d["target"], d["epoch"], d["stage"]),
-                       {**d, "node": sid, "data_source": clean_source(d.get("data_source"), res.get("data_source"))}, 1000)
+            src = clean_source(d.get("data_source"), res.get("data_source"))
+            if not self._accepts(src):
+                self.dropped_events += 1
+                continue
+            self._keep(self.decisions, (sid, d["action"], d["target"], d["epoch"], d["stage"]), {**d, "node": sid, "data_source": src}, 1000)
         for r in ((res.get("actions") or {}).get("recent") or []):
-            self._keep(self.audit, (sid, r["id"]), {**r, "data_source": clean_source(r.get("data_source"), res.get("data_source"))}, 4000)
+            src = clean_source(r.get("data_source"), res.get("data_source"))
+            if not self._accepts(src):
+                self.dropped_events += 1
+                continue
+            self._keep(self.audit, (sid, r["id"]), {**r, "data_source": src}, 4000)
         for x in res.get("snapshots") or []:
-            self._keep(self.snaps, (sid, x["key"]), {**x, "agent": sid, "data_source": clean_source(x.get("data_source"), res.get("data_source"))}, 300)
+            src = clean_source(x.get("data_source"), res.get("data_source"))
+            if not self._accepts(src):
+                self.dropped_events += 1
+                continue
+            self._keep(self.snaps, (sid, x["key"]), {**x, "agent": sid, "data_source": src}, 300)
         inv = res.get("investigations") or {}
         for r in list(inv.get("active", [])) + list(inv.get("recent", [])):
             self._keep(self.invs, (sid, r["id"]), {**r, "node": sid, "data_source": ds}, 600)
@@ -191,7 +244,102 @@ class Collector:
             return list(self.events)
 
 
-COLLECTOR = Collector()
+# --------------------------------------------------------------------------- channels (Demo Mode / Live Monitoring)
+LOOPBACK = ("127.0.0.1", "localhost", "::1")
+
+
+class Channel:
+    """ONE data source with everything that belongs to it: its agents, its collector (events, history, incidents) and, for
+    the demo channel only, the simulator controls. `expect` is the only data_source this channel accepts: SIMULATOR for
+    the Demo page, LIVE_CLUSTER for the Live page (None = legacy single-source mode, see build_channels). Two channels
+    share NOTHING, so simulated records can never reach the live page and demo controls can never reach live resources."""
+
+    def __init__(self, name: str, expect, urls: dict, baseline: str = "", sim_url: str = "", sim_token: str = ""):
+        self.name, self.expect = name, expect
+        self.urls = dict(urls)
+        self.baseline = (baseline or "").rstrip("/")
+        self.sources = dict(self.urls, **({"CENTRAL": f"{self.baseline}/status"} if self.baseline else {}))
+        live = expect == LIVE_CLUSTER
+        self.sim_url = "" if live else (sim_url or "").rstrip("/")        # a live channel can never carry simulator controls
+        self.sim_token = "" if live else (sim_token or "")
+        self.collector = Collector(self)
+
+
+def _urls(raw: str) -> dict:
+    return {chr(ord("A") + i): u.strip() for i, u in enumerate((raw or "").split(",")) if u.strip()}
+
+
+def build_channels(env=None):
+    """(mode, {name: Channel}).
+      strict : DEMO_STATUS_URLS and/or LIVE_STATUS_URLS (the presenter's laptop), or neither and the in-cluster config file,
+               which yields the Live channel only. Each channel accepts only its own data_source.
+      legacy : STATUS_URLS (one source, whatever it reports; the pre-existing behaviour, used by scripts/sim-dashboard.sh)."""
+    env = os.environ if env is None else env
+    demo, live = _urls(env.get("DEMO_STATUS_URLS")), _urls(env.get("LIVE_STATUS_URLS"))
+    if env.get("STATUS_URLS") and (demo or live):
+        raise SystemExit("set STATUS_URLS (one source) OR DEMO_STATUS_URLS / LIVE_STATUS_URLS (two pages), not both")
+    if env.get("STATUS_URLS"):
+        return "legacy", {"legacy": Channel("legacy", None, _urls(env["STATUS_URLS"]), env.get("BASELINE_URL", ""),
+                                            env.get("SIM_CONTROL_URL", ""), env.get("SIM_CONTROL_TOKEN", ""))}
+    if demo or live:
+        chans = {}
+        if demo:
+            chans["demo"] = Channel("demo", SIMULATOR, demo, env.get("DEMO_BASELINE_URL", ""),
+                                    env.get("SIM_CONTROL_URL", ""), env.get("SIM_CONTROL_TOKEN", ""))
+        if live:
+            chans["live"] = Channel("live", LIVE_CLUSTER, live, env.get("LIVE_BASELINE_URL", ""))
+        return "strict", chans
+    return "strict", {"live": Channel("live", LIVE_CLUSTER, agent_urls(), env.get("BASELINE_URL", ""))}
+
+
+MODE, CHANNELS = build_channels()
+DEFAULT = CHANNELS.get("demo") or CHANNELS.get("live") or CHANNELS["legacy"]
+# Compatibility names for the default channel (the legacy single-source mode and the tests use these).
+URLS, BASELINE, SOURCES, COLLECTOR = DEFAULT.urls, DEFAULT.baseline, DEFAULT.sources, DEFAULT.collector
+SIM_CONTROL_URL, SIM_CONTROL_TOKEN = DEFAULT.sim_url, DEFAULT.sim_token
+_ctx = threading.local()
+
+
+def ch() -> Channel:
+    """The channel the current request is about (set by the request handler); the default channel outside a request."""
+    return getattr(_ctx, "channel", None) or DEFAULT
+
+
+def resolve(name):
+    """(Channel | None, reason). STRICT mode needs an explicit channel. LEGACY mode has one source: it answers as the Demo page
+    only while its agents report SIMULATOR and as the Live page only while they report LIVE_CLUSTER, so it can never pose as
+    the wrong one."""
+    if MODE == "strict":
+        if not name:
+            return None, "a channel (demo or live) is required"
+        c = CHANNELS.get(name)
+        return (c, "ok") if c else (None, "Demo Mode is not available in this deployment" if name == "demo"
+                                    else "Live Monitoring is not configured" if name == "live" else "unknown channel")
+    legacy = CHANNELS["legacy"]
+    if not name:
+        return legacy, "ok"
+    if name not in ("demo", "live"):
+        return None, "unknown channel"
+    want = SIMULATOR if name == "demo" else LIVE_CLUSTER
+    st = legacy.collector.snapshot()
+    if not st:
+        legacy.collector.poll_once()
+        st = legacy.collector.snapshot()
+    got = aggregate_source(clean_source(s.get("data_source")) for s in st.values()) if st else UNKNOWN
+    return (legacy, "ok") if got == want else (None, f"this dashboard is wired to one source ({got}), not {name}")
+
+
+def channels_view() -> dict:
+    out = {}
+    for name in ("demo", "live"):
+        c, why = resolve(name) if MODE == "legacy" else (CHANNELS.get(name), "")
+        out[name] = {"configured": c is not None,
+                     "reason": "" if c is not None else (why or ("Demo Mode is not available in this deployment (it runs on the presenter's laptop)"
+                                                                  if name == "demo" else "Live Monitoring is not configured"))}
+    default = "demo" if out["demo"]["configured"] else "live"
+    return {"mode": MODE, "default": default, "channels": out}
+
+
 
 
 # --------------------------------------------------------------------------- access control
@@ -382,12 +530,12 @@ def decision_logs_view(live: dict) -> dict:
 
 
 def aggregate() -> dict:
-    statuses = COLLECTOR.snapshot()
-    if not statuses:                             # poller not warmed up yet
-        COLLECTOR.poll_once()
-        statuses = COLLECTOR.snapshot()
-    ids = list(URLS)
-    live = {k: v for k, v in statuses.items() if k in URLS}
+    statuses = ch().collector.snapshot()
+    if not statuses and not ch().collector.last_poll:     # poller not warmed up yet
+        ch().collector.poll_once()
+        statuses = ch().collector.snapshot()
+    ids = list(ch().urls)
+    live = {k: v for k, v in statuses.items() if k in ch().urls}
     base = statuses.get("CENTRAL")
     nodes = {}
     for nid in ids:
@@ -449,9 +597,43 @@ def aggregate() -> dict:
             "decision_logs": decision_logs_view(live),
             "snapshots": snapshots_view(live), "actions": actions_view(live),
             "pending_votes": {k: v["voters"] for k, v in pending.items()},
-            "pending_detail": pending, "baseline": BASELINE or None,
+            "pending_detail": pending, "baseline": ch().baseline or None,
             "central_compromised": (base or {}).get("compromised"),
-            "last_poll": COLLECTOR.last_poll, "gseq": COLLECTOR.gseq}
+            "last_poll": ch().collector.last_poll, "gseq": ch().collector.gseq,
+            "channel": ch().name, "configured": True, "connection": connection_view(statuses)}
+
+
+def connection_view(statuses: dict) -> dict:
+    """What the page needs to say honestly whether it is connected: agent availability, telemetry freshness and cluster identity
+    as REPORTED by the agents (never filled in by the dashboard). `connected` is true only while at least one agent of THIS
+    channel answers with this channel's data source."""
+    c = ch()
+    up = [k for k in c.urls if k in statuses]
+    now = time.time()
+    tel = []
+    for k in up:
+        t_ = statuses[k].get("telemetry") or {}
+        if t_.get("age_s") is not None:
+            # the agent's own age of its last workload poll, plus how long ago the dashboard received that report
+            # (both are durations, so no clock needs to agree between the cluster and this machine)
+            tel.append(round(t_["age_s"] + max(0.0, now - c.collector.received.get(k, now)), 1))
+    clusters = [(statuses[k].get("cluster") or {}) for k in up]
+    names = {x.get("name") for x in clusters if x.get("name")}
+    vers = {x.get("kubernetes_version") for x in clusters if x.get("kubernetes_version")}
+    state = "NOT_CONNECTED" if not up else "CONNECTED" if len(up) == len(c.urls) else "DEGRADED"
+    return {"channel": c.name, "expect": c.expect, "state": state, "connected": bool(up),
+            "agents_total": len(c.urls), "agents_up": len(up), "agents_down": [k for k in c.urls if k not in statuses],
+            "rejected_sources": dict(c.collector.rejected), "dropped_records": c.collector.dropped_events,
+            "telemetry_age_s": max(tel) if tel else None, "telemetry_reporting": len(tel),
+            "cluster": {"name": next(iter(names)) if len(names) == 1 else ("agents disagree" if names else ""),
+                        "kubernetes_version": next(iter(vers)) if len(vers) == 1 else ("agents disagree" if vers else ""),
+                        "platform": next((x.get("platform") for x in clusters if x.get("platform")), "")}}
+
+
+def not_configured_state(name, why: str) -> dict:
+    return {"channel": name, "configured": False, "connection": {"channel": name, "state": "NOT_CONFIGURED", "connected": False,
+                                                               "reason": why, "agents_total": 0, "agents_up": 0, "agents_down": [],
+                                                               "rejected_sources": {}, "dropped_records": 0}}
 
 
 def snapshots_view(live: dict) -> list:
@@ -475,9 +657,13 @@ SNAP_KEY = __import__("re").compile(r"^[A-Za-z0-9_:-]{1,80}$")
 
 
 def snapshot_export(sid: str, key: str):
-    if sid not in URLS or not SNAP_KEY.match(key):
+    if sid not in ch().urls or not SNAP_KEY.match(key):
         return None
-    return get(URLS[sid].replace("/status", f"/snapshot/{key}"))
+    snap = get(ch().urls[sid].replace("/status", f"/snapshot/{key}"))
+    exp = ch().expect
+    if exp and isinstance(snap, dict) and clean_source(snap.get("data_source")) != exp:
+        return None                                  # a snapshot of another source is never served through this channel
+    return snap
 
 
 def summary_view(nodes: dict, live: dict, ids: list, inv: dict) -> dict:
@@ -731,7 +917,7 @@ def _incidents_from(hist: dict) -> dict:
 def _current(statuses: dict, source: str, target: str, epoch: int) -> dict:
     per, cur = {}, {}
     for sid, s in statuses.items():
-        if sid not in URLS or clean_source(s.get("data_source")) != source:
+        if sid not in ch().urls or clean_source(s.get("data_source")) != source:
             continue
         v = (s.get("targets") or {}).get(target)
         if v:
@@ -765,8 +951,8 @@ def incident_status(decs_all: list, source: str, target: str, epoch: int, curren
 
 
 def incident_list(statuses: dict = None, hist: dict = None) -> list:
-    statuses = COLLECTOR.snapshot() if statuses is None else statuses
-    hist = COLLECTOR.history() if hist is None else hist
+    statuses = ch().collector.snapshot() if statuses is None else statuses
+    hist = ch().collector.history() if hist is None else hist
     out = []
     for (src, tgt, ep), decs in _incidents_from(hist).items():
         cur = _current(statuses, src, tgt, ep)
@@ -780,9 +966,9 @@ def incident_list(statuses: dict = None, hist: dict = None) -> list:
 
 
 def build_incident(source: str, target: str, epoch: int, statuses: dict = None, hist: dict = None, events: list = None):
-    statuses = COLLECTOR.snapshot() if statuses is None else statuses
-    hist = COLLECTOR.history() if hist is None else hist
-    events = COLLECTOR.all_events() if events is None else events
+    statuses = ch().collector.snapshot() if statuses is None else statuses
+    hist = ch().collector.history() if hist is None else hist
+    events = ch().collector.all_events() if events is None else events
     incs = _incidents_from(hist)
     decs = incs.get((source, target, epoch))
     if not decs:
@@ -944,13 +1130,15 @@ def decs_t(hist: dict, source: str, key: str) -> float:
 
 
 def agent_view(sid: str) -> dict:
-    s = COLLECTOR.snapshot().get(sid)
-    evs = [e for e in COLLECTOR.all_events() if e["node"] == sid][-150:]
+    s = ch().collector.snapshot().get(sid)
+    evs = [e for e in ch().collector.all_events() if e["node"] == sid][-150:]
     return {"id": sid, "up": s is not None, "status": s, "events": evs}
 
 
 # --------------------------------------------------------------------------- simulator demo controls
 # SAFETY MODEL (docs/DASHBOARD.md). These endpoints can only ever talk to the simulator's own control server:
+#   0. Only the DEMO channel can have controls at all: a live channel is built without them (Channel.__init__), whatever
+#      the environment says, and sim_gate refuses it again.
 #   1. SIM_CONTROL_URL + SIM_CONTROL_TOKEN must be configured. The live Kubernetes manifest sets neither.
 #   2. The control URL must be a loopback address, so it can never point at anything on a cluster network.
 #   3. EVERY reachable agent must report data_source == SIMULATOR right now. LIVE_CLUSTER, UNKNOWN, MIXED or "no data"
@@ -958,20 +1146,19 @@ def agent_view(sid: str) -> dict:
 #   4. Only POST with JSON, a custom header (blocks cross-site form posts) and the dashboard's own login.
 #   5. The request can only name a scenario from the controller's own list; nothing else is forwarded.
 # The simulator control server (sim/demo_server.py) re-checks its own invariants independently.
-SIM_CONTROL_URL = os.environ.get("SIM_CONTROL_URL", "").rstrip("/")
-SIM_CONTROL_TOKEN = os.environ.get("SIM_CONTROL_TOKEN", "")
-LOOPBACK = ("127.0.0.1", "localhost", "::1")
 
 
 def sim_gate(statuses: dict = None):
     """(allowed, reason). Pure function of configuration and what the agents themselves report."""
-    if not SIM_CONTROL_URL or not SIM_CONTROL_TOKEN:
+    if ch().expect == LIVE_CLUSTER:
+        return False, "refused: Live Monitoring has no scenario controls"
+    if not ch().sim_url or not ch().sim_token:
         return False, "simulator controls are not configured on this dashboard (live mode)"
-    host = urlparse(SIM_CONTROL_URL).hostname
+    host = urlparse(ch().sim_url).hostname
     if host not in LOOPBACK:
         return False, "refused: the simulator control address is not a loopback address"
-    st = COLLECTOR.snapshot() if statuses is None else statuses
-    live = {k: v for k, v in st.items() if k in URLS or k == "CENTRAL"}
+    st = ch().collector.snapshot() if statuses is None else statuses
+    live = {k: v for k, v in st.items() if k in ch().urls or k == "CENTRAL"}
     if not live:
         return False, "refused: no agent is reachable, so the data source cannot be established"
     src = aggregate_source(clean_source(s.get("data_source")) for s in live.values())
@@ -981,9 +1168,9 @@ def sim_gate(statuses: dict = None):
 
 
 def sim_call(method: str, path: str, body: dict = None, timeout: float = 5.0):
-    req = urllib.request.Request(f"{SIM_CONTROL_URL}{path}", method=method,
+    req = urllib.request.Request(f"{ch().sim_url}{path}", method=method,
                                  data=json.dumps(body).encode() if body is not None else None,
-                                 headers={"X-CR-Sim-Token": SIM_CONTROL_TOKEN, "Content-Type": "application/json"})
+                                 headers={"X-CR-Sim-Token": ch().sim_token, "Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return r.status, json.loads(r.read())
@@ -1024,13 +1211,17 @@ def sim_action(kind: str, payload: dict):
 
 
 def metrics() -> list:
-    urls = [u.replace("/status", "/metrics") for u in URLS.values()]
-    if BASELINE:
-        urls.append(f"{BASELINE}/metrics")
+    urls = [u.replace("/status", "/metrics") for u in ch().urls.values()]
+    if ch().baseline:
+        urls.append(f"{ch().baseline}/metrics")
     rows = []
+    exp = ch().expect
     for res in POOL.map(get, urls):
-        for r in (res or []):
-            rows.append({**r, "data_source": clean_source(r.get("data_source"))})
+        for r in (res if isinstance(res, list) else []):
+            src = clean_source(r.get("data_source")) if isinstance(r, dict) else UNKNOWN
+            if not isinstance(r, dict) or (exp and src != exp):         # this channel shows only its own source
+                continue
+            rows.append({**r, "data_source": src})
     return rows
 
 
@@ -1059,7 +1250,7 @@ class Handler(BaseHTTPRequestHandler):
         body = LOGIN_PAGE.replace(b"__ERR__", (b'<div class="m e">' + err.encode() + b"</div>") if err else b"")
         return self._send(code, body, "text/html; charset=utf-8")
 
-    def _sim_post(self, kind: str):
+    def _sim_post(self, kind: str, channel=None):
         if not AUTH.request_ok(self.headers):
             return self._send(401, b'{"error":"authentication required"}', "application/json")
         if self.headers.get("X-CR-Control") != "1" or "application/json" not in (self.headers.get("Content-Type") or ""):
@@ -1074,13 +1265,29 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError
         except ValueError:
             return self._send(400, b'{"error":"bad JSON body"}', "application/json")
+        chn, why = resolve(channel)
+        if chn is None:
+            return self._send(400 if MODE == "strict" and not channel else 403, json.dumps({"error": f"refused: {why}"}).encode(), "application/json")
+        _ctx.channel = chn
         code, body = sim_action(kind, payload)
         return self._send(code, json.dumps(body, default=str).encode(), "application/json")
 
     def do_POST(self):
+        try:
+            return self._post()
+        finally:
+            _ctx.channel = None
+
+    def do_GET(self):
+        try:
+            return self._get()
+        finally:
+            _ctx.channel = None
+
+    def _post(self):
         url = urlparse(self.path)
         if url.path in ("/api/sim/start", "/api/sim/reset"):
-            return self._sim_post(url.path.rsplit("/", 1)[1])
+            return self._sim_post(url.path.rsplit("/", 1)[1], (parse_qs(url.query).get("channel") or [""])[0] or None)
         if url.path != "/login" or not AUTH.enabled:
             return self._send(404, b"not found", "text/plain")
         if AUTH.locked_out(self._ip()):
@@ -1095,7 +1302,7 @@ class Handler(BaseHTTPRequestHandler):
         AUTH.record_fail(self._ip())
         return self._login_page(401, "Wrong token.")
 
-    def do_GET(self):
+    def _get(self):
         url = urlparse(self.path)
         q = parse_qs(url.query)
         p = url.path
@@ -1112,12 +1319,25 @@ class Handler(BaseHTTPRequestHandler):
                 return self._login_page()
             return self._send(401, b'{"error":"authentication required"}', "application/json",
                               {"WWW-Authenticate": "Bearer"})
+        if p == "/api/channels":
+            return self._json(channels_view())
+        if p in ("/api/state", "/api/events", "/api/export", "/api/metrics", "/api/sim/state") or p.startswith(
+                ("/api/agent/", "/api/snapshot/", "/api/incident/")):
+            name = (q.get("channel") or [""])[0] or None
+            chn, why = resolve(name)
+            if chn is None:
+                if p == "/api/state":
+                    return self._json(not_configured_state(name, why))
+                if p == "/api/sim/state":
+                    return self._json({"enabled": False, "reason": why, "scenarios": [], "running": None, "last": None})
+                return self._send(400 if MODE == "strict" and not name else 404, json.dumps({"error": why}).encode(), "application/json")
+            _ctx.channel = chn
         if p == "/api/state":
             return self._json(aggregate())
         if p == "/api/events":
             since = int(q.get("since", ["0"])[0] or 0)
             limit = int(q.get("limit", ["1000"])[0] or 1000)
-            return self._json({"gseq": COLLECTOR.gseq, "events": COLLECTOR.events_since(since, limit)})
+            return self._json({"gseq": ch().collector.gseq, "events": ch().collector.events_since(since, limit)})
         if p.startswith("/api/agent/"):
             return self._json(agent_view(p.rsplit("/", 1)[1]))
         if p.startswith("/api/snapshot/"):
@@ -1128,8 +1348,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(snap, {"Content-Disposition": f'attachment; filename="snapshot-{parts[4].replace(":", "-")}-{parts[3]}.json"'})
         if p == "/api/export":
             name = f"resilience-events-{time.strftime('%Y%m%d-%H%M%S')}.json"
-            return self._json({"exported_at": time.time(), "sources": list(SOURCES),
-                               "events": COLLECTOR.all_events()},
+            return self._json({"exported_at": time.time(), "sources": list(ch().sources),
+                               "events": ch().collector.all_events()},
                               {"Content-Disposition": f'attachment; filename="{name}"'})
         if p == "/api/metrics":
             return self._json(metrics())
@@ -1144,7 +1364,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, png, "image/png")
         if p.startswith("/api/incident/"):
             parts = p.split("/")
-            if len(parts) != 6 or parts[3] not in VALID_SOURCES or parts[4] not in URLS or not parts[5].isdigit():
+            if len(parts) != 6 or parts[3] not in VALID_SOURCES or parts[4] not in ch().urls or not parts[5].isdigit():
                 return self._send(404, b'{"error":"no such incident"}', "application/json")
             inc = build_incident(parts[3], parts[4], int(parts[5]))
             if inc is None:
@@ -1157,7 +1377,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    print(f"dashboard on :{PORT}, agents={URLS}, baseline={BASELINE or '-'}, "
-          f"access token: {'REQUIRED' if AUTH.enabled else 'off (open)'}", flush=True)
-    threading.Thread(target=COLLECTOR.run, daemon=True).start()
-    ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+    for c_ in CHANNELS.values():
+        print(f"dashboard channel {c_.name} (accepts {c_.expect or 'whatever it reports'}): agents={c_.urls}, baseline={c_.baseline or '-'}, "
+              f"simulator controls={'yes' if c_.sim_url else 'no'}", flush=True)
+        threading.Thread(target=c_.collector.run, daemon=True).start()
+    print(f"dashboard on :{PORT} ({MODE}); access token: {'REQUIRED' if AUTH.enabled else 'off (open)'}", flush=True)
+    ThreadingHTTPServer((os.environ.get("BIND", "0.0.0.0"), PORT), Handler).serve_forever()

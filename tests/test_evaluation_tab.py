@@ -172,7 +172,15 @@ def test_evaluation_tab_in_a_browser(monkeypatch, serve):
     pw = pytest.importorskip("playwright.sync_api")
     if not os.path.exists("/opt/pw-browsers/chromium"):
         pytest.skip("chromium not available")
-    url = serve(load_dash(monkeypatch))
+    d = load_dash(monkeypatch)
+    # the page only shows its tabs while its agents answer, so give the (never started) collector one simulated status each
+    tg = {n: {"phase": "HEALTHY", "stage": "FULL", "workload": n, "epoch": 0, "last_decision": None, "detections": [], "workload_trust": 100,
+              "attempt": 1, "attention": None, "display_state": "HEALTHY"} for n in "ABCD"}
+    d.COLLECTOR.status = {n: {"node": n, "mode": "distributed", "time": 1.0, "data_source": "SIMULATOR", "targets": tg,
+                              "agent_trust": {x: 100 for x in "ABCD"}, "decisions": [], "rejections": [], "pending_votes": {},
+                              "event_boot": "b", "event_seq": 0, "events": [], "counters": None,
+                              "investigations": {"enabled": True, "active": [], "recent": [], "watch": {}}} for n in "ABCD"}
+    url = serve(d)
     with pw.sync_playwright() as p:
         b = p.chromium.launch(executable_path="/opt/pw-browsers/chromium")
         pg = b.new_page(viewport={"width": 1300, "height": 900})

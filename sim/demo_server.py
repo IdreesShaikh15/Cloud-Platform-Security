@@ -226,8 +226,11 @@ def main() -> int:
     ctl = DemoController(default_factory())
     srv = make_server(ctl, token, a.control_port)
     urls = ",".join(f"http://localhost:{50251 + i}/status" for i in range(4))
-    env = dict(os.environ, STATUS_URLS=urls, SIM_CONTROL_URL=f"http://127.0.0.1:{a.control_port}",
-               SIM_CONTROL_TOKEN=token, PORT=str(a.dashboard_port))
+    # The dashboard gets this simulator as its DEMO channel. If LIVE_STATUS_URLS is set in the environment (the presenter's
+    # laptop, docs/LIVE_DEMO.md) it also gets the Live page, which stays a separate channel that never sees simulated data.
+    env = dict(os.environ, DEMO_STATUS_URLS=urls, SIM_CONTROL_URL=f"http://127.0.0.1:{a.control_port}",
+               SIM_CONTROL_TOKEN=token, PORT=str(a.dashboard_port), BIND="127.0.0.1")
+    env.pop("STATUS_URLS", None)
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     proc = None
     if a.dashboard:
@@ -235,7 +238,7 @@ def main() -> int:
         print(f"simulator + dashboard with demo controls: http://localhost:{a.dashboard_port}  (Ctrl-C to stop)", flush=True)
     else:
         print("simulator running. Start the dashboard with:\n  "
-              f"STATUS_URLS={urls} SIM_CONTROL_URL={env['SIM_CONTROL_URL']} SIM_CONTROL_TOKEN={token} "
+              f"DEMO_STATUS_URLS={urls} SIM_CONTROL_URL={env['SIM_CONTROL_URL']} SIM_CONTROL_TOKEN={token} "
               f"PORT={a.dashboard_port} python3 dashboard/server.py", flush=True)
     try:
         while True:

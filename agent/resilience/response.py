@@ -67,6 +67,26 @@ class K8sBackend:
         self.res_ns = resilience_ns
         self.image = known_good_image
         self.t = {"_request_timeout": api_timeout_s}
+        self._ci, self._ci_at, self._ci_busy = {}, 0.0, False
+        self._ci_lock = threading.Lock()
+
+    def cluster_info(self) -> dict:
+        """The API server's own version (GET /version, readable by every authenticated user). Display only; refreshed in the
+        background so /status never waits on the network."""
+        with self._ci_lock:
+            if time.time() - self._ci_at > 300 and not self._ci_busy:
+                self._ci_busy = True
+                threading.Thread(target=self._ci_refresh, daemon=True).start()
+            return dict(self._ci)
+
+    def _ci_refresh(self) -> None:
+        try:
+            v = self.client.VersionApi().get_code(**self.t)
+            info = {"kubernetes_version": v.git_version, "platform": v.platform}
+        except Exception as exc:
+            info = {"error": exc.__class__.__name__}
+        with self._ci_lock:
+            self._ci, self._ci_at, self._ci_busy = info, time.time(), False
 
     def _policy_name(self, workload: str) -> str:
         return POLICY_NAME_FMT.format(workload=workload)
@@ -213,6 +233,9 @@ class FakeBackend:
     and are recorded in `denied`."""
 
     SOURCE = "SIMULATOR"             # the in-memory fake cluster (agent/resilience/provenance.py)
+
+    def cluster_info(self) -> dict:
+        return {"kubernetes_version": "simulated", "platform": "in-memory simulator"}
     ENFORCED_USER = "system:serviceaccount:resilience:resilience-agent"
 
     def __init__(self, recovery_delay_s: float = 3.0,

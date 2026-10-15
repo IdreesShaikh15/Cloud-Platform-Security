@@ -180,3 +180,37 @@ Shows `docs/RESULTS.md` as written (headings, plain-English explanations, tables
 ## 10. Configurable workloads
 
 One file, `config/workloads.json`, documented in `docs/WORKLOADS.md`. Node cards show a `role:` chip when the role differs from the workload name (agents report `role` on `/status`).
+
+# Healthcare Phase B: Demo Mode and Live Monitoring are two separate pages
+
+A toggle at the top, **Demo Mode | Live Monitoring**, opens two pages with the same layout. They are two **channels** in the dashboard
+backend (`dashboard/server.py: Channel`), and they share nothing: their own agents, collector, event history, decision/action history,
+incidents and exports. The page you are on is part of the URL (`?mode=demo` / `?mode=live`) and every data request carries it, so
+switching pages is a full reload with no state carried over.
+
+## 11. The rules the backend enforces (not the page)
+| Rule | Where | Test |
+|---|---|---|
+| A channel accepts only its own `data_source` (demo: `SIMULATOR`, live: `LIVE_CLUSTER`). A status stamped anything else (including `UNKNOWN`, `MIXED`, missing) is discarded before it reaches any view and shows up only as "rejected" in the connection block. | `Collector.poll_once` | `test_simulated_agents_wired_to_the_live_channel_are_ignored_entirely`, `..._live_agents_wired_to_the_demo_channel...`, `test_unlabelled_or_unknown_data...` |
+| Inside an accepted status, every stamped record (event, decision, action record, snapshot, a node's last decision) of another source is dropped and counted. | `Collector._scrub`, `poll_once` | `test_a_simulated_record_inside_a_live_status_is_dropped_not_shown` |
+| Metrics and snapshot downloads (fetched straight from agents) are filtered the same way. | `metrics()`, `snapshot_export()` | same file |
+| The live page never falls back: if no live agent answers it shows **NOT CONNECTED** and no data. | `connection_view`, page | `test_live_page_never_falls_back_to_the_demo_data` |
+| Only the demo channel can have simulator controls. A live channel is built without them even if `SIM_CONTROL_*` is set, and `sim_gate` refuses it again. Nothing is forwarded to the control server. | `Channel.__init__`, `sim_gate` | `test_simulator_controls_are_refused_for_the_live_page_and_nothing_is_forwarded` (a counting stand-in control server sees 0 requests), `test_live_channel_with_a_control_url_in_the_environment_still_has_none`, `test_demo_controls_are_refused_when_the_demo_agents_do_not_report_simulator` |
+| In two-page mode a request without a channel is refused (400); the dashboard never guesses. | `resolve()` | `test_strict_mode_needs_an_explicit_channel` |
+| The Part 1 rules still hold on the demo channel (loopback control URL, per-run token, POST + JSON + `X-CR-Control`, fixed scenario vocabulary, login). | unchanged | `tests/test_sim_control.py` |
+
+## 12. What each page shows
+* **Demo Mode:** banner **"DEMO MODE — SIMULATED DATA. No real healthcare workload is being attacked."**; scenario picker with Start / Reset (only here).
+* **Live Monitoring:** banner **"LIVE MONITORING — CONNECTED TEST CLUSTER"** with the cluster identity, agent availability (N of 4, which are down) and telemetry age; "— DEGRADED" if some agents are down; **"NOT CONNECTED — Live monitoring is unavailable."** (everything else hidden) when none answers or when the agents answered with the wrong source. No scenario buttons; the page does not even request them.
+* The cluster identity is what the **agents report**: `cluster_name` from `resilience-config` (`10-config.yaml`, display only) and the API server's `/version`. If the agents disagree the page says so; if nothing is configured it says "name not set", it never invents one. Telemetry age = each agent's own age of its last workload poll plus how long ago the dashboard received that report (two durations, so the laptop and the cluster clocks need not agree); more than 10 s is marked STALE.
+* The green "LIVE" dot is now **"Auto-refresh on"** / **"Paused"**: it says whether the screen is refreshing, not that the data is live.
+
+## 13. Where it runs
+* **Presenter's laptop (both pages):** `scripts/laptop-dashboard.sh` starts the simulator + dashboard on `127.0.0.1:8091` and reads the real agents through `kubectl port-forward` (`LIVE_STATUS_URLS`). See `docs/LIVE_DEMO.md`.
+* **In the cluster (Live page only):** the `dashboard` Deployment is unchanged; with no `DEMO_`/`LIVE_STATUS_URLS` it reads `/etc/resilience/config.json` and builds the Live channel alone. The Demo page there says "not available in this deployment". This keeps the Part 1 rule that simulator controls are never in a live manifest.
+* **Single source (compatibility):** `STATUS_URLS=...` (`scripts/sim-dashboard.sh`, `demo.md`) behaves as before, but its one source answers only as the page that matches what its agents report (SIMULATOR -> Demo, LIVE_CLUSTER -> Live), so it cannot pose as the other. `STATUS_URLS` together with `DEMO_`/`LIVE_STATUS_URLS` is an error.
+
+## 14. Limits
+* Not run against a real cluster: the connected Live page is covered by stand-in agents that serve the same JSON (the tests), and screenshots of it can only come from your cluster.
+* The port-forwards of `scripts/laptop-dashboard.sh` are re-opened in a loop, but a forward to a deleted agent pod takes about a second or two to re-attach.
+* Switching pages reloads the page; the demo page's history is kept by the dashboard process, the live page's too (both lost when the dashboard restarts).

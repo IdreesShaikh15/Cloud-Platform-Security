@@ -206,7 +206,7 @@ def test_baseline_banner_requires_a_controller_that_actually_answers(monkeypatch
 def test_page_script_is_valid_and_has_banner_and_source_chips():
     import re, shutil, subprocess, tempfile
     html = open(os.path.join(ROOT, "dashboard", "index.html")).read()
-    assert 'id="srcbanner"' in html and "DEMO — SIMULATED DATA" in html and "srcTag(e.data_source)" in html
+    assert 'id="srcbanner"' in html and "DEMO MODE — SIMULATED DATA. No real healthcare workload is being attacked." in html and "srcTag(e.data_source)" in html
     node = shutil.which("node")
     if node:
         js = "\n".join(re.findall(r"<script>(.*?)</script>", html, re.S))

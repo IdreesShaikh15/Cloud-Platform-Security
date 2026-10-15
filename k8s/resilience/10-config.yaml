@@ -9,6 +9,7 @@ data:
     {
       "healthcare_namespace": "healthcare",
       "resilience_namespace": "resilience",
+      "cluster_name": "cr-platform",
       "known_good_image": "cr-healthcare-app:known-good",
       "process_allowlist": [
         "python",

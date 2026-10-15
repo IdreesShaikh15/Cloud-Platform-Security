@@ -70,6 +70,14 @@
   #srcbanner.SIMULATOR { display:block; background:#d29922; color:#000; }
   #srcbanner.MIXED, #srcbanner.UNKNOWN { display:block; background:var(--bad); color:#000; }
   #srcbanner.LIVE_CLUSTER { display:block; background:#1f6f43; color:#fff; font-weight:600; }
+  #srcbanner.NOCONN { display:block; background:var(--bad); color:#000; }
+  #srcbanner small { display:block; font-weight:500; letter-spacing:0; font-size:12px; margin-top:3px; }
+  #modebar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0 0 12px; }
+  #modebar a { padding:6px 16px; border:2px solid var(--line); border-radius:999px; color:var(--fg); text-decoration:none; font-weight:600; font-size:13px; }
+  #modebar a[aria-current="page"] { border-color:var(--fg); background:var(--card, #1c2128); }
+  #modebar a.off { opacity:.6; }
+  #notconn { display:none; border:2px solid var(--bad); } body.noconn #notconn { display:block; }
+  body.noconn .tabs, body.noconn .panel, body.noconn #simctl, body.noconn #pausebanner { display:none !important; }
   .src { font-size:10px; font-weight:700; padding:0 5px; border-radius:4px; border:1px solid currentColor; white-space:nowrap; }
   .src-SIMULATOR { color:#d29922; } .src-LIVE_CLUSTER { color:#3fb950; } .src-UNKNOWN, .src-MIXED { color:#f85149; }
   #simctl { display:none; border:1px dashed #d29922; } #simctl.on { display:block; }
@@ -110,6 +118,12 @@
 </head>
 <body>
 <div id="srcbanner" role="status"></div>
+<nav id="modebar" aria-label="Choose the data source">
+  <a id="mode-demo" href="?mode=demo" title="Simulated data only. Scenario controls are here.">Demo Mode</a>
+  <a id="mode-live" href="?mode=live" title="The real test cluster only. Read-only: no scenario controls.">Live Monitoring</a>
+  <span class="mut" id="modehint"></span>
+</nav>
+<section id="notconn"><b id="notconn-title"></b><div class="mut" id="notconn-why"></div></section>
 <div class="top">
   <div>
     <h1>Distributed Cyber-Resilience Platform</h1>
@@ -117,7 +131,7 @@
   </div>
   <div class="toolbar">
     <span class="tag" id="dlog" title="Each agent keeps a hash-chained log of the quorum decisions it saw; a changed, deleted or re-ordered record breaks the chain."></span>
-    <span class="live running" id="live">● LIVE</span>
+    <span class="live running" id="live">● Auto-refresh on</span>
     <button id="pause" title="Freeze the whole screen (data keeps being collected in the background)">Pause</button>
     <a class="btn" id="export" href="api/export" download>Export events</a>
   </div>
@@ -183,7 +197,7 @@
 <div class="panel" id="panel-audit" role="tabpanel" aria-labelledby="tab-audit" data-panel="audit" hidden>
 <section><b>Decision-log integrity</b> <span class="mut">(each agent keeps a hash-chained log of the quorum decisions it saw; a changed, deleted or re-ordered record breaks the chain)</span><table id="dlogtab"></table></section>
 <section><b>Rejected messages</b> <span class="mut">(signature / mTLS identity failures)</span><table id="rej"></table></section>
-<section><b>Event export</b> <span class="mut">every buffered event from every agent, each labelled with its source</span> <a class="btn" href="api/export" download>Export events (JSON)</a></section>
+<section><b>Event export</b> <span class="mut">every buffered event from every agent, each labelled with its source</span> <a class="btn" id="export2" href="api/export" download>Export events (JSON)</a></section>
 </div>
 
 <div id="shade"></div>
@@ -192,7 +206,14 @@
 <script>
 // If the dashboard needs a token and our session ended, any API call answers 401: show the login page.
 const _fetch = window.fetch.bind(window);
-window.fetch = async (...a) => { const r = await _fetch(...a); if (r.status === 401) location.reload(); return r; };
+// CH is the page the user chose ("demo" or "live"). EVERY data request carries it, so the backend answers from that channel only.
+let CH = null;
+const NO_CH = /^api\/(channels|evaluation|eval\/)/;
+const U = path => path + (path.includes("?") ? "&" : "?") + "channel=" + CH;
+window.fetch = async (...a) => {
+  if (typeof a[0] === "string" && CH && a[0].startsWith("api/") && !NO_CH.test(a[0])) a[0] = U(a[0]);
+  const r = await _fetch(...a); if (r.status === 401) location.reload(); return r;
+};
 const DLOG_HELP = "Each agent keeps a hash-chained log of the quorum decisions it saw; a changed, deleted or re-ordered record breaks the chain.";
 const STAGES = ["QUARANTINE","RESTRICTED","MONITORED","PEER_VALIDATED","FULL"];
 const CATS = ["OBSERVE","EVIDENCE_SENT","EVIDENCE_RECEIVED","REJECTED","SCORE","VOTE_CAST","VOTE_WITHHELD","TRUST_CHANGE","FLAG","QUORUM","ACTION","PEER_LINK","INVESTIGATION"];
@@ -294,7 +315,7 @@ function renderRecovery(s) {
     "<tr><th>evidence snapshot</th><th>why</th><th>pods</th><th>log lines</th><th>NOT captured</th><th>digest</th><th>by</th><th></th></tr>" +
     s.snapshots.map(x => `<tr><td>${nb(x.target)} ${esc(x.workload)} · incident ${x.epoch} · ${esc(x.tag)}</td><td>${esc(x.reason)}</td><td>${x.pods}</td><td>${x.log_lines}</td>
       <td>${x.not_captured.length ? x.not_captured.map(m => `<span title="${esc(m.reason)}">${esc(m.item)}</span>`).join("; ") : '<span class="mut">nothing missing</span>'}</td>
-      <td class="mut">${esc(x.digest)}</td><td>${nb(x.agent)}</td><td><a class="btn" href="api/snapshot/${x.agent}/${encodeURIComponent(x.key)}">export JSON</a></td></tr>`).join("")
+      <td class="mut">${esc(x.digest)}</td><td>${nb(x.agent)}</td><td><a class="btn" href="${esc(U(`api/snapshot/${x.agent}/${encodeURIComponent(x.key)}`))}">export JSON</a></td></tr>`).join("")
     : '<tr><td class="mut">No evidence snapshots yet. One is saved automatically when a workload is contained.</td></tr>';
   const rec = (s.actions && s.actions.recent) || [];
   document.getElementById("acts").innerHTML = rec.length ?
@@ -387,7 +408,7 @@ function renderIncident(i) {
   const per = Object.entries(i.current.per_agent || {}).map(([a, v]) => `${nb(a)} ${esc(v.phase)}${v.stage ? "/" + esc(v.stage) : ""}`).join(" · ");
   const ev = i.trigger.evidence_by_agent;
   const evRows = Object.entries(ev).flatMap(([a, items]) => items.map(x => `<tr><td>${nb(a)}</td><td>${esc(x.type)}</td><td>${x.confidence}</td><td>${esc(x.summary)}${x.count > 1 ? ` <span class="mut">(sent ×${x.count})</span>` : ""}</td></tr>`)).join("");
-  const snapLink = x => `<a class="btn" href="api/snapshot/${esc(x.agent)}/${encodeURIComponent(x.key)}">export ${esc(x.agent)}'s snapshot</a>`;
+  const snapLink = x => `<a class="btn" href="${esc(U(`api/snapshot/${x.agent}/${encodeURIComponent(x.key)}`))}">export ${esc(x.agent)}'s snapshot</a>`;
   return `
   <div class="fl"><button id="incback">← All incidents</button><h2>${nb(i.target)} ${esc(i.workload)} · incident #${i.epoch}</h2> ${srcTag(i.source)} ${incTag(i.status)}</div>
   <div class="mut">contained at ${t(i.window.contained_at)} · events from ${t(w.from)}${w.to ? " to " + t(w.to) : " until now"} · ${esc(i.limits)}</div>
@@ -498,18 +519,41 @@ async function loadEvaluation() {
 }
 
 function renderBanner(s) {
-  const b = document.getElementById("srcbanner"), d = s.data_source || "UNKNOWN";
-  b.className = d;
-  b.textContent = d === "SIMULATOR" ? "DEMO — SIMULATED DATA (simulator, not a real cluster)"
-    : d === "LIVE_CLUSTER" ? "LIVE CLUSTER DATA"
-    : d === "MIXED" ? "MIXED DATA SOURCES — simulated and live data are both present; every row is labelled, do not trust totals"
-    : "DATA SOURCE UNKNOWN — provenance could not be established";
+  const b = document.getElementById("srcbanner"), c = s.connection || {}, d = s.data_source || "UNKNOWN";
+  const rej = Object.values(c.rejected_sources || {});
+  let main, sub = "", cls;
+  if (s.configured === false || !c.connected) {
+    cls = "NOCONN";
+    if (CH === "live") { main = "NOT CONNECTED — Live monitoring is unavailable."; sub = s.configured === false ? (c.reason || "") : rej.length
+      ? `The agents answered, but their data was labelled ${[...new Set(rej)].join("/")}, not LIVE_CLUSTER, so it was ignored. Nothing simulated is ever shown here.`
+      : "No agent of the cluster is reachable. Nothing is shown rather than anything simulated."; }
+    else { main = "DEMO MODE NOT RUNNING — no simulator is reachable."; sub = s.configured === false ? (c.reason || "") : rej.length
+      ? `Data labelled ${[...new Set(rej)].join("/")} was ignored: Demo Mode shows simulated data only.` : "Start the simulator (python3 sim/demo_server.py --dashboard)."; }
+  } else if (CH === "live") {
+    cls = "LIVE_CLUSTER";
+    const cl = c.cluster || {}, age = c.telemetry_age_s;
+    main = "LIVE MONITORING — CONNECTED TEST CLUSTER";
+    sub = `Cluster: ${esc(cl.name || "name not set")}${cl.kubernetes_version ? " · Kubernetes " + esc(cl.kubernetes_version) : ""}` +
+      ` · agents reachable: ${c.agents_up} of ${c.agents_total}${c.agents_down && c.agents_down.length ? " (unreachable: " + c.agents_down.map(esc).join(", ") + ")" : ""}` +
+      ` · telemetry age: ${age == null ? "not reported" : age.toFixed(0) + " s" + (age > 10 ? " (STALE)" : "")}`;
+    if (c.state === "DEGRADED") main += " — DEGRADED";
+  } else {
+    cls = d === "SIMULATOR" ? "SIMULATOR" : "UNKNOWN";
+    main = d === "SIMULATOR" ? "DEMO MODE — SIMULATED DATA. No real healthcare workload is being attacked." : "DATA SOURCE UNKNOWN — provenance could not be established";
+  }
+  b.className = cls;
+  b.innerHTML = esc(main) + (sub ? `<small>${/^Cluster:/.test(sub) ? sub : esc(sub)}</small>` : "");
   b.title = Object.entries(s.data_sources || {}).map(([k, v]) => k + ": " + v).join("   ");
+  const nc = document.getElementById("notconn");
+  document.body.classList.toggle("noconn", cls === "NOCONN");
+  document.getElementById("notconn-title").textContent = cls === "NOCONN" ? main : "";
+  document.getElementById("notconn-why").textContent = cls === "NOCONN" ? sub : "";
 }
 // ---------------------------------------------------------------- simulator demo controls (rendered only when the BACKEND says they are allowed)
 let simBusy = false;
 async function refreshSim() {
   const box = document.getElementById("simctl");
+  if (CH !== "demo") { box.classList.remove("on"); return; }          // Live Monitoring never shows scenario controls
   let st; try { st = await (await fetch("api/sim/state")).json(); } catch (e) { return; }
   box.classList.toggle("on", !!st.enabled);
   if (!st.enabled) return;
@@ -537,6 +581,7 @@ document.getElementById("simsel").onchange = refreshSim;
 
 function renderState(s) {
   lastState = s;
+  if (s.configured === false || !(s.connection || {}).connected) { renderBanner(s); document.getElementById("sub").textContent = CH === "live" ? "Live Monitoring" : "Demo Mode"; return; }
   document.getElementById("sub").textContent = `mode: ${s.mode} · data from ${t(s.last_poll)}` + (s.baseline_up ? " · centralized baseline running" : "");
   renderBanner(s);
   const cc = s.mode === "centralized" && s.central_compromised; if (cc) document.getElementById("sub").textContent += ` · controller compromise simulation: ${cc}`;
@@ -725,11 +770,30 @@ function stop() { timers.forEach(clearInterval); timers = []; }
 document.getElementById("pause").onclick = () => {
   paused = !paused; const b = document.getElementById("pause"), l = document.getElementById("live");
   b.textContent = paused ? "Resume" : "Pause"; b.classList.toggle("on", paused);
-  l.textContent = paused ? "❚❚ PAUSED" : "● LIVE"; l.className = "live " + (paused ? "paused" : "running");
+  l.textContent = paused ? "❚❚ Paused" : "● Auto-refresh on"; l.className = "live " + (paused ? "paused" : "running");
   document.getElementById("pausebanner").style.display = paused ? "block" : "none";
   paused ? stop() : start();
 };
-renderFilters(); renderTimeline(); showTab(location.hash.slice(1)); start();
+async function init() {
+  let info = null;
+  try { info = await (await _fetch("api/channels")).json(); } catch (e) {}
+  const ok = m => m === "demo" || m === "live";
+  const want = new URLSearchParams(location.search).get("mode");
+  let saved = null; try { saved = localStorage.getItem("cr_mode"); } catch (e) {}
+  CH = ok(want) ? want : (info && ok(saved) && info.channels[saved].configured) ? saved : (info ? info.default : "live");
+  try { localStorage.setItem("cr_mode", CH); } catch (e) {}
+  history.replaceState(null, "", "?mode=" + CH + location.hash);
+  document.title = (CH === "live" ? "Live Monitoring" : "Demo Mode") + " · Distributed Cyber-Resilience Platform";
+  for (const m of ["demo", "live"]) {
+    const a = document.getElementById("mode-" + m), cfg = info && info.channels[m];
+    if (m === CH) { a.setAttribute("aria-current", "page"); a.textContent = "✔ " + a.textContent; }
+    if (cfg && !cfg.configured) { a.classList.add("off"); a.title = cfg.reason || "not available here"; }
+  }
+  document.getElementById("modehint").textContent = CH === "live" ? "Real cluster only · read-only · never falls back to simulated data" : "Simulated data only · no real healthcare workload is attacked";
+  for (const id of ["export", "export2"]) document.getElementById(id).href = U("api/export");
+  renderFilters(); renderTimeline(); showTab(location.hash.slice(1)); start();
+}
+init();
 </script>
 </body>
 </html>
