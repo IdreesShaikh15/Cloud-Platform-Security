@@ -554,3 +554,4 @@ Nothing in Phases B-F has been run on a real cluster; all results are simulator 
 5. `kubectl -n resilience rollout restart deploy/dashboard deploy/quorum-webhook` and wait for them (`kubectl -n resilience get pods`).
 6. `python3 scripts/verify-baseline.py` -> four `ok`; `scripts/verify-isolation.sh` once (see its header); then `scripts/laptop-dashboard.sh` and follow `docs/LIVE_DEMO.md` section 2.
 Nothing else changed: no new manifests, no new RBAC rules, no new CRDs. To try the re-check live: add `"quorum": {"persist_recheck_s": 6}` to the config JSON, apply, restart the agents.
+* Commit **`04854be`** (Healthcare Phase F), pushed (no force) to `claude/cyber-resilience-platform-xxs3oh` and `claude/inspiring-thompson-ik54a3`.
