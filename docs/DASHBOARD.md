@@ -280,3 +280,16 @@ Precedence: Agrees > Unavailable > Failed verification > Disagrees > Not yet res
 * The agents' own event sentences (for example "Agent B sees database (D) as normal on all 4 signals") and the backend's "next step / blocked because" texts are still written in the agents' technical wording; they appear in the activity list and the incident's "Where it stands now".
 * The agent drawer (click a node card) is deliberately the technical view; it uses the plain labels but keeps its numbers.
 * Not run on a real cluster; rendering was checked in Chromium with the simulator and stand-in agents.
+
+## 20. Guided demonstration (Phase H, Demo Mode only)
+
+On the Overview of the **Demo** page, below the Demo controls, a "Guided demonstration" panel walks through one complete incident in eleven steps:
+healthy services, suspicious activity on the EHR API, evidence shared, investigation, each agent's decision, agreement (3 of 4), isolation, recovery,
+Recovery Check, staged return, results. Each step has a short plain-English explanation, **Back** / **Next** buttons and a row of step buttons.
+
+* **Real, not scripted.** *Start the walkthrough* resets the simulator if it needs it, takes a snapshot of the healthy workloads, then starts the fixed catalogue scenario `app-compromise` through the existing simulator control (the same request as the Demo controls; no new backend route). Every fact shown is computed in the page from the agents' own `/status` and recorded events (observations, evidence, votes, agreements, actions, decisions), only those recorded after the start.
+* **Never shows success in advance.** A step whose data does not exist yet says "not reached yet" and shows no facts; "recorded by the agents" appears only once the data is there. Nothing advances on a timer: only Back/Next/step buttons move you (an optional box jumps to the newest recorded step). Going back never changes what has happened. "No investigation was needed" is shown only when an agreement exists and no investigation was recorded.
+* **Demo Mode only.** The panel exists only when the backend allows the simulator controls (so never for Live Monitoring or a real cluster).
+* **Simulator time.** The results step quotes seconds of simulator time; the simulator shortens its timers, so a real cluster is slower. The whole incident takes about 20 seconds.
+* Screenshots: `docs/img/dashboard-pH-01-step-not-reached.png`, `-02-agreement.png`, `-03-results.png`.
+Limits: it follows the EHR API incident only (one fixed scenario); it needs the buffered events of the page (it starts counting from the moment you press Start); reloading the page ends the walkthrough.

@@ -220,12 +220,13 @@ def main() -> int:
     ap.add_argument("--control-port", type=int, default=50270)
     ap.add_argument("--dashboard", action="store_true", help="also start the dashboard on --dashboard-port")
     ap.add_argument("--dashboard-port", type=int, default=8091)
+    ap.add_argument("--base-port", type=int, default=50151, help="first agent port; the agents' /status ports are base+100 .. base+103 (default 50251-50254)")
     a = ap.parse_args()
     refuse_in_cluster()
     token = secrets.token_hex(16)
-    ctl = DemoController(default_factory())
+    ctl = DemoController(default_factory(a.base_port))
     srv = make_server(ctl, token, a.control_port)
-    urls = ",".join(f"http://localhost:{50251 + i}/status" for i in range(4))
+    urls = ",".join(f"http://localhost:{a.base_port + 100 + i}/status" for i in range(4))
     # The dashboard gets this simulator as its DEMO channel. If LIVE_STATUS_URLS is set in the environment (the presenter's
     # laptop, docs/LIVE_DEMO.md) it also gets the Live page, which stays a separate channel that never sees simulated data.
     env = dict(os.environ, DEMO_STATUS_URLS=urls, SIM_CONTROL_URL=f"http://127.0.0.1:{a.control_port}",

@@ -81,6 +81,11 @@
   .src { font-size:10px; font-weight:700; padding:0 5px; border-radius:4px; border:1px solid currentColor; white-space:nowrap; }
   .src-SIMULATOR { color:#d29922; } .src-LIVE_CLUSTER { color:#3fb950; } .src-UNKNOWN, .src-MIXED { color:#f85149; }
   #simctl { display:none; border:1px dashed #d29922; } #simctl.on { display:block; }
+  #tour { display:none; border:1px dashed #d29922; } #tour.on { display:block; }
+  body.noconn #tour { display:none !important; }
+  #tour .steps { display:flex; flex-wrap:wrap; gap:4px; margin:8px 0; } #tour .stp { border:1px solid var(--line); border-radius:12px; padding:2px 9px; font-size:12px; cursor:pointer; background:var(--bg); color:var(--fg); }
+  #tour .stp.cur { outline:2px solid #388bfd; } #tour .stp.seen { border-color:#2ea043; } #tour .stp.wait { color:var(--mut); }
+  #tour .card2 { border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-top:6px; } #tour button { font:inherit; font-size:13px; }
   #simctl select, #simctl button { font:inherit; font-size:13px; }
   #simctl select { background:var(--bg); color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:5px 8px; max-width:420px; }
   /* tabs + summary counters. Severity is always shown as a word and an icon, never by colour alone. */
@@ -177,6 +182,11 @@
   <div class="filters" style="margin-top:8px"><select id="simsel" aria-label="Scenario"></select>
     <button id="simstart">Start scenario</button> <button id="simreset">Reset simulator</button> <span id="simstat" class="mut"></span></div>
   <div id="simdesc" class="mut"></div><div id="simlast"></div></section>
+<section id="tour"><b>Guided demonstration</b> <span class="src src-SIMULATOR">SIMULATOR ONLY</span>
+  <span class="mut">(one complete incident, step by step. It starts the same simulator scenario as the Demo controls and shows only what the agents actually recorded. A step that has not happened yet says so; nothing is scripted or shown as done in advance.)</span>
+  <div class="filters" style="margin-top:8px"><button id="tourstart">Start the walkthrough</button> <button id="tourstop">Stop the walkthrough</button>
+    <label class="mut"><input type="checkbox" id="tourfollow"> jump to the newest step as it happens</label> <span id="tourstat" class="mut"></span></div>
+  <div id="tourbody"></div></section>
 <section>
   <b>Live activity</b> <span class="mut" id="evcount"></span>
   <div class="filters" id="nodefilters"></div>
@@ -648,9 +658,11 @@ function renderBanner(s) {
 let simBusy = false;
 async function refreshSim() {
   const box = document.getElementById("simctl");
-  if (CH !== "demo") { box.classList.remove("on"); return; }          // Live Monitoring never shows scenario controls
+  if (CH !== "demo") { box.classList.remove("on"); document.getElementById("tour").classList.remove("on"); return; }          // Live Monitoring never shows scenario controls or the walkthrough
   let st; try { st = await (await fetch("api/sim/state")).json(); } catch (e) { return; }
   box.classList.toggle("on", !!st.enabled);
+  document.getElementById("tour").classList.toggle("on", !!st.enabled);
+  tourSim = st;
   if (!st.enabled) return;
   const sel = document.getElementById("simsel");
   if (sel.options.length !== st.scenarios.length) sel.innerHTML = st.scenarios.map(x => `<option value="${esc(x.id)}">${esc(x.title)} (~${x.est_s}s)</option>`).join("");
@@ -671,8 +683,148 @@ async function simPost(path, body) {
   } finally { simBusy = false; refreshSim(); }
 }
 document.getElementById("simstart").onclick = () => simPost("api/sim/start", {scenario: document.getElementById("simsel").value});
-document.getElementById("simreset").onclick = () => simPost("api/sim/reset", {});
+document.getElementById("simreset").onclick = () => { tour.active = false; renderTour(); return simPost("api/sim/reset", {}); };
 document.getElementById("simsel").onchange = refreshSim;
+
+
+// ---------------------------------------------------------------- guided demonstration (Demo Mode only)
+// Every line it shows is computed from the agents' own status and recorded events (lastState, events). The steps do not advance on a timer
+// and nothing is marked as happened unless the data contains it.
+let tourSim = null;
+const tour = {active: false, step: 0, follow: false, t0: 0, target: null, baseline: null};
+const TOUR_STEPS = [
+  ["healthy", "1. Healthy services", "Before anything happens, every healthcare service is working normally and the four security agents are watching all of them."],
+  ["suspicious", "2. Suspicious activity", "Something starts to look wrong on the EHR API (the service that serves patient records). Each agent measures it on its own, from its own point of view."],
+  ["evidence", "3. Evidence is shared", "Each agent signs what it saw and sends it to the others. A message that fails verification is thrown away."],
+  ["investigation", "4. Investigation", "If the signal is borderline the agents first take a closer look together before deciding. A clear case does not need one."],
+  ["votes", "5. Each agent decides", "Every agent weighs the evidence, and how much it trusts each sender, and then signs a vote to isolate the service, or does not."],
+  ["agreement", "6. Agreement (3 of 4)", "Only when at least 3 of the 4 agents have signed is the decision made. One or two agents can never do it alone."],
+  ["isolation", "7. Isolation", "The service is cut off from the rest of the system so the problem cannot spread. Its evidence is saved first."],
+  ["recovery", "8. Recovery", "The affected service is replaced with a fresh copy built from the known-good image."],
+  ["checks", "9. Recovery Check", "The agents check that the replacement is healthy, matches the known-good files, behaves normally and is really a new instance."],
+  ["staged", "10. Staged return", "Access is given back in steps, each of which has to be earned: limited, monitored, confirmed by the other agents, then normal."],
+  ["results", "11. Results", "What the incident looked like from start to finish."],
+];
+const tmax = (a) => a.reduce((m, x) => Math.max(m, x), 0);
+function tourModel(s, evs, tr) {
+  const nodes = (s && s.nodes) || {}, T = tr.target, n = nodes[T] || {};
+  const after = e => (e.ts || 0) > tr.t0, onT = e => e.target === T && after(e);
+  const ofCat = c => evs.filter(e => e.category === c && onT(e));
+  const names = ids => [...new Set(ids)].sort().join(", ");
+  const disp = i => (nodes[i] && (nodes[i].display_name || nodes[i].workload)) || i;
+  const decs = ((s && s.decisions) || []).filter(d => d.target === T && (d.t || 0) > tr.t0);
+  const contain = decs.filter(d => d.action === "CONTAIN"), adv = decs.filter(d => d.action === "ADVANCE_STAGE");
+  const obs = ofCat("OBSERVE").filter(e => ((e.details || {}).confidence || 0) > 0);
+  const act = ofCat("ACTION");
+  const actHas = w => act.filter(e => String(e.summary).toLowerCase().includes(w));
+  const invRows = (((s && s.investigations) || {}).rows || []).filter(r => r.target === T && (r.started_at || 0) > tr.t0);
+  const invEvs = ofCat("INVESTIGATION");
+  const votes = ofCat("VOTE_CAST").filter(e => (e.details || {}).action === "CONTAIN");
+  const stages = adv.map(d => d.stage);
+  const out = {};
+  const b = tr.baseline;
+  out.healthy = {seen: !!b, facts: b ? [`When the walkthrough started, ${b.healthy} of ${b.total} workloads were healthy and ${b.agents} agents were connected.`] : []};
+  const SIG = {network: "NETWORK", process: "PROCESS", file_integrity: "FILE_INTEGRITY", auth: "AUTH"}, sig = {};
+  obs.forEach(e => Object.entries(SIG).forEach(([k, v]) => { const c = (((e.details || {}).measurements || {})[k] || {}).confidence || 0; if (c >= 0.3) sig[v] = Math.max(sig[v] || 0, c); }));
+  out.suspicious = {seen: obs.length > 0, facts: obs.length ? [
+      `Seen on ${esc(disp(T))} by agent${new Set(obs.map(e => e.node)).size > 1 ? "s" : ""} ${names(obs.map(e => e.node))}: ${Object.keys(sig).map(k => `${sigName(k)} (confidence ${sig[k].toFixed(2)})`).join(", ") || "unusual activity"}.`,
+      `Highest overall confidence any agent reported: ${tmax(obs.map(e => (e.details || {}).confidence || 0)).toFixed(2)} (0 is normal, 1 is certain).`] : []};
+  const sent = ofCat("EVIDENCE_SENT"), recv = ofCat("EVIDENCE_RECEIVED"), rej = ofCat("REJECTED");
+  out.evidence = {seen: sent.length > 0 || recv.length > 0, facts: (sent.length || recv.length) ? [
+      `${sent.length} signed evidence message(s) sent by ${names(sent.map(e => e.node)) || "no agent"}; ${recv.length} received and verified.`,
+      rej.length ? `${rej.length} message(s) FAILED verification and were not counted.` : "No message failed verification."] : []};
+  const invSeen = invRows.length > 0 || invEvs.length > 0;
+  out.investigation = {seen: invSeen || contain.length > 0, facts: invSeen ? [
+      ...invRows.slice(0, 2).map(r => `Question: ${r.question} - outcome ${(r.outcome || r.state || "in progress")}.`),
+      invRows.length ? "" : `${invEvs.length} investigation event(s) recorded.`].filter(Boolean)
+      : contain.length ? ["No investigation was needed: the evidence was clear enough for the agents to vote directly."] : []};
+  out.votes = {seen: votes.length > 0, facts: votes.length ? [
+      `Agent${new Set(votes.map(e => e.node)).size > 1 ? "s" : ""} ${names(votes.map(e => e.node))} signed a vote to isolate ${esc(disp(T))}.`,
+      ...(((s && s.pending_votes) || {})[`CONTAIN:${T}:1`] ? [`Votes still waiting: ${(s.pending_votes[`CONTAIN:${T}:1`] || []).join(", ")} have signed so far.`] : [])] : []};
+  const c0 = contain[contain.length - 1];
+  out.agreement = {seen: !!c0, facts: c0 ? [`Agreement reached: ${c0.voters.length} of 4 agents signed (${c0.voters.join(", ")}).`,
+      `At least 3 signatures are required; the decision carries all of them (a quorum certificate).`] : []};
+  const iso = actHas("isolated");
+  out.isolation = {seen: iso.length > 0 || (n.epoch >= 1 || (n.phase && n.phase !== "HEALTHY")), facts: (iso.length || (n.phase && n.phase !== "HEALTHY")) ? [
+      iso.length ? `${new Set(iso.map(e => e.node)).size} agent(s) report ${esc(disp(T))} isolated (${names(iso.map(e => e.node))}).` : "",
+      n.phase === "HEALTHY" ? "It has since been restored; the later steps show how." : `State now: ${phaseName(n.display_state || n.phase)}.`].filter(Boolean) : []};
+  const rec = actHas("recover");
+  out.recovery = {seen: rec.length > 0 || ["RECOVERING", "VALIDATING", "REINTEGRATING"].includes(n.phase) || stages.length > 0, facts: (rec.length || stages.length) ? [
+      rec.length ? `${new Set(rec.map(e => e.node)).size} agent(s) record the recovery of ${esc(disp(T))} (${names(rec.map(e => e.node))}).` : "",
+      (n.attempt || 1) > 1 ? `It took ${n.attempt} attempts: an earlier replacement failed its check.` : "A fresh copy was started from the known-good image."].filter(Boolean) : []};
+  out.checks = {seen: stages.length > 0, facts: stages.length ? ["The Recovery Check passed: the replacement was accepted and the first step back to normal access was agreed."]
+      : n.phase === "VALIDATING" ? ["The Recovery Check is running now."] : []};
+  const done = n.phase === "HEALTHY" && n.stage === "FULL" && stages.includes("FULL");
+  out.staged = {seen: stages.length > 0, facts: stages.length ? [
+      `Steps agreed so far: ${stages.slice().reverse().map(x => V.stages[x] || x).join(" → ")}.`,
+      done ? "All steps completed." : `Now: ${V.stages[n.stage] || n.stage || "-"}.`] : []};
+  const first = obs.length ? Math.min(...obs.map(e => e.ts)) : null;
+  const last = adv.filter(d => d.stage === "FULL").map(d => d.t)[0];
+  out.results = {seen: done, facts: done ? [
+      `${esc(disp(T))} is healthy again with normal access, after ${contain.length ? "an agreement of " + c0.voters.length + " of 4 agents" : "a recorded agreement"}.`,
+      first && last ? `From the first unusual measurement to normal access: ${(last - first).toFixed(1)} seconds of simulator time (the simulator shortens its timers; a real cluster is slower).` : "",
+      "Other workloads isolated by mistake: " + (Object.entries(nodes).filter(([k, v]) => k !== T && v.phase !== "HEALTHY").length ? "see the Overview" : "none") + "."].filter(Boolean) : []};
+  return TOUR_STEPS.map(([id, title, why]) => ({id, title, why, ...out[id]}));
+}
+function renderTour() {
+  const body = document.getElementById("tourbody"), stat = document.getElementById("tourstat");
+  const st = tourSim || {}, busy = st.status && st.status !== "idle";
+  document.getElementById("tourstart").disabled = tour.active || busy;
+  document.getElementById("tourstop").disabled = !tour.active;
+  if (!tour.active) {
+    body.innerHTML = '<div class="mut" style="margin-top:6px">Press <b>Start the walkthrough</b>. It begins from healthy services, then makes the simulator attack the EHR API (simulated; no real system is touched) and walks through what the agents do. The whole incident takes about 20 seconds in the simulator; use Next and Back to go through it at your own pace, every step stays available once it has happened.' + (st.needs_reset ? " The simulator will be reset first (a clean, healthy start)." : "") + "</div>";
+    stat.textContent = ""; return;
+  }
+  const steps = tourModel(lastState, events, tour);
+  const reached = steps.map(x => x.seen);
+  let latest = 0; reached.forEach((v, i) => { if (v) latest = i; });
+  if (tour.follow) tour.step = latest;
+  tour.step = Math.max(0, Math.min(steps.length - 1, tour.step));
+  const cur = steps[tour.step];
+  stat.textContent = `step ${tour.step + 1} of ${steps.length}` + (st.status === "running" ? " · scenario running" : "");
+  body.innerHTML = '<div class="steps">' + steps.map((x, i) => `<button class="stp ${i === tour.step ? "cur" : ""} ${x.seen ? "seen" : "wait"}" data-step="${i}" title="${x.seen ? "recorded" : "not reached yet"}">${x.seen ? "✔ " : ""}${esc(x.title)}</button>`).join("") + "</div>" +
+    `<div class="card2"><b>${esc(cur.title)}</b> ${cur.seen ? '<span class="tag ok">recorded by the agents</span>' : '<span class="tag warn">not reached yet</span>'}
+      <p>${esc(cur.why)}</p>` +
+    (cur.seen ? `<div><b>What the simulator recorded:</b><ul>${cur.facts.map(f => `<li>${f}</li>`).join("")}</ul></div>`
+      : `<div class="mut">Nothing is shown here because this has not happened yet in the simulator.${st.status === "running" ? " Waiting for it…" : ""}</div>`) +
+    `<div class="filters"><button id="tourback" ${tour.step === 0 ? "disabled" : ""}>◀ Back</button> <button id="tournext" ${tour.step === steps.length - 1 ? "disabled" : ""}>Next ▶</button></div></div>`;
+}
+document.getElementById("tour").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.step != null) { tour.step = +b.dataset.step; tour.follow = false; document.getElementById("tourfollow").checked = false; }
+  else if (b.id === "tourback") { tour.step--; tour.follow = false; document.getElementById("tourfollow").checked = false; }
+  else if (b.id === "tournext") { tour.step++; tour.follow = false; document.getElementById("tourfollow").checked = false; }
+  else return;
+  renderTour();
+});
+document.getElementById("tourfollow").onchange = e => { tour.follow = e.target.checked; renderTour(); };
+document.getElementById("tourstop").onclick = () => { tour.active = false; renderTour(); };
+async function tourResetIfNeeded() {
+  if (!(tourSim && tourSim.needs_reset)) return true;
+  await simPost("api/sim/reset", {});
+  for (let i = 0; i < 60; i++) {                       // wait for the simulator to be healthy and idle again; never start on a half-reset one
+    await new Promise(res => setTimeout(res, 1000));
+    let st; try { st = await (await fetch("api/sim/state")).json(); } catch (e) { continue; }
+    tourSim = st;
+    const ns = Object.values((lastState || {}).nodes || {});
+    if (st.status === "idle" && !st.needs_reset && ns.length && ns.every(v => v.phase === "HEALTHY")) return true;
+  }
+  return false;
+}
+document.getElementById("tourstart").onclick = async () => {
+  document.getElementById("tourstart").disabled = true; document.getElementById("tourstat").textContent = "preparing a clean simulator…";
+  if (!await tourResetIfNeeded()) { document.getElementById("tourstat").textContent = "the simulator did not come back healthy; press Reset and try again"; renderTour(); return; }
+  await new Promise(res => setTimeout(res, 1500));       // let the page receive the fresh state before taking the starting snapshot
+  const s = lastState || {}, nodes = s.nodes || {};
+  const target = Object.keys(nodes).find(k => nodes[k].role === "records-api") || Object.keys(nodes).find(k => k === "C");
+  if (!target) { document.getElementById("tourstat").textContent = "no EHR API workload found"; return; }
+  tour.t0 = tmax(events.map(e => e.ts || 0).concat([(s.decisions || []).reduce((m, d) => Math.max(m, d.t || 0), 0)]));
+  tour.target = target; tour.step = 0; tour.follow = false; document.getElementById("tourfollow").checked = false;
+  const all = Object.values(nodes);
+  tour.baseline = {total: all.length, healthy: all.filter(v => v.phase === "HEALTHY").length, agents: ((s.summary || {}).agents_connected) || 0};
+  tour.active = true; renderTour();
+  await simPost("api/sim/start", {scenario: "app-compromise"});
+};
 
 // ---------------------------------------------------------------- dependencies and the impact of isolating each workload
 function dependentsOf(id, nodes) {
@@ -731,6 +883,7 @@ function renderState(s) {
 
   renderInvestigations(s.investigations);
   renderRecovery(s);
+  renderTour();
   renderIncidentList(s.incidents); renderCounters(s.summary); renderBadges(s); renderDlogTable(s.decision_logs);
   const dl = s.decision_logs, de = document.getElementById("dlog");
   if (dl && dl.checked) {

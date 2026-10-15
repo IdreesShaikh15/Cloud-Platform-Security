@@ -590,3 +590,21 @@ Nothing else changed: no new manifests, no new RBAC rules, no new CRDs. To try t
 4. `scripts/upgrade-app.sh` (safe order: stops agents, applies the known-good manifest, applies `k8s/base/10-healthcare-apps.yaml` so E and F are created and the other four roll onto the new image, verifies, restarts agents).
 5. `kubectl -n resilience rollout restart deploy/dashboard deploy/quorum-webhook`; `kubectl -n healthcare get pods` (six workload pods + client; a Pending pod means a node is short of memory).
 6. `python3 scripts/verify-baseline.py` -> six `ok`; then `scripts/minikube-load.sh`.
+
+## Stretch Phase H: guided healthcare demonstration (Demo Mode only)
+
+**Status: DONE and tested against the real simulator; not applicable to a live cluster (Demo Mode only).** Rollback points: Phase G = `6529379`, Phase F = `c311502`.
+
+### What was done
+* `dashboard/index.html`: a "Guided demonstration" panel on the Demo Overview (docs/DASHBOARD.md section 20): eleven steps (healthy services -> suspicious activity on the EHR API -> evidence -> investigation -> agent decisions -> agreement -> isolation -> recovery -> checks -> staged return -> results), plain-English text per step, Back/Next and step buttons. It starts the existing fixed scenario `app-compromise` through the existing simulator control; there is no new backend route and no new scenario.
+* Driven by real state: every fact is computed from the agents' status and recorded events after the walkthrough started; an unreached step says "not reached yet" and shows nothing; no timer advances it; the panel is absent for Live Monitoring.
+* Found while building it: after any scenario the simulator needs a reset, so Start resets first and waits for six healthy workloads before taking the starting snapshot.
+* No change to agents, quorum, trust, certificates, simulator code or the live page. No cluster rebuild or restart needed (only the dashboard image if you use the in-cluster dashboard; the in-cluster dashboard shows the Live page only, so the walkthrough is not visible there).
+
+### Test evidence
+* `tests/test_guided_tour.py` (4 tests): the panel only exists behind the simulator controls and is removed for Live; eleven steps in order, no timers, only the fixed scenario is started; an end-to-end browser test against the real `sim/demo_server.py` (starts it, presses Start, checks an unreached step says so with no facts, waits for the incident, checks every step's recorded facts: 6 of 6 healthy, all four agents' signals, 3-of-4 agreement text, stages in order, no workload isolated by mistake). Result of this file: 4 passed in 30 s.
+* Full suite: `python3 -m pytest -q tests` -> **547 passed in 1044 s, 0 failed** (Phase G: 543). `python3 sim/local_demo.py` -> **15 of 15 PASS**. `python3 scripts/gen-workloads.py --check` -> up to date.
+* A first full run showed 1 failure in the new end-to-end test: a dashboard started by an earlier run was still holding the test's fixed port (the demo server's child was not stopped). Fixed in the test (free port, whole process group stopped) and `sim/demo_server.py` gained `--base-port` (default unchanged).
+
+### Limitations
+One fixed scenario; the walkthrough counts from the moment Start is pressed and a page reload ends it; time shown is simulator time, not wall-clock of a real cluster. Presentation guide not regenerated.
