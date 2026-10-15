@@ -444,6 +444,38 @@ button{background:#58a6ff;color:#000;border:0;cursor:pointer}.m{color:#8b949e;fo
 
 
 # --------------------------------------------------------------------------- aggregation
+# The five ways an agent can stand towards a proposal. A MISSING vote is never approval: only "agrees" (a signed vote that was
+# counted) is a yes; every other state is a no-vote, and the page says which kind.
+RESPONSES = ("agrees", "disagrees", "unavailable", "not_yet", "failed_verification")
+RECHECK_WORDING = "re-checking"          # the agent's own words while it waits out quorum.persist_recheck_s (agent.py): waiting, not refusing
+FAILED_WINDOW_S = 120.0                  # a failed-verification message counts against its sender for this long
+
+
+def failed_senders(statuses: dict, now: float = None) -> dict:
+    """agent -> reason, for agents whose messages recently FAILED verification at some receiver (it was not counted)."""
+    now = time.time() if now is None else now
+    out = {}
+    for s in statuses.values():
+        for r in (s.get("rejections") or []):
+            if r.get("from") and now - (r.get("t") or 0) <= FAILED_WINDOW_S:
+                out[r["from"]] = r.get("reason") or "failed verification"
+    return out
+
+
+def agent_response(*, voted: bool, up: bool, withheld_reason: str = "", failed: str = "") -> dict:
+    """voted: a signed vote from it was counted. up: it is answering now. withheld_reason: its own recorded reason for not
+    voting (\"\" = none recorded). failed: why a message of its failed verification (\"\" = none)."""
+    if voted:
+        return {"response": "agrees", "reason": ""}
+    if not up:
+        return {"response": "unavailable", "reason": "this agent is not answering (stopped, crashed or unreachable)"}
+    if failed:
+        return {"response": "failed_verification", "reason": f"a message from this agent failed verification and was not counted: {failed}"}
+    if withheld_reason and not withheld_reason.startswith(RECHECK_WORDING):
+        return {"response": "disagrees", "reason": withheld_reason}
+    return {"response": "not_yet", "reason": withheld_reason or "it has not recorded a vote or a reason for this yet"}
+
+
 def _vote_view(key: str, statuses: dict, ids: list) -> dict:
     """Who voted for proposal `key`, who didn't and why, who excludes whom."""
     action, target = key.split(":")[0], key.split(":")[1]
@@ -456,19 +488,21 @@ def _vote_view(key: str, statuses: dict, ids: list) -> dict:
             for x in d["excluded"]:
                 excluded.append({"viewer": sid, **x})
     rows = []
+    bad = failed_senders(statuses)
     for n in ids:
         s = statuses.get(n)
         if n in voters:
-            rows.append({"agent": n, "state": "voted", "reason": ""})
+            rows.append({"agent": n, "state": "voted", "reason": "", **agent_response(voted=True, up=True)})
         elif s is None:
             rows.append({"agent": n, "state": "unreachable",
-                         "reason": "agent is not responding (crashed or partitioned)"})
+                         "reason": "agent is not responding (crashed or partitioned)", **agent_response(voted=False, up=False)})
         else:
             r = (s.get("vote_reasons") or {}).get(f"{action}:{target}")
             phase = (s.get("targets", {}).get(target) or {}).get("phase", "?")
             reason = r["reason"] if r and not r["voted"] else (
                 f"its local view of {target} is {phase}" if not r else "about to vote")
-            rows.append({"agent": n, "state": "not voted", "reason": reason})
+            rows.append({"agent": n, "state": "not voted", "reason": reason,
+                         **agent_response(voted=False, up=True, withheld_reason=r["reason"] if r and not r["voted"] else "", failed=bad.get(n, ""))})
     return {"proposal": key, "voters": sorted(voters), "agents": rows, "excluded": excluded}
 
 
@@ -1004,7 +1038,7 @@ def build_incident(source: str, target: str, epoch: int, statuses: dict = None, 
                          "timestamp": e.get("timestamp"), "last_timestamp": e.get("timestamp"), "count": 1})
     trigger = {"decision": {k: first.get(k) for k in ("t", "action", "epoch", "voters", "note")}, "score": just.get("score"),
                "evidence_by_agent": by_agent, "seen_by": sorted({d["node"] for d in decs}),
-               "text": f"Agents {', '.join(first.get('voters', []))} signed votes to contain {workload} ({target}); "
+               "text": f"Agents {', '.join(first.get('voters', []))} signed votes to isolate {workload} ({target}); "
                        "the evidence they cited is listed per agent."}
     trig_inv = sorted({v.get("investigation_id") for d in decs for v in (d.get("justification", {}).get("votes") or []) if v.get("investigation_id")})
     if trig_inv:
@@ -1061,7 +1095,12 @@ def build_incident(source: str, target: str, epoch: int, statuses: dict = None, 
         for e in ev:
             if e["category"] == "VOTE_WITHHELD" and (e.get("details") or {}).get("proposal") == k:
                 withheld[e["node"]] = {"agent": e["node"], "reason": (e.get("details") or {}).get("reason") or e["summary"], "ts": e["ts"]}
+        bad_ = {(e.get("details") or {}).get("sender_mtls"): (e.get("details") or {}).get("reason") for e in ev
+                if e["category"] == "REJECTED" and (e.get("details") or {}).get("kind") == "vote"}
+        responses = {a: agent_response(voted=a in votes, up=a in statuses, withheld_reason=(withheld.get(a) or {}).get("reason", ""),
+                                       failed=bad_.get(a) or "") for a in ch().urls}
         proposals[k] = {"proposal": k, "text": proposal_text(k), "committed": bool(dec), "committed_at": dec["t"] if dec else None,
+                        "responses": responses,
                         "signers": sorted(dec.get("voters", [])) if dec else [], "note": dec.get("note") if dec else None,
                         "votes": sorted(votes.values(), key=lambda v: v.get("ts") or 0),
                         "withheld": [w for a, w in sorted(withheld.items()) if a not in votes], "quorum_needed": 3}

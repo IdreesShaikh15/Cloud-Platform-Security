@@ -197,7 +197,11 @@ def test_evaluation_tab_in_a_browser(monkeypatch, serve):
         pg.click("#tab-evaluation")
         pg.wait_for_selector("#evalbox .evcard img")
         pg.wait_for_function("[...document.querySelectorAll('#evalbox img')].every(i => i.complete && i.naturalWidth > 0)")
-        text = pg.inner_text("#evalbox")
+        text = pg.text_content("#evalbox")                                        # includes the collapsed explanations
+        assert pg.locator("#evalbox details[data-k^='ev-4.'] ").count() >= 10                       # one collapsible explanation per experiment
+        assert pg.locator("#evalbox details[data-k^='ev-4.'][open]").count() == 0                   # collapsed by default ...
+        assert pg.locator("#evalbox .evcard img").first.is_visible() and pg.locator("#evalbox .evcard table").first.is_visible()   # ... graphs and tables stay visible
+        assert "Explanation: how to read it and what the data shows" in pg.inner_text("#evalbox")
         assert "SIMULATOR RESULTS" in text and "Nothing here was measured on a real cluster" in text
         assert pg.locator("#evalbox img").count() == 8 and pg.locator("#evalbox table").count() >= 12
         for want in ("4.1 Detection, isolation", "4.8 False positives", f"{N_TRIALS} seeded trials", "0 errors", "Honest limitations", "How to read it"):

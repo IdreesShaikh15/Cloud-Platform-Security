@@ -113,6 +113,16 @@
   .evcard h3 { margin:0 0 8px; font-size:15px; } .evcard img { max-width:100%; height:auto; background:#fff; border-radius:6px; display:block; margin:8px 0; }
   .evcard p, .evcard li { line-height:1.5; max-width:110ch; } .evcard table { margin:8px 0; } .evcard code, .evbox code { background:var(--card2); padding:0 4px; border-radius:3px; }
   details.evd { background:var(--card); border-radius:8px; padding:8px 14px; margin-top:12px; } details.evd > summary { cursor:pointer; font-weight:700; }
+  /* plain-English layer: tooltips, agent response states, technical details */
+  .tip { border-bottom:1px dotted var(--mut); cursor:help; } .tip:focus-visible { outline:2px solid var(--info); outline-offset:2px; }
+  details.tech { margin-top:6px; } details.tech > summary { cursor:pointer; color:var(--mut); font-size:12px; }
+  details.tech[open] > summary { margin-bottom:4px; }
+  .resp { display:inline-block; font-size:12px; font-weight:700; padding:1px 8px; border-radius:10px; white-space:nowrap; background:var(--card2); border:1px solid var(--mut); }
+  .resp.agrees { background:#1f6f43; color:#fff; border-color:#1f6f43; } .resp.disagrees { background:var(--card2); color:var(--fg); }
+  .resp.unavailable { background:var(--bad); color:#000; border-color:var(--bad); } .resp.failed_verification { background:var(--warn); color:#000; border-color:var(--warn); }
+  .resp.not_yet { border-style:dashed; color:var(--mut); background:transparent; }
+  .meaning li { margin:4px 0; max-width:110ch; } .meaning { line-height:1.45; }
+  .evgrp > summary { cursor:pointer; } .evgrp .mut { margin-left:4px; }
   #pausebanner { display:none; background:var(--warn); color:#000; font-weight:600; text-align:center; padding:4px; border-radius:6px; margin-top:8px; }
 </style>
 </head>
@@ -140,57 +150,65 @@
 <div id="pausebanner">PAUSED - the screen is frozen; events are still being collected and will appear when you resume.</div>
 <nav class="tabs" role="tablist" aria-label="Dashboard sections">
   <button role="tab" id="tab-overview" data-tab="overview" aria-controls="panel-overview" aria-selected="true">Overview</button>
-  <button role="tab" id="tab-incidents" data-tab="incidents" aria-controls="panel-incidents" aria-selected="false">Incidents <span class="badge" id="badge-incidents"></span></button>
-  <button role="tab" id="tab-investigations" data-tab="investigations" aria-controls="panel-investigations" aria-selected="false">Investigations <span class="badge" id="badge-investigations"></span></button>
+  <button role="tab" id="tab-incidents" data-tab="incidents" aria-controls="panel-incidents" aria-selected="false">Security Alerts <span class="badge" id="badge-incidents"></span></button>
+  <button role="tab" id="tab-investigations" data-tab="investigations" aria-controls="panel-investigations" aria-selected="false">Investigate <span class="badge" id="badge-investigations"></span></button>
   <button role="tab" id="tab-recovery" data-tab="recovery" aria-controls="panel-recovery" aria-selected="false">Recovery <span class="badge" id="badge-recovery"></span></button>
-  <button role="tab" id="tab-evaluation" data-tab="evaluation" aria-controls="panel-evaluation" aria-selected="false">Evaluation</button>
-  <button role="tab" id="tab-audit" data-tab="audit" aria-controls="panel-audit" aria-selected="false">Audit <span class="badge" id="badge-audit"></span></button>
+  <button role="tab" id="tab-evaluation" data-tab="evaluation" aria-controls="panel-evaluation" aria-selected="false">Performance Results</button>
+  <button role="tab" id="tab-audit" data-tab="audit" aria-controls="panel-audit" aria-selected="false">Activity Log <span class="badge" id="badge-audit"></span></button>
 </nav>
 
 <div class="panel" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview" data-panel="overview">
 <div class="counters" id="counters" aria-label="Summary counters"></div>
 <div class="grid" id="nodes"></div>
-<div class="hint">Click a node card to open that agent's own view (what it measures, whom it trusts, how it scores the evidence, why it has or hasn't voted).</div>
+<div class="hint">Click a card to open that agent's own view (what it measures, whom it trusts, how it scores the evidence, why it has or has not agreed).</div>
+<details class="evd meaning" id="meaning"><summary>What do the numbers on these cards mean? (four separate things; there is deliberately no single combined "security score")</summary>
+  <ul>
+    <li><b>Workload trust (0-100)</b>: how much the agents trust <i>this workload</i> right now. It falls while they see something wrong, restarts at 0 when a workload is isolated, and has to climb back (20, 40, 60, 80) before each step back to normal access.</li>
+    <li><b>Agent trust (0-100)</b>: how much the <i>other agents</i> trust <i>this agent's evidence</i> (their median). It falls only when what an agent claims is contradicted by what the others see themselves. A low value marks it SUSPECT; a very low one means its votes are ignored.</li>
+    <li><b>Evidence confidence (0 to 1)</b>: how sure <i>one agent</i> is about <i>one kind of signal</i> (Network Activity, Running Processes, File Changes, Failed Logins) on one workload. 0 is normal.</li>
+    <li><b>Recovery Check</b>: pass or fail, not a score. Before a replacement is accepted, the agents check that it is healthy, that its files match the known-good copy, that it behaves normally and that it is really a new instance.</li>
+    <li><b>Agreement Reached (3 of 4)</b>: an action such as Isolation happens only when at least 3 of the 4 agents have signed a vote for it. A missing vote is never approval.</li>
+  </ul></details>
 <section id="depsec" hidden><b>Services, what depends on them, and what isolating each one means</b>
   <span class="mut">(from config/workloads.json, display only. "Suggested recovery order" is for a human operator: it does not change what the agents do, each incident is recovered in parallel.)</span>
   <table id="deptable"></table></section>
-<section id="simctl"><b>Simulator demo controls</b> <span class="src src-SIMULATOR">SIMULATOR ONLY</span>
+<section id="simctl"><b>Demo controls</b> <span class="src src-SIMULATOR">SIMULATOR ONLY</span>
   <span class="mut">(these buttons exist only when this dashboard is connected to the simulator; the backend refuses them for a live cluster. Live scenarios are terminal scripts.)</span>
   <div class="filters" style="margin-top:8px"><select id="simsel" aria-label="Scenario"></select>
     <button id="simstart">Start scenario</button> <button id="simreset">Reset simulator</button> <span id="simstat" class="mut"></span></div>
   <div id="simdesc" class="mut"></div><div id="simlast"></div></section>
 <section>
-  <b>Live event timeline</b> <span class="mut" id="evcount"></span>
+  <b>Live activity</b> <span class="mut" id="evcount"></span>
   <div class="filters" id="nodefilters"></div>
   <div class="filters" id="catfilters"></div>
-  <div class="filters"><input type="search" id="q" placeholder="search events, e.g. 'SUSPECT', 'records-api', 'W(C)'"><button id="clearf">Clear filters</button></div>
+  <div class="filters"><input type="search" id="q" placeholder="search, e.g. 'suspect', 'records', 'database'"><button id="clearf">Clear filters</button></div>
   <div id="timeline"></div>
-  <div class="hint">Newest first. Click an event to see its full details. Each agent logs what <i>it</i> saw and did, so the same moment appears once per agent.</div>
+  <div class="hint">Newest first. Click a line for its technical details. Each agent logs what <i>it</i> saw and did, so the same moment appears once per agent.</div>
 </section>
 </div>
 
 <div class="panel" id="panel-incidents" role="tabpanel" aria-labelledby="tab-incidents" data-panel="incidents" hidden>
 <div id="inclist">
-<section id="incsec"><b>Incidents</b> <span class="mut">(one containment of one workload; click a row for everything that happened: trigger, evidence, votes, actions and their real results)</span>
+<section id="incsec"><b>Security Alerts</b> <span class="mut">(each one is a workload that the agents agreed to isolate; click a row for everything that happened: what triggered it, the evidence, who agreed, the actions and their real results)</span>
   <table id="inctable"></table></section>
-<section><b>Recent quorum decisions</b> <span class="mut">(click a row to see the evidence and votes that justified it)</span><table id="dec"></table></section>
-<section><b>Pending votes</b> <span class="mut">(need 3 of 4 eligible signed votes; each agent says why it has not voted)</span><div id="pend"></div></section>
-<section><b>Incident metrics</b> <span class="mut">(seconds since injection; min across agents)</span><table id="met"></table></section>
+<section><b>Agreements reached (3 of 4)</b> <span class="mut">(click a row for the technical details: the votes and evidence behind it)</span><table id="dec"></table></section>
+<section><b>Waiting for agreement</b> <span class="mut">(3 of 4 agents must agree. A missing vote is never counted as approval; each agent that has not agreed says why.)</span><div id="pend"></div></section>
+<section><b>How fast it went</b> <span class="mut">(seconds since the attack was injected; the fastest agent's time)</span><table id="met"></table></section>
 </div>
 <div id="incdetail" hidden></div>
 </div>
 
 <div class="panel" id="panel-investigations" role="tabpanel" aria-labelledby="tab-investigations" data-panel="investigations" hidden>
 <section id="invsec">
-  <b>Investigations</b> <span class="mut">(borderline or disputed evidence is re-checked by all four agents for a few seconds before anyone acts; nothing is isolated by an investigation itself)</span>
+  <b>Investigate</b> <span class="mut">(when the evidence is borderline or the agents disagree, all four re-check it for a few seconds before anyone acts; an investigation never isolates anything by itself)</span>
   <div id="invreview"></div>
   <table id="inv"></table>
 </section>
-<section id="invempty" class="mut" style="display:none">Investigations are switched off in this deployment.</section>
+<section id="invempty" class="mut" style="display:none">Investigating borderline evidence is switched off in this deployment.</section>
 </div>
 
 <div class="panel" id="panel-recovery" role="tabpanel" aria-labelledby="tab-recovery" data-panel="recovery" hidden>
-<section id="recsec"><b>Evidence snapshots &amp; Kubernetes actions</b> <span class="mut">(a read-only snapshot of the affected workload is saved BEFORE it is replaced; every cluster action records its observable result. A timeout is not a failure: the cluster is checked, and if it cannot be read the result is shown as UNKNOWN.)</span>
+<section id="recsec"><b>Recovery</b> <span class="mut">(a read-only copy of the affected workload's evidence is saved BEFORE it is replaced; every action taken in the cluster records its real result. A timeout is not a failure: the cluster is checked, and if it cannot be read the result is shown as UNKNOWN.)</span>
   <div id="recunk"></div><table id="snaps"></table><table id="acts" style="margin-top:8px"></table></section>
 </div>
 
@@ -199,9 +217,9 @@
 </div>
 
 <div class="panel" id="panel-audit" role="tabpanel" aria-labelledby="tab-audit" data-panel="audit" hidden>
-<section><b>Decision-log integrity</b> <span class="mut">(each agent keeps a hash-chained log of the quorum decisions it saw; a changed, deleted or re-ordered record breaks the chain)</span><table id="dlogtab"></table></section>
-<section><b>Rejected messages</b> <span class="mut">(signature / mTLS identity failures)</span><table id="rej"></table></section>
-<section><b>Event export</b> <span class="mut">every buffered event from every agent, each labelled with its source</span> <a class="btn" id="export2" href="api/export" download>Export events (JSON)</a></section>
+<section><b>Tamper check of the decision logs</b> <span class="mut">(each agent keeps a log of the agreements it saw, chained so that a changed, deleted or re-ordered record is detected)</span><table id="dlogtab"></table></section>
+<section><b>Messages that failed verification</b> <span class="mut">(a message whose signature or identity could not be verified is rejected and never counted)</span><table id="rej"></table></section>
+<section><b>Export</b> <span class="mut">every buffered event from every agent, each labelled with its source</span> <a class="btn" id="export2" href="api/export" download>Export events (JSON)</a></section>
 </div>
 
 <div id="shade"></div>
@@ -224,6 +242,62 @@ const CATS = ["OBSERVE","EVIDENCE_SENT","EVIDENCE_RECEIVED","REJECTED","SCORE","
 const ICON = {OBSERVE:"👁", EVIDENCE_SENT:"➚", EVIDENCE_RECEIVED:"➘", REJECTED:"⛔", SCORE:"Σ", VOTE_CAST:"✔", VOTE_WITHHELD:"✋",
               TRUST_CHANGE:"↕", FLAG:"⚑", QUORUM:"⚖", ACTION:"⚙", PEER_LINK:"🔗", INVESTIGATION:"🔎"};
 const NODES = ["A","B","C","D","CENTRAL"];
+// ---------------------------------------------------------------- plain-English vocabulary: ONE place. Raw ids stay in tooltips and in "Technical details".
+const V = {
+  signals: {NETWORK:"Network Activity", PROCESS:"Running Processes", FILE_INTEGRITY:"File Changes", AUTH:"Failed Logins"},
+  cats: {OBSERVE:"Observation", EVIDENCE_SENT:"Evidence Shared", EVIDENCE_RECEIVED:"Evidence Received", REJECTED:"Failed Verification", SCORE:"Evidence Score",
+         VOTE_CAST:"Agent Decision", VOTE_WITHHELD:"Decision Withheld", TRUST_CHANGE:"Trust Change", FLAG:"Warning", QUORUM:"Agreement Reached (3 of 4)",
+         ACTION:"Action Taken", PEER_LINK:"Agent Connection", INVESTIGATION:"Investigate"},
+  stages: {QUARANTINE:"Isolation", RESTRICTED:"Limited Access", MONITORED:"Monitored Access", PEER_VALIDATED:"Confirmed by Peers", FULL:"Normal Access Restored"},
+  phases: {HEALTHY:"Healthy", ISOLATED:"Isolated", RECOVERING:"Being replaced", VALIDATING:"Recovery Check", REINTEGRATING:"Returning to normal access",
+           NEEDS_ATTENTION:"Needs a person", UNKNOWN:"Unknown"},
+  resp: {agrees:["✔", "Agrees"], disagrees:["✖", "Disagrees"], unavailable:["⛔", "Unavailable"], not_yet:["…", "Not yet responded"], failed_verification:["⚠", "Message failed verification"]},
+};
+const HELP = {
+  workloadTrust: "How much the agents trust this workload right now, 0-100. It falls while they see something wrong, restarts at 0 when a workload is isolated, and must climb back (20, 40, 60, 80) before each step back to normal access.",
+  agentTrust: "How much the OTHER agents trust this agent's evidence, 0-100 (their median). It falls only when what this agent claims is contradicted by what they see themselves. A low value marks the agent SUSPECT; a very low one means its votes are ignored.",
+  quorum: "Agreement Reached (3 of 4): an action such as Isolation happens only when at least 3 of the 4 agents have signed a vote for it. One or two agents can never do it alone, and a missing vote is never approval.",
+  evidenceScore: "Evidence score: how strongly the evidence about a workload adds up, counting each report in proportion to how much its sender is trusted. An agent agrees to isolate only if the score is high enough AND it sees the problem itself.",
+  confidence: "Evidence confidence: how sure ONE agent is about ONE kind of signal on ONE workload, from 0 (normal) to 1 (certain). It is not a trust score, and there is no combined score.",
+  recoveryCheck: "Recovery Check: before a replacement is accepted, the agents check that it is healthy, that its files match the known-good copy, that it behaves normally and that it really is a new instance. Pass or fail, not a score.",
+};
+const tip = (label, key) => `<span class="tip" tabindex="0" title="${esc(HELP[key])}">${label}<span aria-hidden="true"> ⓘ</span></span>`;
+const stageName = s => V.stages[s] || String(s ?? "").replaceAll("_", " ");
+const phaseName = p => V.phases[p] || String(p ?? "").replaceAll("_", " ");
+const catName = c => V.cats[c] || c;
+const sigName = x => V.signals[x] || String(x ?? "");
+const dn = id => { const n = lastState && lastState.nodes && lastState.nodes[id]; return esc((n && (n.display_name || n.workload)) || id); };
+const respTag = r => { const [ic, w] = V.resp[r] || V.resp.not_yet; return `<span class="resp ${V.resp[r] ? r : "not_yet"}">${ic} ${w}</span>`; };
+// plain wording of a proposal key like "CONTAIN:C:1:" (the key itself stays available as a tooltip / in technical details)
+function plainProposal(key) {
+  const [a, tg, ep, st] = String(key).split(":");
+  const w = dn(tg);
+  return a === "CONTAIN" ? `Isolate the ${w}` : a === "VALIDATE" ? `Accept the ${w} after its Recovery Check` : a === "ADVANCE_STAGE" ? `Move the ${w} to ${stageName(st)}`
+    : a === "RETRY_RECOVERY" ? `Replace the ${w} again (attempt ${st})` : esc(key);
+}
+// plain wording of an action step (backend text) and of an action record's outcome
+function stepText(step) {
+  step = String(step || ""); let m;
+  if (/^isolate/.test(step)) return "Isolation: block the workload's network access";
+  if ((m = step.match(/^redeploy from the known-good image \(attempt (\d+)\)/))) return `Replace it from the known-good copy (attempt ${m[1]})`;
+  if (/^record validation/.test(step)) return "Recovery Check passed: record it in the cluster";
+  if ((m = step.match(/^move to (\w+)/))) return `Access step: ${stageName(m[1])}`;
+  if (/^escalate/.test(step)) return "Ask a person for help";
+  return step;
+}
+const ACT_TXT = {applied:"done", already_applied:"already done", applied_after_timeout:"done (after a timeout)", applied_unconfirmed:"done, not yet confirmed",
+  unknown_resolved:"confirmed later", not_applied:"not applied", failed:"failed", unknown:"UNKNOWN (not read back)", waiting:"waiting",
+  refused_stale:"skipped: already done by another agent", refused_certificate:"REFUSED: no valid 3-of-4 agreement", abandoned:"gave up (needs a person)"};
+const outcomeTxt = o => ACT_TXT[o] || String(o).replaceAll("_", " ");
+function actName(raw) {
+  raw = String(raw || ""); const [a, b] = raw.split("/");
+  return a === "CONTAIN" ? (b === "recover" ? "Replace from known-good copy" : "Isolation") : a === "VALIDATE" ? "Recovery Check" : a === "ADVANCE_STAGE" ? `Access step: ${stageName(b)}`
+    : a === "RETRY_RECOVERY" ? "Replace again" : a === "needs_human_attention" ? "Needs a person" : raw;
+}
+// <details> that stays open across the one-second refresh
+const openKeys = new Set();
+document.addEventListener("toggle", e => { const d = e.target; if (d && d.dataset && d.dataset.k) d.open ? openKeys.add(d.dataset.k) : openKeys.delete(d.dataset.k); }, true);
+const dd = (k, summary, inner, cls) => `<details class="${cls || "tech"}" data-k="${esc(k)}" ${openKeys.has(k) ? "open" : ""}><summary>${summary}</summary>${inner}</details>`;
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const t = x => x ? new Date(x*1000).toLocaleTimeString() : "-";
 const col = v => v == null ? "var(--line)" : v >= 70 ? "var(--ok)" : v >= 40 ? "var(--warn)" : "var(--bad)";
@@ -243,8 +317,8 @@ const openEv = new Set();
 function renderFilters() {
   document.getElementById("nodefilters").innerHTML = '<span class="mut">Agents:</span>' + NODES.map(n =>
     `<button class="chip ${fNodes.has(n)?"sel":""}" data-n="${n}">${nb(n)}</button>`).join("");
-  document.getElementById("catfilters").innerHTML = '<span class="mut">Categories:</span>' + CATS.map(c =>
-    `<button class="chip ${fCats.has(c)?"sel":""}" data-c="${c}">${ICON[c]} ${c}</button>`).join("");
+  document.getElementById("catfilters").innerHTML = '<span class="mut">Show:</span>' + CATS.map(c =>
+    `<button class="chip ${fCats.has(c)?"sel":""}" data-c="${c}" title="${c}">${ICON[c]} ${esc(catName(c))}</button>`).join("");
 }
 document.getElementById("nodefilters").onclick = e => { const b = e.target.closest("[data-n]"); if (!b) return;
   const n = b.dataset.n; fNodes.has(n) ? fNodes.delete(n) : fNodes.add(n); renderFilters(); renderTimeline(); };
@@ -260,7 +334,7 @@ function evRow(e) {
   const k = String(e.gseq ?? `${e.node}-${e.seq}`);
   return `<div class="ev cat-${e.category}" data-k="${k}" style="border-left-color:var(--node-${esc(e.node)},var(--line))">
     <span class="mut">${t(e.ts)}</span><span>${nb(e.node)}</span>
-    <span class="cat">${srcTag(e.data_source)} ${ICON[e.category]||""} ${e.category}</span><span>${esc(e.summary)}</span>
+    <span class="cat" title="${esc(e.category)}">${srcTag(e.data_source)} ${ICON[e.category]||""} ${esc(catName(e.category))}</span><span>${esc(e.summary)}</span>
     ${openEv.has(k) ? `<div class="det"><pre>${esc(JSON.stringify({target:e.target, ...e.details}, null, 2))}</pre></div>` : ""}</div>`;
 }
 function filtered(list) {
@@ -285,9 +359,9 @@ async function pullEvents() {
 function stages(n) {
   if (n.phase === "HEALTHY") return "";
   const i = STAGES.indexOf(n.stage);
-  return `<div class="stages">${STAGES.map((s,j)=>`<span class="${n.phase==='REINTEGRATING'&&j===i?'on':(n.phase==='REINTEGRATING'&&j<i?'done':'')}">${s.replace('_',' ')}</span>`).join("")}</div>`;
+  return `<div class="stages">${STAGES.map((s,j)=>`<span class="${n.phase==='REINTEGRATING'&&j===i?'on':(n.phase==='REINTEGRATING'&&j<i?'done':'')}">${esc(stageName(s))}</span>`).join("")}</div>`;
 }
-document.getElementById("nodes").onclick = e => { const c = e.target.closest("[data-node]"); if (c) openDrawer(c.dataset.node); };
+document.getElementById("nodes").onclick = e => { if (e.target.closest("details")) return; const c = e.target.closest("[data-node]"); if (c) openDrawer(c.dataset.node); };
 
 const OUT_CLASS = {CORROBORATED:"bad", FALSE_POSITIVE:"ok", AMBIGUOUS:"warn", UNCERTAIN:"warn", SUPERSEDED:"", MERGED:""};
 function renderInvestigations(iv) {
@@ -314,18 +388,18 @@ const ACT_CLASS = {applied:"ok", already_applied:"ok", applied_after_timeout:"ok
 function renderRecovery(s) {
   const unk = (s.actions && s.actions.unknown) || [];
   document.getElementById("recunk").innerHTML = unk.map(u =>
-    `<div class="rv" style="background:var(--warn)">UNKNOWN RESULT: ${esc(u.action)} on ${esc(u.workload)} (reported by ${nb(u.node)}): the request timed out and the cluster could not be read, so it is not known whether it took effect. It is re-checked, not blindly repeated.</div>`).join("");
+    `<div class="rv" style="background:var(--warn)">UNKNOWN RESULT: ${esc(actName(u.action))} on ${esc(u.workload)} (reported by ${nb(u.node)}): the request timed out and the cluster could not be read, so it is not known whether it took effect. It is re-checked, not blindly repeated.</div>`).join("");
   document.getElementById("snaps").innerHTML = (s.snapshots && s.snapshots.length) ?
-    "<tr><th>evidence snapshot</th><th>why</th><th>pods</th><th>log lines</th><th>NOT captured</th><th>digest</th><th>by</th><th></th></tr>" +
-    s.snapshots.map(x => `<tr><td>${nb(x.target)} ${esc(x.workload)} · incident ${x.epoch} · ${esc(x.tag)}</td><td>${esc(x.reason)}</td><td>${x.pods}</td><td>${x.log_lines}</td>
+    "<tr><th>evidence saved</th><th>why</th><th>pods</th><th>log lines</th><th>NOT captured</th><th>fingerprint</th><th>by</th><th></th></tr>" +
+    s.snapshots.map(x => `<tr><td>${nb(x.target)} ${dn(x.target)} · security alert ${x.epoch} · ${esc(x.tag)}</td><td>${esc(x.reason)}</td><td>${x.pods}</td><td>${x.log_lines}</td>
       <td>${x.not_captured.length ? x.not_captured.map(m => `<span title="${esc(m.reason)}">${esc(m.item)}</span>`).join("; ") : '<span class="mut">nothing missing</span>'}</td>
       <td class="mut">${esc(x.digest)}</td><td>${nb(x.agent)}</td><td><a class="btn" href="${esc(U(`api/snapshot/${x.agent}/${encodeURIComponent(x.key)}`))}">export JSON</a></td></tr>`).join("")
-    : '<tr><td class="mut">No evidence snapshots yet. One is saved automatically when a workload is contained.</td></tr>';
+    : '<tr><td class="mut">No evidence has been saved yet. It is saved automatically when a workload is isolated.</td></tr>';
   const rec = (s.actions && s.actions.recent) || [];
   document.getElementById("acts").innerHTML = rec.length ?
     "<tr><th>time</th><th>agent</th><th>action</th><th>workload</th><th>try</th><th>result</th><th>detail</th></tr>" +
-    rec.slice(0, 20).map(r => `<tr><td>${t(r.t)}</td><td>${nb(r.node)}</td><td>${esc(r.action)}</td><td>${esc(r.workload)}</td><td>${r.attempt}</td>
-      <td><span class="tag ${ACT_CLASS[r.outcome] || ""}">${esc(r.outcome.replace(/_/g, " "))}</span></td><td class="mut">${esc(r.detail)}${r.error ? " · " + esc(r.error) : ""}</td></tr>`).join("") : "";
+    rec.slice(0, 20).map(r => `<tr><td>${t(r.t)}</td><td>${nb(r.node)}</td><td title="${esc(r.action)}">${esc(actName(r.action))}</td><td>${esc(r.workload)}</td><td>${r.attempt}</td>
+      <td><span class="tag ${ACT_CLASS[r.outcome] || ""}">${esc(outcomeTxt(r.outcome))}</span></td><td class="mut">${esc(r.detail)}${r.error ? " · " + esc(r.error) : ""}</td></tr>`).join("") : "";
 }
 
 // ---------------------------------------------------------------- tabs (hash-routed, keyboard accessible)
@@ -365,7 +439,7 @@ function renderCounters(m) {
   el.innerHTML = [
     tile("Healthy workloads", `${m.workloads_healthy} of ${m.workloads_total}`, unh ? "warn" : "ok", unh ? "NOT ALL HEALTHY" : "ALL HEALTHY"),
     tile("Unhealthy workloads", unh, unk ? "bad" : unh ? "bad" : "ok", unh ? "UNHEALTHY" : "NONE", unh ? list(m.unhealthy) + (unk ? ` (${unk} unknown)` : "") : ""),
-    tile("Active incidents", m.incidents_active.length, m.needs_attention.length ? "bad" : m.incidents_active.length ? "warn" : "ok",
+    tile("Active security alerts", m.incidents_active.length, m.needs_attention.length ? "bad" : m.incidents_active.length ? "warn" : "ok",
          m.needs_attention.length ? "NEEDS HUMAN" : m.incidents_active.length ? "IN PROGRESS" : "NONE", list(m.incidents_active)),
     tile("Active investigations", m.investigations_active, m.investigations_review.length ? "warn" : m.investigations_active ? "warn" : "ok",
          m.investigations_review.length ? "REVIEW NEEDED" : m.investigations_active ? "IN PROGRESS" : "NONE",
@@ -398,85 +472,101 @@ const INC_STATUS = {ACTIVE:["warn","⚠ IN PROGRESS"], RESOLVED:["yes","✔ RESO
 const incTag = x => { const [c, w] = INC_STATUS[x] || INC_STATUS.UNKNOWN; return `<span class="st ${c}">${w}</span>`; };
 function renderIncidentList(list) {
   const el = document.getElementById("inctable");
-  el.innerHTML = list && list.length ? "<tr><th>source</th><th>incident</th><th>contained at</th><th>status</th><th>now</th><th>recovery attempt</th><th>signed by</th></tr>" +
-    list.map(i => `<tr class="click ${openInc === i.id ? "sel" : ""}" data-inc="${esc(i.id)}"><td>${srcTag(i.source)}</td><td>${nb(i.target)} ${esc(i.workload || "")} · #${i.epoch}</td><td>${t(i.contained_at)}</td>
-      <td>${incTag(i.status)}</td><td>${esc(i.phase || "-")} ${esc(i.stage || "")}</td><td>${i.attempt || "-"}</td><td>${(i.signers || []).map(nb).join(" ")}</td></tr>`).join("")
-    : '<tr><td class="mut">No incident yet. An incident starts when a quorum contains a workload (a lone accusation or a closed investigation is not an incident).</td></tr>';
+  el.innerHTML = list && list.length ? "<tr><th>source</th><th>security alert</th><th>isolated at</th><th>status</th><th>now</th><th>recovery attempt</th><th>agreed by</th></tr>" +
+    list.map(i => `<tr class="click ${openInc === i.id ? "sel" : ""}" data-inc="${esc(i.id)}"><td>${srcTag(i.source)}</td><td>${nb(i.target)} ${dn(i.target)} · #${i.epoch}</td><td>${t(i.contained_at)}</td>
+      <td>${incTag(i.status)}</td><td>${esc(phaseName(i.phase) || "-")} ${i.stage ? "· " + esc(stageName(i.stage)) : ""}</td><td>${i.attempt || "-"}</td><td>${(i.signers || []).map(nb).join(" ")}</td></tr>`).join("")
+    : '<tr><td class="mut">No security alert yet. One starts when 3 of the 4 agents agree to isolate a workload (a lone accusation or a closed investigation is not an alert).</td></tr>';
 }
 document.getElementById("inctable").onclick = e => { const r = e.target.closest("[data-inc]"); if (r) location.hash = "#incident/" + r.dataset.inc.replaceAll(":", "/"); };
 const yn = (x, by) => x.state === "yes" ? `<span class="st yes">✔ YES</span>${by && by.length ? `<div class="mut">${by.map(nb).join(" ")}</div>` : ""}`
   : x.state === "unknown" ? '<span class="st unk">? UNKNOWN</span>' : x.state === "n/a" ? '<span class="st na">n/a</span>' : '<span class="st no">✖ NO</span>';
 const evList = (arr, empty) => arr && arr.length ? arr.slice().reverse().map(e => `<div class="ev cat-${e.category}" style="grid-template-columns:70px 72px 1fr"><span class="mut">${t(e.ts)}</span><span>${nb(e.node)}</span><span>${esc(e.summary)}</span></div>`).join("") : `<div class="mut">${empty}</div>`;
+// evidence grouped by agent and signal: the latest reading and how many readings; the full list opens on request
+function evidenceGroups(ev) {
+  return Object.entries(ev || {}).map(([a, items]) => {
+    const by = {};
+    for (const x of items) (by[x.type] ||= []).push(x);
+    return [a, Object.entries(by).map(([sig, xs]) => {
+      const all = xs.slice().sort((p, q) => (q.last_timestamp || 0) - (p.last_timestamp || 0));
+      return {sig, latest: all[0], count: xs.reduce((n, x) => n + (x.count || 1), 0), all};
+    })];
+  });
+}
+const nextStepText = st => String(st || "").replace(/^advance to (\w+)/, (_m, x) => `Move to ${stageName(x)}`);
 function renderIncident(i) {
   const c = i.current.consensus || {}, ns = c.next_step, w = i.window;
-  const per = Object.entries(i.current.per_agent || {}).map(([a, v]) => `${nb(a)} ${esc(v.phase)}${v.stage ? "/" + esc(v.stage) : ""}`).join(" · ");
-  const ev = i.trigger.evidence_by_agent;
-  const evRows = Object.entries(ev).flatMap(([a, items]) => items.map(x => `<tr><td>${nb(a)}</td><td>${esc(x.type)}</td><td>${x.confidence}</td><td>${esc(x.summary)}${x.count > 1 ? ` <span class="mut">(sent ×${x.count})</span>` : ""}</td></tr>`)).join("");
+  const per = Object.entries(i.current.per_agent || {}).map(([a, v]) => `${nb(a)} ${esc(phaseName(v.phase))}${v.stage ? " / " + esc(stageName(v.stage)) : ""}`).join(" · ");
+  const groups = evidenceGroups(i.trigger.evidence_by_agent);
+  const evRows = groups.flatMap(([a, sigs]) => sigs.map(g => `<tr><td>${nb(a)}</td><td title="${esc(g.sig)}">${esc(sigName(g.sig))}</td><td>${esc(g.latest.summary)}</td><td>${g.count}</td>
+    <td>${dd(`ev-${i.id}-${a}-${g.sig}`, `all ${g.all.length} different reading${g.all.length === 1 ? "" : "s"}`, g.all.map(x => `<div class="mut">${t(x.last_timestamp)} · ${tip("confidence", "confidence")} ${esc(x.confidence)} · ${esc(x.summary)}${x.count > 1 ? ` (sent ×${x.count})` : ""}</div>`).join(""))}</td></tr>`)).join("");
   const snapLink = x => `<a class="btn" href="${esc(U(`api/snapshot/${x.agent}/${encodeURIComponent(x.key)}`))}">export ${esc(x.agent)}'s snapshot</a>`;
   return `
-  <div class="fl"><button id="incback">← All incidents</button><h2>${nb(i.target)} ${esc(i.workload)} · incident #${i.epoch}</h2> ${srcTag(i.source)} ${incTag(i.status)}</div>
-  <div class="mut">contained at ${t(i.window.contained_at)} · events from ${t(w.from)}${w.to ? " to " + t(w.to) : " until now"} · ${esc(i.limits)}</div>
+  <div class="fl"><button id="incback">← All security alerts</button><h2>${nb(i.target)} ${dn(i.target)} · security alert #${i.epoch}</h2> ${srcTag(i.source)} ${incTag(i.status)}</div>
+  <div class="mut">isolated at ${t(i.window.contained_at)} · events from ${t(w.from)}${w.to ? " to " + t(w.to) : " until now"} · ${esc(i.limits)}</div>
 
   <section class="dsec"><h3>Where it stands now</h3>
-    <div>${c.phase ? `Phase <b>${esc(c.phase)}</b>, stage <b>${esc(c.stage)}</b>, recovery attempt <b>${c.attempt}</b>.` : "No agent currently reports this incident (it may have been superseded or the agents restarted)."}
+    <div>${c.phase ? `Status <b>${esc(phaseName(c.phase))}</b>, access <b>${esc(stageName(c.stage))}</b>, recovery attempt <b>${c.attempt}</b>.` : "No agent currently reports this alert (it may have been superseded or the agents restarted)."}
     <span class="mut">${per}</span></div>
     ${c.attention ? `<div class="rv">NEEDS HUMAN ATTENTION: ${esc(c.attention.reason)}</div>` : ""}
-    ${ns ? `<div class="blocked"><b>Next step:</b> ${esc(ns.step)}.<br>${ns.blocked_by ? `<b>Blocked because:</b> ${esc(ns.blocked_by)}` : "<b>Not blocked:</b> the agents are voting on it now."}
+    ${ns ? `<div class="blocked"><b>Next step:</b> ${esc(nextStepText(ns.step))}.<br>${ns.blocked_by ? `<b>Blocked because:</b> ${esc(ns.blocked_by)}` : "<b>Not blocked:</b> the agents are deciding on it now."}
       <div class="mut">${ns.agents_agreeing} of ${ns.agents_reporting} agents report this reason.</div></div>` : (c.phase === "HEALTHY" ? '<div class="mut">Finished: nothing is pending.</div>' : "")}
   </section>
 
   <section class="dsec"><h3>What triggered it</h3>
-    <div>${esc(i.trigger.text)} Seen by ${(i.trigger.seen_by || []).map(nb).join(" ")}. Weighted evidence score W(T) in the decision: <b>${esc(i.trigger.score ? i.trigger.score.W : "-")}</b>.
-      ${(i.trigger.investigation_ids || []).length ? `Votes cite investigation ${(i.trigger.investigation_ids).map(x => esc(String(x).slice(-12))).join(", ")}.` : ""}</div>
-    <table><tr><th>from</th><th>type</th><th>confidence</th><th>what was seen</th></tr>${evRows || '<tr><td class="mut" colspan="4">The decision carried no evidence record on this dashboard (it predates it, or the agents were restarted).</td></tr>'}</table>
+    <div>${esc(i.trigger.text)} Seen by ${(i.trigger.seen_by || []).map(nb).join(" ")}.</div>
+    <table><tr><th>from agent</th><th>signal</th><th>latest reading</th><th>readings</th><th></th></tr>${evRows || '<tr><td class="mut" colspan="5">The decision carried no evidence record on this dashboard (it predates it, or the agents were restarted).</td></tr>'}</table>
+    ${dd("inc-trigger-tech-" + i.id, "Technical details", `<div class="mut">${tip("Evidence score", "evidenceScore")} W(T) in the decision: <b>${esc(i.trigger.score ? i.trigger.score.W : "-")}</b>${(i.trigger.investigation_ids || []).length ? ` · votes cite investigation ${(i.trigger.investigation_ids).map(x => esc(String(x).slice(-12))).join(", ")}` : ""}</div>`)}
   </section>
 
-  <section class="dsec"><h3>Actions: proposed → authorized → attempted → verified</h3>
+  <section class="dsec"><h3>Actions: proposed → agreed → attempted → verified</h3>
     <div class="legend">
-      <div><b>PROPOSED</b><br>agents signed votes for it</div><div><b>AUTHORIZED</b><br>a 3-of-4 quorum committed it (certificate issued, recorded in the decision log)</div>
-      <div><b>ATTEMPTED</b><br>an executor really called the Kubernetes API (more than one agent only if the first failed or timed out)</div>
-      <div><b>VERIFIED</b><br>the cluster was READ afterwards and shows the effect; ? = a timeout whose result could not be read</div></div>
-    <table><tr><th>action</th><th>PROPOSED</th><th>AUTHORIZED</th><th>ATTEMPTED</th><th>VERIFIED</th></tr>` +
-    i.actions.map(a => `<tr><td>${esc(a.step)}<div class="mut">${esc(a.proposal || "")}</div>
-      <details class="rec"><summary>${a.records.length} record(s)${a.refused.length ? " · REFUSED " + a.refused.length : ""}</summary>${a.records.map(r => `<div class="mut">${t(r.t)} ${nb(r.node)} <b>${esc(String(r.outcome).replaceAll("_", " "))}</b> (try ${r.attempt}) ${esc(r.detail)}${r.error ? " · " + esc(r.error) : ""}</div>`).join("")}</details></td>
+      <div><b>Proposed</b><br>agents signed votes for it</div><div><b>Agreed (3 of 4)</b><br>${tip("at least 3 of the 4 agents signed", "quorum")}; recorded in the tamper-evident decision log</div>
+      <div><b>Attempted</b><br>an agent really called the Kubernetes API (more than one only if the first failed or timed out)</div>
+      <div><b>Verified</b><br>the cluster was READ afterwards and shows the effect; ? = a timeout whose result could not be read</div></div>
+    <table><tr><th>action</th><th>Proposed</th><th>Agreed (3 of 4)</th><th>Attempted</th><th>Verified</th></tr>` +
+    i.actions.map(a => { const cert = a.refused.filter(r => r.outcome === "refused_certificate"), skip = a.refused.filter(r => r.outcome !== "refused_certificate");
+      return `<tr><td>${esc(stepText(a.step))}
+      <details class="rec"><summary>${a.records.length} record(s)${skip.length ? ` · skipped ${skip.length} (already done by another agent)` : ""}${cert.length ? " · REFUSED " + cert.length : ""}</summary>${a.records.map(r => `<div class="mut">${t(r.t)} ${nb(r.node)} <b>${esc(outcomeTxt(r.outcome))}</b> (try ${r.attempt}) ${esc(r.detail)}${r.error ? " · " + esc(r.error) : ""}</div>`).join("")}</details>
+      ${a.proposal ? dd("act-" + i.id + "-" + a.proposal + a.step, "Technical details", `<div class="mut">${esc(a.proposal)}</div>`) : ""}</td>
       <td>${yn(a.proposed, a.proposed.by)}</td><td>${yn(a.authorized, a.authorized.signers)}${a.authorized.at ? `<div class="mut">${t(a.authorized.at)}</div>` : ""}</td>
-      <td>${yn(a.attempted, a.attempted.by)}${a.attempted.tries > 1 ? `<div class="mut">${a.attempted.tries} tries</div>` : ""}</td><td>${yn(a.verified, a.verified.by)}${a.verified.at ? `<div class="mut">${t(a.verified.at)}</div>` : ""}</td></tr>`).join("") +
+      <td>${yn(a.attempted, a.attempted.by)}${a.attempted.tries > 1 ? `<div class="mut">${a.attempted.tries} tries</div>` : ""}</td><td>${yn(a.verified, a.verified.by)}${a.verified.at ? `<div class="mut">${t(a.verified.at)}</div>` : ""}</td></tr>`; }).join("") +
     `</table></section>
 
-  <section class="dsec"><h3>Votes and who signed</h3>
-    <table><tr><th>proposal</th><th>committed?</th><th>signed votes (${"3 of 4 needed"})</th><th>did not vote, and why</th></tr>` +
-    i.proposals.map(p => `<tr><td>${esc(p.text)}<div class="mut">${esc(p.proposal)}</div></td><td>${p.committed ? `<span class="st yes">✔ COMMITTED</span><div class="mut">${t(p.committed_at)} · quorum signed by ${p.signers.map(nb).join(" ")}</div>` : '<span class="st no">✖ NOT COMMITTED</span>'}</td>
-      <td>${p.votes.map(v => `<span title="score ${esc(v.score)}">${nb(v.voter)}</span>`).join(" ") || '<span class="mut">none</span>'}</td>
-      <td>${p.withheld.map(x => `<div>${nb(x.agent)} <span class="mut">${esc(x.reason)}</span></div>`).join("") || '<span class="mut">-</span>'}</td></tr>`).join("") +
+  <section class="dsec"><h3>Who agreed</h3>
+    <div class="mut">Each agent is in exactly one state. <b>A missing vote is never approval:</b> only a signed vote that was counted is "Agrees".</div>
+    <table><tr><th>what</th><th>Agreement Reached (3 of 4)?</th><th>each agent</th></tr>` +
+    i.proposals.map(p => `<tr><td>${esc(plainProposal(p.proposal))}${dd("vote-" + i.id + "-" + p.proposal, "Technical details", `<div class="mut">${esc(p.proposal)} · signed votes: ${p.votes.map(v => `${esc(v.voter)} (score ${esc(v.score)})`).join(", ") || "none"}</div>`)}</td>
+      <td>${p.committed ? `<span class="st yes">✔ REACHED</span><div class="mut">${t(p.committed_at)} · signed by ${p.signers.map(nb).join(" ")}</div>` : '<span class="st no">✖ NOT REACHED</span>'}</td>
+      <td>${Object.entries(p.responses || {}).map(([a, r]) => `<div>${nb(a)} ${respTag(r.response)}${r.reason ? ` <span class="mut">${esc(r.reason)}</span>` : ""}</div>`).join("") || '<span class="mut">no agents reported</span>'}</td></tr>`).join("") +
     `</table></section>
 
   <section class="dsec"><h3>Recovery attempts</h3>` +
-    (i.recovery.attempts.length ? i.recovery.attempts.map(r => `<div style="margin-bottom:8px"><b>Attempt ${r.attempt}</b> ${r.action ? `· redeploy: proposed ${yn(r.action.proposed).replace(/<div.*$/,"")} authorized ${yn(r.action.authorized).replace(/<div.*$/,"")} attempted ${yn(r.action.attempted).replace(/<div.*$/,"")} verified ${yn(r.action.verified).replace(/<div.*$/,"")}` : ""}
+    (i.recovery.attempts.length ? i.recovery.attempts.map(r => `<div style="margin-bottom:8px"><b>Attempt ${r.attempt}</b> ${r.action ? `· replace from the known-good copy: proposed ${yn(r.action.proposed).replace(/<div.*$/,"")} agreed ${yn(r.action.authorized).replace(/<div.*$/,"")} attempted ${yn(r.action.attempted).replace(/<div.*$/,"")} verified ${yn(r.action.verified).replace(/<div.*$/,"")}` : ""}
       ${r.retry_reason ? `<div class="mut">Why it was retried: ${esc(r.retry_reason)}</div>` : ""}
-      <div class="mut">Evidence saved before this replacement: ${r.snapshots.length ? r.snapshots.map(x => `${nb(x.agent)} ${x.pods} pod(s), ${x.log_lines} log line(s)${x.not_captured.length ? ", NOT captured: " + x.not_captured.map(m => esc(m.item)).join("; ") : ""} ${snapLink(x)}`).join("<br>") : "none seen"}</div></div>`).join("") : '<div class="mut">No redeploy recorded for this incident yet.</div>') +
+      <div class="mut">Evidence saved before this replacement: ${r.snapshots.length ? r.snapshots.map(x => `${nb(x.agent)} ${x.pods} pod(s), ${x.log_lines} log line(s)${x.not_captured.length ? ", NOT captured: " + x.not_captured.map(m => esc(m.item)).join("; ") : ""} ${snapLink(x)}`).join("<br>") : "none seen"}</div></div>`).join("") : '<div class="mut">No replacement recorded for this alert yet.</div>') +
     `</section>
 
-  <section class="dsec"><h3>Investigations</h3>` + (i.investigations.length ? "<table><tr><th>question</th><th>started</th><th>outcome per agent</th></tr>" + i.investigations.map(v => `<tr><td>${esc(v.question)}<div class="mut">${esc(String(v.trigger).replaceAll("_"," "))} · started by ${nb(v.initiator)}</div></td><td>${t(v.started_at)}</td>
-      <td>${Object.entries(v.per_agent).map(([a, p]) => `${nb(a)}:${esc(p.outcome ? String(p.outcome).replaceAll("_"," ").toLowerCase() : p.state.toLowerCase())}`).join(" ")}</td></tr>`).join("") + "</table>" : '<div class="mut">No investigation of this workload around this incident (the evidence was clear enough to vote directly).</div>') +
+  <section class="dsec"><h3>Investigate</h3>` + (i.investigations.length ? "<table><tr><th>question</th><th>started</th><th>outcome per agent</th></tr>" + i.investigations.map(v => `<tr><td>${esc(v.question)}<div class="mut">${esc(String(v.trigger).replaceAll("_"," "))} · started by ${nb(v.initiator)}</div></td><td>${t(v.started_at)}</td>
+      <td>${Object.entries(v.per_agent).map(([a, p]) => `${nb(a)}:${esc(p.outcome ? String(p.outcome).replaceAll("_"," ").toLowerCase() : p.state.toLowerCase())}`).join(" ")}</td></tr>`).join("") + "</table>" : '<div class="mut">No investigation of this workload around this alert (the evidence was clear enough for the agents to decide directly).</div>') +
     `</section>
 
-  <section class="dsec"><h3>Trust changes and why</h3><div class="mut">Agent-trust changes and suspicion flags while the incident ran. "about this workload" marks the ones whose reason names it.</div>` +
-    (i.trust_changes.length ? i.trust_changes.slice().reverse().map(e => `<div class="ev cat-${e.category}" style="grid-template-columns:70px 72px 1fr"><span class="mut">${t(e.ts)}</span><span>${nb(e.node)}</span><span>${e.mentions_target ? '<span class="tag warn">about this workload</span> ' : ""}${esc(e.summary)}</span></div>`).join("") : '<div class="mut">No agent-trust changes during this incident.</div>') +
-    `<div class="mut" style="margin-top:6px">Workload trust now: ${Object.entries(i.current.per_agent || {}).map(([a, v]) => `${nb(a)} ${v.workload_trust ?? "-"}`).join(" ")} (it restarts at 0 on containment and must climb to 20/40/60/80 for each stage).</div></section>
+  <section class="dsec"><h3>Trust changes and why</h3><div class="mut">Changes in how much agents trust each other's evidence, and suspicion flags, while the alert ran. "about this workload" marks the ones whose reason names it.</div>` +
+    (i.trust_changes.length ? i.trust_changes.slice().reverse().map(e => `<div class="ev cat-${e.category}" style="grid-template-columns:70px 72px 1fr"><span class="mut">${t(e.ts)}</span><span>${nb(e.node)}</span><span>${e.mentions_target ? '<span class="tag warn">about this workload</span> ' : ""}${esc(e.summary)}</span></div>`).join("") : '<div class="mut">No agent-trust changes during this alert.</div>') +
+    `<div class="mut" style="margin-top:6px">${tip("Workload trust", "workloadTrust")} now: ${Object.entries(i.current.per_agent || {}).map(([a, v]) => `${nb(a)} ${v.workload_trust ?? "-"}`).join(" ")}</div></section>
 
-  <section class="dsec"><h3>Rejected evidence and messages</h3>` + evList(i.rejected, "No evidence or message was rejected during this incident.") + `</section>
+  <section class="dsec"><h3>Messages that failed verification</h3>` + evList(i.rejected, "No evidence or message failed verification during this alert.") + `</section>
 
   <section class="dsec"><h3>What each agent observed and exchanged</h3>
-    <details class="rec"><summary>observations (${i.observations.length})</summary>${evList(i.observations, "none")}</details>
-    <details class="rec"><summary>evidence sent (${i.evidence_sent.length})</summary>${evList(i.evidence_sent, "none")}</details>
-    <details class="rec"><summary>evidence received and checked (${i.evidence_received.length})</summary>${evList(i.evidence_received, "none")}</details></section>`;
+    <details class="rec"><summary>Observations (${i.observations.length})</summary>${evList(i.observations, "none")}</details>
+    <details class="rec"><summary>Evidence Shared (${i.evidence_sent.length})</summary>${evList(i.evidence_sent, "none")}</details>
+    <details class="rec"><summary>Evidence Received and checked (${i.evidence_received.length})</summary>${evList(i.evidence_received, "none")}</details></section>`;
 }
 async function refreshIncident() {
   if (!openInc) return;
   const box = document.getElementById("incdetail");
   try {
     const r = await fetch("api/incident/" + openInc.replaceAll(":", "/"));
-    if (!r.ok) { box.innerHTML = '<button id="incback">← All incidents</button><div class="mut" style="margin:8px 0">This incident is not (or no longer) known to the dashboard.</div>'; }
+    if (!r.ok) { box.innerHTML = '<button id="incback">← All security alerts</button><div class="mut" style="margin:8px 0">This security alert is not (or no longer) known to the dashboard.</div>'; }
     else { const open = [...box.querySelectorAll("details")].map(d => d.open); box.innerHTML = renderIncident(await r.json()); box.querySelectorAll("details").forEach((d, k) => { if (open[k]) d.open = true; }); }
     const b = document.getElementById("incback"); if (b) b.onclick = () => { location.hash = "#incidents"; };
   } catch (e) {}
@@ -512,9 +602,9 @@ function renderEvaluation(v) {
   box.innerHTML = banner +
     `<div class="mut">${esc(v.title)} · ${m.trials ? m.trials + " seeded trials" : "trials: unknown"} · ${esc(m.errors_text || "")} · files from ${t(m.generated_at)} · ${(m.figures || []).length} graphs</div>` +
     (ten ? `<section class="evcard"><h3>${esc(ten.title)}</h3>${evBlocks(ten.blocks.filter(b => b.type !== "code").slice(0, 1))}</section>` : "") +
-    (res ? res.subsections.map(x => { const img = (x.blocks || []).filter(b => b.type === "image"), rest = (x.blocks || []).filter(b => b.type !== "image");
-        return `<section class="evcard" id="ev-${esc(x.id.replace(/\./g, "-"))}"><h3>${esc(x.id)} ${esc(x.title)} ${srcTag("SIMULATOR")}</h3>${evBlocks(img)}${evBlocks(rest)}</section>`; }).join("") : "") +
-    (lim ? `<section class="evcard"><h3>${esc(lim.title)}</h3>${evBlocks(lim.blocks)}</section>` : "") + about;
+    (res ? res.subsections.map(x => { const bl = x.blocks || [], vis = bl.filter(b => b.type === "image" || b.type === "table"), long = bl.filter(b => !(b.type === "image" || b.type === "table"));
+        return `<section class="evcard" id="ev-${esc(x.id.replace(/\./g, "-"))}"><h3>${esc(x.id)} ${esc(x.title)} ${srcTag("SIMULATOR")}</h3>${evBlocks(vis.filter(b => b.type === "image"))}${evBlocks(vis.filter(b => b.type === "table"))}${long.length ? dd("ev-" + x.id, "Explanation: how to read it and what the data shows", evBlocks(long), "evd") : ""}</section>`; }).join("") : "") +
+    (lim ? `<section class="evcard"><h3>${esc(lim.title)}</h3>${dd("ev-limits", "Show the limitations", evBlocks(lim.blocks), "evd")}</section>` : "") + about;
 }
 async function loadEvaluation() {
   if (evalLoaded) return; evalLoaded = true;
@@ -616,22 +706,26 @@ function renderState(s) {
   renderBanner(s);
   const cc = s.mode === "centralized" && s.central_compromised; if (cc) document.getElementById("sub").textContent += ` · controller compromise simulation: ${cc}`;
   renderDependencies(s.nodes);
-  document.getElementById("nodes").innerHTML = Object.entries(s.nodes).map(([id,n]) => `
-    <div class="card ${n.display_state === 'NEEDS_ATTENTION' ? 'ISOLATED' : n.phase}" data-node="${id}" title="Open agent ${id}'s view">
-      <div class="row"><b>${nb(id)} · ${esc(n.display_name || n.workload)}${n.display_name && n.display_name !== n.workload ? ` <span class="mut" title="the internal Kubernetes name of this workload">(${esc(n.workload)})</span>` : ""}${n.role && n.role !== n.workload ? ` <span class="tag" title="the behaviour this workload runs (configured in config/workloads.json)">role: ${esc(n.role)}</span>` : ""}</b><span>${n.watch ? '<span class="tag warn" title="Under watch after an unresolved investigation: heightened monitoring, human review needed. Nothing is isolated.">WATCH · review</span> ' : ''}<span class="tag ${n.display_state === 'NEEDS_ATTENTION' ? 'bad' : n.display_state === 'UNKNOWN' ? 'warn' : ''}">${esc((n.display_state || n.phase).replace('_', ' '))}</span></span></div>
-      ${s.mode === "centralized" ? `<div class="mut" style="margin:6px 0">centralized mode: this node is watched only by the single central controller (no agents, no votes, no trust scores, no staged return: straight back to full access)</div>` : `
-      ${n.attention ? `<div class="rv">NEEDS HUMAN ATTENTION: ${esc(n.attention.reason)}. Stays quarantined; NOT healthy.</div>` : ""}
+  document.getElementById("nodes").innerHTML = Object.entries(s.nodes).map(([id,n]) => {
+    const state = n.display_state || n.phase, dets = n.detections || [];
+    const conf = dets.length ? dets.map(d => `${esc(sigName(d.type))} ${d.confidence}`).join(" · ") : "none (everything looks normal)";
+    return `
+    <div class="card ${state === 'NEEDS_ATTENTION' ? 'ISOLATED' : n.phase}" data-node="${id}" title="Open agent ${id}'s view">
+      <div class="row"><b>${nb(id)} · ${esc(n.display_name || n.workload)}${n.display_name && n.display_name !== n.workload ? ` <span class="mut" title="the internal Kubernetes name of this workload">(${esc(n.workload)})</span>` : ""}${n.role && n.role !== n.workload ? ` <span class="tag" title="the behaviour this workload runs (configured in config/workloads.json)">role: ${esc(n.role)}</span>` : ""}</b><span>${n.watch ? '<span class="tag warn" title="Under watch after an unresolved investigation: heightened monitoring, a person should review. Nothing is isolated.">Under watch · review</span> ' : ''}<span class="tag ${state === 'NEEDS_ATTENTION' ? 'bad' : state === 'UNKNOWN' ? 'warn' : ''}" title="${esc(state)}">${esc(phaseName(state))}</span></span></div>
+      ${s.mode === "centralized" ? `<div class="mut" style="margin:6px 0">centralized mode: this node is watched only by the single central controller (no agents, no agreement of 3 of 4, no trust scores, no staged return: straight back to full access)</div>` : `
+      ${n.attention ? `<div class="rv">NEEDS HUMAN ATTENTION: ${esc(n.attention.reason)}. Stays isolated; NOT shown as healthy.</div>` : ""}
       ${n.attempt > 1 && n.phase !== "HEALTHY" ? `<div class="mut">recovery attempt ${n.attempt} of ${n.recovery ? n.recovery.max_attempts : "?"}${n.recovery && n.recovery.failure ? " · last attempt failed: " + esc(n.recovery.failure) : ""}</div>` : ""}
       ${stages(n)}
-      <div class="row"><span>workload trust</span><span>${n.workload_trust ?? "-"}</span></div>${bar(n.workload_trust)}
-      <div class="row"><span>agent trust (peers' median)</span><span>${n.agent_trust ?? "-"}
+      <div class="row"><span>${tip("Workload trust", "workloadTrust")}</span><span>${n.workload_trust ?? "-"}</span></div>${bar(n.workload_trust)}
+      <div class="row"><span>${tip("Agent trust", "agentTrust")}</span><span>${n.agent_trust ?? "-"}
         ${n.agent_trust != null && n.agent_trust < 50 ? '<span class="tag bad">SUSPECT</span>' : ''}</span></div>${bar(n.agent_trust)}
-      <div class="mut">views: ${Object.entries(n.agent_trust_views||{}).map(([p,v])=>`${p}:${v}`).join(" ")}
-        ${n.agent_up ? "" : " · <b style='color:var(--bad)'>agent unreachable</b>"}
-        ${n.agent_compromised_sim ? ` · <b style='color:var(--bad)'>sim: ${esc(n.agent_compromised_sim)}</b>` : ""}</div>`}
-      <div class="mut">${s.mode === "centralized" ? "detections:" : `W(T)=${n.score ? n.score.W : "-"}`} ${(n.detections||[]).map(d=>`· ${d.type} ${d.confidence}`).join(" ")}</div>
-      <div class="mut">last decision: ${n.last_decision ? `${n.last_decision.action} ${n.last_decision.stage||""} by ${n.last_decision.voters.join(",")} @ ${t(n.last_decision.t)}` : "none"}</div>
-    </div>`).join("");
+      ${n.agent_up ? "" : "<div class='mut'><b style='color:var(--bad)'>Agent unavailable</b> (the other agents carry on without it)</div>"}
+      ${n.agent_compromised_sim ? `<div class='mut'><b style='color:var(--bad)'>simulated compromise: ${esc(n.agent_compromised_sim)}</b></div>` : ""}`}
+      <div class="mut">${tip("Evidence confidence now", "confidence")}: ${conf}</div>
+      ${dd("card-" + id, "Technical details", `<div class="mut">other agents' trust in this agent: ${Object.entries(n.agent_trust_views||{}).map(([p,v])=>`${p}:${v}`).join(" ") || "-"}<br>
+        ${s.mode === "centralized" ? "" : `${tip("evidence score", "evidenceScore")} W(T) = ${n.score ? n.score.W : "-"}<br>`}
+        last agreement: ${n.last_decision ? `${esc(n.last_decision.action)} ${esc(n.last_decision.stage||"")} signed by ${n.last_decision.voters.join(",")} at ${t(n.last_decision.t)}` : "none"}</div>`)}
+    </div>`; }).join("");
 
   renderInvestigations(s.investigations);
   renderRecovery(s);
@@ -643,26 +737,25 @@ function renderState(s) {
     de.title = DLOG_HELP + " " + Object.entries(dl.agents).map(([a, d]) => `${a}: ${d.length} records` + (d.ok ? "" : ` — first broken record #${d.first_broken}: ${d.reason}`)).join(" | ");
   } else { de.textContent = ""; }
 
-  // decisions (expandable)
-  document.getElementById("dec").innerHTML = "<tr><th>time</th><th>source</th><th>action</th><th>target</th><th>epoch</th><th>stage</th><th>signed by</th><th></th></tr>" +
+  // agreements reached (expandable)
+  document.getElementById("dec").innerHTML = "<tr><th>time</th><th>source</th><th>what was agreed</th><th>agreed by</th><th></th></tr>" +
     s.decisions.map(d => { const k = `${d.action}:${d.target}:${d.epoch}:${d.stage}`; const open = expandedDec.has(k);
-      return `<tr class="click" data-dec="${esc(k)}"><td>${t(d.t)}</td><td>${srcTag(d.data_source)}</td><td>${d.action}</td><td>${d.target}</td><td>${d.epoch}</td><td>${esc(d.stage)}</td>
-        <td>${d.voters.map(nb).join(" ")}</td><td class="mut">${open ? "▾ hide" : "▸ why?"}</td></tr>` +
-        (open ? `<tr class="expand"><td colspan="8">${justification(d)}</td></tr>` : ""); }).join("");
+      return `<tr class="click" data-dec="${esc(k)}"><td>${t(d.t)}</td><td>${srcTag(d.data_source)}</td><td title="${esc(k)}">${plainProposal(k)}</td>
+        <td>${d.voters.map(nb).join(" ")}</td><td class="mut">${open ? "▾ hide" : "▸ technical details"}</td></tr>` +
+        (open ? `<tr class="expand"><td colspan="5">${justification(d)}</td></tr>` : ""); }).join("");
 
-  // pending votes: who voted, who hasn't and why
+  // waiting for agreement: every agent is in exactly one of five states; a missing vote is never approval
   const pd = s.pending_detail || {};
   document.getElementById("pend").innerHTML = Object.keys(pd).length ? Object.values(pd).map(p => `
-    <table style="margin-bottom:8px"><tr><th colspan="3">${esc(propText(p.proposal))} — ${p.voters.length}/3 signed
+    <table style="margin-bottom:8px"><tr><th colspan="3" title="${esc(p.proposal)}">${plainProposal(p.proposal)}: ${p.voters.length} of the 3 needed agree
       ${p.voters.length ? "(" + p.voters.map(nb).join(" ") + ")" : ""}</th></tr>
-      ${p.agents.map(a => `<tr><td>${nb(a.agent)}</td><td>${a.state === "voted" ? '<span class="tag ok">✔ voted</span>'
-          : a.state === "unreachable" ? '<span class="tag bad">unreachable</span>' : '<span class="tag">not voted</span>'}</td>
+      ${p.agents.map(a => `<tr><td>${nb(a.agent)}</td><td>${respTag(a.response || (a.state === "voted" ? "agrees" : a.state === "unreachable" ? "unavailable" : "not_yet"))}</td>
         <td>${esc(a.reason)}</td></tr>`).join("")}
-      ${p.excluded.map(x => `<tr><td></td><td><span class="tag warn">not counted</span></td>
+      ${p.excluded.map(x => `<tr><td></td><td><span class="resp failed_verification">⚠ Vote not counted</span></td>
         <td>${nb(x.viewer)} does not count ${nb(x.voter)}'s vote: ${esc(x.reason)} (trust ${x.trust})</td></tr>`).join("")}
-    </table>`).join("") : '<div class="mut">No proposals are waiting for votes.</div>';
+    </table>`).join("") : '<div class="mut">Nothing is waiting for agreement.</div>';
 
-  document.getElementById("rej").innerHTML = "<tr><th>time</th><th>from (mTLS)</th><th>claimed</th><th>reason</th><th>seen by</th></tr>" +
+  document.getElementById("rej").innerHTML = "<tr><th>time</th><th>sent by (verified identity)</th><th>claimed to be</th><th>why it failed</th><th>seen by</th></tr>" +
     s.rejections.map(r => `<tr><td>${t(r.t)}</td><td>${esc(r.from)}</td><td>${esc(r.claimed_signer)}</td><td>${esc(r.reason)}</td><td>${r.seen_by}</td></tr>`).join("");
 }
 document.getElementById("dec").onclick = e => { const r = e.target.closest("[data-dec]"); if (!r) return;
@@ -672,10 +765,10 @@ function justification(d) {
   const j = d.justification || {};
   let h = `<div class="mut">${esc(d.note)} · seen by ${(d.seen_by||[]).map(nb).join(" ")}</div>`;
   const isC = d.action === "CONTAIN";
-  if (j.votes) h += `<table><tr><th>signed vote</th>${isC ? "<th>voter's W(T)</th>" : ""}<th>signed at</th>${isC ? "<th>evidence cited</th>" : ""}</tr>${j.votes.map(v =>
+  if (j.votes) h += `<table><tr><th>signed vote</th>${isC ? "<th>evidence score (W(T))</th>" : ""}<th>signed at</th>${isC ? "<th>evidence cited (ids)</th>" : ""}</tr>${j.votes.map(v =>
       `<tr><td>${nb(v.voter)}</td>${isC ? `<td>${v.score}</td>` : ""}<td>${t(v.ts)}</td>${isC ? `<td>${v.evidence_ids}</td>` : ""}</tr>`).join("")}</table>`;
-  if (j.evidence && j.evidence.length) h += `<div style="margin-top:6px"><b>Evidence behind it</b></div><table><tr><th>from</th><th>type</th><th>confidence</th><th>what was seen</th></tr>${
-      j.evidence.map(e => `<tr><td>${nb(e.origin)}</td><td>${e.type}</td><td>${e.confidence}</td><td>${esc(e.summary)}</td></tr>`).join("")}</table>`;
+  if (j.evidence && j.evidence.length) h += `<div style="margin-top:6px"><b>Evidence behind it</b></div><table><tr><th>from</th><th>signal</th><th>confidence</th><th>what was seen</th></tr>${
+      j.evidence.map(e => `<tr><td>${nb(e.origin)}</td><td title="${esc(e.type)}">${esc(sigName(e.type))}</td><td>${e.confidence}</td><td>${esc(e.summary)}</td></tr>`).join("")}</table>`;
   if (j.score && j.score.items) h += scoreTable(j.score);
   if (j.my_validation) h += `<div class="mut">validation check: ${esc(j.my_validation)}</div>`;
   if (j.my_workload_trust != null) h += `<div class="mut">workload trust ${j.my_workload_trust} vs required ${j.stage_threshold}</div>`;
@@ -722,7 +815,7 @@ document.getElementById("drawer").addEventListener("mousemove", e => {
   svg.parentElement.nextElementSibling.textContent = `${p[1].toFixed(1)} at ${t(p[0])}`;
 });
 
-const SIG = [["network","outbound traffic"],["process","processes"],["file_integrity","file hashes"],["auth","failed logins"]];
+const SIG = [["network","Network Activity"],["process","Running Processes"],["file_integrity","File Changes"],["auth","Failed Logins"]];
 function sigCell(k, m) {
   if (!m) return '<span class="mut">n/a</span>';
   const bad = (m.confidence || 0) > 0, cls = bad ? "over" : "okv";
@@ -737,7 +830,7 @@ async function refreshDrawer() {
   let h = `<div class="top"><h1>${nb(id)} ${id === "CENTRAL" ? "central controller" : "agent " + id}'s view</h1><button id="dclose">Close ✕</button></div>`;
   if (!s) { dr.innerHTML = h + `<div class="dsec"><b style="color:var(--bad)">This agent is not responding.</b> It may have crashed or be partitioned; the others carry on without it.</div>`; return; }
   const th = s.thresholds || {};
-  h += `<div class="mut">snapshot at ${t(s.time)}${s.compromised ? ` · <b style="color:var(--bad)">compromise simulation: ${esc(s.compromised)}</b>` : ""}</div>`;
+  h += `<div class="mut">This is the agent's own technical view. Snapshot at ${t(s.time)}${s.compromised ? ` · <b style="color:var(--bad)">compromise simulation: ${esc(s.compromised)}</b>` : ""}</div>`;
   // observations
   h += `<div class="dsec"><h3>What it measures on each workload (value vs threshold)</h3><table><tr><th>workload</th>${SIG.map(x=>`<th>${x[1]}</th>`).join("")}<th>overall</th></tr>${
     Object.entries(s.observations||{}).map(([tg,m]) => `<tr><td>${nb(tg)} ${esc((s.targets[tg]||{}).workload||"")}${m.reachable===false?'<br><span class="over">unreachable</span>':""}</td>${
@@ -750,13 +843,13 @@ async function refreshDrawer() {
           f.vote_excluded ? '<span class="tag bad">votes ignored</span> ' : ""}${f.suspect ? '<span class="tag warn">SUSPECT</span>' : '<span class="mut">none</span>'}</td></tr>`; }).join("")}</table>
       <div class="hint">Dashed lines: SUSPECT below ${th.suspect_below}, votes ignored below ${th.vote_min_trust}. Hover the trend for exact values.</div></div>`;
     // scores
-    h += `<div class="dsec"><h3>Evidence it holds and its weighted score W(T) per workload</h3>${Object.entries(s.targets).map(([tg,x]) =>
+    h += `<div class="dsec"><h3>Evidence it holds and its ${tip("evidence score", "evidenceScore")} W(T) per workload</h3>${Object.entries(s.targets).map(([tg,x]) =>
       `<div style="margin:6px 0"><b>${nb(tg)} W(${tg}) = ${x.score ? x.score.W : 0}</b> <span class="mut">(votes to contain at ≥ ${th.score_threshold}, only if it also sees the anomaly itself)</span>${x.score && x.score.items && x.score.items.length ? scoreTable(x.score) : ""}</div>`).join("")}
       <table><tr><th colspan="5">evidence pool (last ${(s.recent_evidence||[]).length})</th></tr>${(s.recent_evidence||[]).slice().reverse().map(e =>
         `<tr><td>${t(e.timestamp)}</td><td>${nb(e.origin)}→${e.target}</td><td>${e.type}</td><td>${e.confidence}</td><td>${esc(e.summary)}</td></tr>`).join("")}</table></div>`;
     // votes
-    h += `<div class="dsec"><h3>Its votes and why</h3><table><tr><th>proposal</th><th>its vote</th><th>reason</th></tr>${
-      Object.values(s.vote_reasons||{}).map(v => `<tr><td>${esc(propText(v.proposal))}</td><td>${v.voted ? '<span class="tag ok">✔ votes yes</span>' : '<span class="tag">not voting</span>'}</td><td>${esc(v.reason)}</td></tr>`).join("")}</table>
+    h += `<div class="dsec"><h3>Its decisions and why</h3><table><tr><th>what</th><th>its answer</th><th>reason</th></tr>${
+      Object.values(s.vote_reasons||{}).map(v => `<tr><td title="${esc(v.proposal)}">${plainProposal(v.proposal)}</td><td>${respTag(v.voted ? "agrees" : String(v.reason).startsWith("re-checking") ? "not_yet" : "disagrees")}</td><td>${esc(v.reason)}</td></tr>`).join("")}</table>
       ${Object.entries(s.pending_votes_detail||{}).map(([k,p]) => `<div class="mut" style="margin-top:4px">pending ${esc(propText(k))}: signed by ${p.voters.join(", ")||"nobody"}, counted ${p.counted.length}/${p.needed}${
         p.excluded.length ? `, not counting ${p.excluded.map(x=>x.voter+" (trust "+x.trust+")").join(", ")}` : ""}</div>`).join("")}</div>`;
   }
@@ -786,7 +879,7 @@ async function refreshMetrics() {
     for (const r of rows) { const k = r.incident + "|" + (r.data_source || "UNKNOWN"); (by[k] ||= []).push(r); }
     const keys = ["ttd_s","tti_s","ttr_s","ttv_s","ttf_s","trust_recovery_s","time_to_flag_s"];
     const min = (rs,k) => { const v = rs.map(r=>r[k]).filter(x=>x!=null); return v.length ? Math.min(...v).toFixed(1) : "-"; };
-    document.getElementById("met").innerHTML = "<tr><th>source</th><th>scenario</th><th>target</th><th>mode</th><th>TTD</th><th>TTI</th><th>TTR</th><th>validated</th><th>full</th><th>trust-recovery</th><th>flag attacker</th><th>false isolation</th><th>availability</th></tr>" +
+    document.getElementById("met").innerHTML = '<tr><th>source</th><th>scenario</th><th>workload</th><th>mode</th><th title="TTD">detected</th><th title="TTI">isolated</th><th title="TTR">replacement started</th><th title="TTV">Recovery Check passed</th><th title="TTF">normal access restored</th><th title="trust recovery">trust back to normal</th><th title="time to flag the attacker">attacker flagged</th><th>wrongly isolated?</th><th>availability</th></tr>' +
       Object.values(by).map(rs => `<tr><td>${srcTag(rs[0].data_source)}</td><td>${esc(rs[0].scenario)}</td><td>${rs[0].target}</td><td>${rs[0].mode}</td>${keys.map(k=>`<td>${min(rs,k)}</td>`).join("")}<td>${rs.some(r=>r.false_isolation)?'<b style="color:var(--bad)">YES</b>':'no'}</td><td>${rs.find(r=>r.availability!=null)?.availability ?? "-"}</td></tr>`).join("");
   } catch (e) {}
 }

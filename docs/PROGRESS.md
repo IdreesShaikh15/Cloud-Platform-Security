@@ -467,3 +467,31 @@ Conflicts flagged for decision: (1) obstruct's "obstructer loses trust" is NOT a
 ### Cluster rebuild / restart for Phase C
 * **Rebuild** `cr-agent:1.0` (re-check, obstruct, status metadata, config fields) and `cr-dashboard:1.0` (names, Services panel). **Apply** `k8s/resilience/10-config.yaml` (adds display names, dependencies, priorities per node; no `persist_recheck_s`, so the re-check stays off). **Restart** the agents and the dashboard. **Important order:** apply the config only together with the new agent image (the old image rejects unknown node keys). The app image, RBAC, webhook and `10-healthcare-apps.yaml` are unchanged. To try the re-check live, add `"quorum": {"persist_recheck_s": 6}` to the config JSON, apply and restart the agents.
 * Commit **`04e059f`** (Healthcare Phase C), pushed (no force) to `claude/cyber-resilience-platform-xxs3oh` and `claude/inspiring-thompson-ik54a3`.
+
+## Healthcare focus, Phase D: plain-English interface
+
+**Status: DONE in the simulator and tests; NOT run against a real cluster.** Write-up: `docs/DASHBOARD.md` sections 15-19. Presentation only: no agent code, protocol name, signed content, log format, quorum policy or security behaviour changed; the backend additions are read-only fields on the dashboard's own JSON (`response` per agent, `responses` per incident proposal). All four agents remain identical.
+
+### What was done
+* **One vocabulary** (a single table, `const V`, in `dashboard/index.html`): tabs Overview / Security Alerts / Investigate / Recovery / Performance Results / Activity Log; Network Activity, Running Processes, File Changes (and Failed Logins); Evidence Shared, Agent Decision, Agreement Reached (3 of 4), Isolation, Recovery Check, Normal Access Restored; used on the cards, timeline filters and rows, stage strip, tables, incident view, recovery tab, drawer and docs. Raw ids remain in tooltips and "Technical details". Element ids, tab ids and hash routes unchanged.
+* **Tooltips** (keyboard-reachable, with ⓘ) for workload trust, agent trust, agreement (3 of 4), evidence score, evidence confidence, Recovery Check. **W(T), confidence numbers, proposal keys, signers' scores and trust views** moved into collapsed **Technical details** (they stay open across the refresh).
+* **Four separate explanations** (workload trust, agent trust, evidence confidence, Recovery Check) in a collapsible Overview section; no combined "security score" (a test asserts the phrase appears once, in the sentence that denies it).
+* **Five honest agent states** (Agrees, Disagrees, Unavailable, Not yet responded, Message failed verification), in the Waiting-for-agreement panel and the incident's "Who agreed" table; **only a counted signed vote is "Agrees"**; waiting out the persistence re-check is "Not yet responded", not "Disagrees"; a missing vote is never approval.
+* **Incident view:** evidence grouped by agent and signal (latest reading + number of readings, full list expandable).
+* **Your decision 1:** the "REFUSED 1" on a step another agent had already done is now **"skipped: already done by another agent"**; only a missing valid 3-of-4 agreement (`refused_certificate`) is "REFUSED".
+* **Performance Results:** summary, graphs and tables stay visible; long explanations (and the limitations) are collapsed.
+
+### Test evidence (commands run, actual results)
+* `python3 -m pytest -q tests` -> **504 passed in 981 s, 0 failed** (494 + 10 new in `tests/test_plain_english.py`).
+* `python3 sim/local_demo.py` -> **12 of 12 PASS**.
+* New tests: the 14 requested terms and the single vocabulary table; tooltips; four explanations and no combined score; `agent_response` precedence (five states, missing vote never approval, the re-check wording matches the agent's); pending-votes view with all five states and with a failed-verification sender; the same in a browser; an end-to-end **obstruct** run through the real simulated agents showing the obstructing agent as "Disagrees" with its reason on every proposal and B, C, D as "Agrees"; the incident view rendered with crafted data (grouped evidence with counts, raw values only in technical details, "skipped 1" vs "REFUSED 1", all five state labels); outcome/stage/action words; the overview in a browser (plain words, tooltips, technical details open without opening the drawer and surviving the refresh).
+* Existing tests edited for the new wording: `test_incident_detail.py` (browser test strings), `test_evaluation_tab.py` (explanations are collapsed by default: text read with `text_content`, collapsed/visible assertions added).
+* Screenshots: `docs/img/dashboard-pD-01..04-*.png` (simulator).
+
+### Limitations
+* The agents' own event sentences and the backend's "next step / blocked because" wording are unchanged technical text (they appear in the activity list and the incident's "Where it stands now"). The agent drawer is deliberately the technical view.
+* "Disagrees" means the agent recorded a reason for not voting; the protocol has no explicit "no" vote. Past states are reconstructed from what the dashboard recorded.
+* Not run on a real cluster.
+
+### Cluster rebuild / restart for Phase D
+* **Rebuild `cr-dashboard:1.0` only** (`scripts/build-images.sh`) and **restart the dashboard** (`kubectl -n resilience rollout restart deploy/dashboard`). **No agent rebuild, no manifest or config change, no app image change.** The laptop dashboard (`scripts/laptop-dashboard.sh`) needs only a `git pull`. It works with the old agents too (the five states are computed by the dashboard), but the new agent image from Phase B/C is still needed for the cluster identity, telemetry age, display names and obstruct.

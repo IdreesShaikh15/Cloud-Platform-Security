@@ -225,3 +225,58 @@ switching pages is a full reload with no state carried over.
   service that calls it, directly or through another), "ISOLATED NOW" while it is, and the suggested recovery order with its rationale. The recovery order is **display only**: it does not change what the agents do. If the agents do not report this metadata (older image) the panel stays hidden; nothing is invented.
 * **Synthetic data:** a permanent chip "SYNTHETIC DATA ONLY: no real patient information" sits beside the Demo / Live toggle on both pages.
 * **Scenarios** in the Demo Mode picker are described in healthcare terms (`sim/scenarios.py`), and a new one, "A compromised agent refuses to vote while the EHR API is attacked", shows the withheld votes in the incident view's "did not vote, and why" column with the reason (`docs/img/dashboard-pC-04-obstruct-incident.png`).
+
+# Healthcare Phase D: a plain-English interface
+
+Presentation only: protocol names, signed message contents, logs, API fields and every security behaviour are unchanged (the same JSON
+the dashboard read before; the only backend additions are the per-agent `response` field described below). Tab ids, hash routes (`#incident/...`) and
+element ids are unchanged.
+
+## 15. One vocabulary
+All wording lives in one table in `dashboard/index.html` (`const V`, helpers `stageName`, `phaseName`, `catName`, `sigName`, `actName`, `outcomeTxt`, `plainProposal`).
+Raw ids stay available as tooltips (`title=`) and inside "Technical details".
+
+| You see | Raw name it stands for |
+|---|---|
+| Security Alerts (tab) | Incidents |
+| Investigate (tab) | Investigations |
+| Recovery (tab) | Recovery |
+| Performance Results (tab) | Evaluation |
+| Activity Log (tab) | Audit |
+| Network Activity / Running Processes / File Changes / Failed Logins | NETWORK / PROCESS / FILE_INTEGRITY / AUTH |
+| Evidence Shared / Evidence Received / Failed Verification / Evidence Score | EVIDENCE_SENT / EVIDENCE_RECEIVED / REJECTED / SCORE |
+| Agent Decision / Decision Withheld | VOTE_CAST / VOTE_WITHHELD |
+| Agreement Reached (3 of 4) | QUORUM (3-of-4 certificate) |
+| Isolation | stage QUARANTINE (and the `CONTAIN` action) |
+| Limited Access / Monitored Access / Confirmed by Peers | RESTRICTED / MONITORED / PEER_VALIDATED |
+| Normal Access Restored | stage FULL |
+| Recovery Check | validation (`VALIDATE`) |
+
+## 16. Tooltips and technical details
+* A dotted underline with ⓘ marks an idea with a tooltip (also reachable with the keyboard): Workload trust, Agent trust, Agreement (3 of 4), Evidence score, Evidence confidence, Recovery Check.
+* Raw identifiers, **W(T)**, evidence confidence numbers, proposal keys (`CONTAIN:C:1:`), signers' scores and the peers' trust views sit in collapsed **Technical details** sections (node cards, the incident's trigger / actions / votes, the agreements table). They stay open across the one-second refresh once you open them.
+* **Four separate explanations** (Overview, "What do the numbers on these cards mean?"): workload trust, agent trust, evidence confidence, Recovery Check (pass or fail). There is deliberately **no combined "security score"**.
+
+## 17. Five honest states for an agent (a missing vote is never approval)
+Every agent, for every proposal, is in exactly one state (`dashboard/server.py: agent_response`), in the Waiting for agreement panel and the incident's "Who agreed" table:
+
+| State | Means | How it is decided |
+|---|---|---|
+| ✔ Agrees | a signed vote from it was **counted** | the only state that counts as approval |
+| ✖ Disagrees | it answered and recorded a reason for not voting (for example "own observation normal", or the simulated obstruction) | the agent's own recorded reason |
+| ⛔ Unavailable | it is not answering | its `/status` is unreachable |
+| … Not yet responded | it is up but has recorded nothing for this yet, or it is waiting out the persistence re-check | no reason recorded, or a reason starting "re-checking" (the agent's own wording, checked by a test) |
+| ⚠ Message failed verification | a message from it failed signature / identity checks within the last 2 minutes and was not counted | the receivers' rejection records (`from` = the verified sender) |
+
+Precedence: Agrees > Unavailable > Failed verification > Disagrees > Not yet responded. In the incident view a past proposal is classified from what the dashboard recorded (signed votes, withheld-vote events, rejected-message events) and the agent's availability now, so an agent that has since gone down shows "Unavailable" unless it had voted.
+
+## 18. Other changes
+* **Incident view, evidence grouped by agent and signal:** one row per agent and signal with the **latest reading** and the number of readings; "all N different readings" opens the full list with times and confidence values.
+* **"REFUSED" no longer means two things:** a step that another agent had already done is **"skipped: already done by another agent"** (record type `refused_stale`, shown as "skipped N"); only a missing valid 3-of-4 agreement (`refused_certificate`) is **REFUSED**.
+* **Performance Results (the evaluation tab):** the twelve-line summary, every graph and every table stay visible; the long explanations are collapsed under "Explanation: how to read it and what the data shows" (and the limitations under "Show the limitations").
+* Tables use plain headings ("How fast it went": detected, isolated, replacement started, Recovery Check passed, normal access restored); the agent's own sentences in the Live activity list (written by the agents) are unchanged.
+
+## 19. Limits
+* The agents' own event sentences (for example "Agent B sees database (D) as normal on all 4 signals") and the backend's "next step / blocked because" texts are still written in the agents' technical wording; they appear in the activity list and the incident's "Where it stands now".
+* The agent drawer (click a node card) is deliberately the technical view; it uses the plain labels but keeps its numbers.
+* Not run on a real cluster; rendering was checked in Chromium with the simulator and stand-in agents.

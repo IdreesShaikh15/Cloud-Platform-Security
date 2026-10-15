@@ -376,16 +376,16 @@ def test_incident_view_in_a_browser(monkeypatch):
             pg.click("#inctable tr.click")
             pg.wait_for_selector("#incdetail h2")
             assert pg.evaluate("location.hash") == "#incident/SIMULATOR/C/1" and pg.is_visible("#incdetail") and not pg.is_visible("#inclist")
-            text = pg.inner_text("#incdetail")
-            for want in ("Where it stands now", "What triggered it", "PROPOSED", "AUTHORIZED", "ATTEMPTED", "VERIFIED", "Votes and who signed",
-                         "Recovery attempts", "Investigations", "Trust changes and why", "Rejected evidence",
-                         "Blocked because", "workload trust 5 is below the 20 needed", "UNKNOWN", "(sent ×2)"):
+            text = pg.text_content("#incdetail")                                              # includes the collapsed "technical details" and lists
+            for want in ("Where it stands now", "What triggered it", "Proposed", "Agreed (3 of 4)", "Attempted", "Verified", "Who agreed",
+                         "Recovery attempts", "Investigate", "Trust changes and why", "Messages that failed verification",
+                         "Blocked because", "workload trust 5 is below the 20 needed", "UNKNOWN", "(sent ×2)", "Technical details"):
                 assert want in text, want
             rows = pg.locator("#incdetail table").nth(1).locator("tr").all_inner_texts()
-            iso = next(r for r in rows if r.startswith("isolate"))
-            assert iso.count("YES") == 4                                                      # proposed, authorized, attempted, verified
-            assert any("UNKNOWN" in r for r in rows if r.startswith("redeploy"))              # a timeout nobody could read is shown as unknown
-            assert any("NO" in r.split("YES")[-1] for r in rows if r.startswith("move to RESTRICTED"))   # attempted but not verified
+            iso = next(r for r in rows if r.startswith("Isolation"))
+            assert iso.count("YES") == 4                                                      # proposed, agreed, attempted, verified
+            assert any("UNKNOWN" in r for r in rows if r.startswith("Replace it from the known-good copy"))   # a timeout nobody could read is shown as unknown
+            assert any("NO" in r.split("YES")[-1] for r in rows if r.startswith("Access step: Limited Access"))   # attempted but not verified
             pg.click("#incback")
             pg.wait_for_selector("#inclist:not([hidden])")
             assert pg.is_visible("#inclist") and not pg.is_visible("#incdetail")
