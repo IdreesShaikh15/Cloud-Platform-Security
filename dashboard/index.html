@@ -9,7 +9,7 @@
   :root { --bg:#0f1419; --card:#1a2129; --card2:#222b35; --line:#30363d; --fg:#e6edf3; --mut:#8b949e;
           --ok:#3fb950; --warn:#d29922; --bad:#f85149; --info:#58a6ff;
           /* node identity (validated categorical slots 1-4, dark steps); the letter badge is the primary cue */
-          --node-A:#3987e5; --node-B:#d95926; --node-C:#199e70; --node-D:#c98500; --node-CENTRAL:#8b949e; }
+          --node-A:#3987e5; --node-B:#d95926; --node-C:#199e70; --node-D:#c98500; --node-E:#8957e5; --node-F:#cf4f9b; --node-CENTRAL:#8b949e; }
   * { box-sizing:border-box; }
   body { margin:0; padding:16px; background:var(--bg); color:var(--fg); font:14px/1.4 system-ui, sans-serif; }
   h1 { font-size:18px; margin:0 0 4px; } .mut { color:var(--mut); font-size:12px; }
@@ -692,7 +692,7 @@ function renderDependencies(nodes) {
     order.map(id => {
       const n = nodes[id], deps = dependentsOf(id, nodes), now = ["ISOLATED", "RECOVERING", "VALIDATING"].includes(n.phase);
       const calls = (n.depends_on || []).map(d => `${nb(d)} ${dn(d)}`).join(", ") || '<span class="mut">nothing</span>';
-      const impact = deps.length ? deps.map(d => `the ${dn(d)} cannot ${esc(nodes[d].provides || "do its job")}`).join("; ")
+      const impact = deps.length ? deps.map(d => `the ${dn(d)} cannot ${esc((nodes[d].needs_for || {})[id] || nodes[d].provides || "do its job")}`).join("; ")
         : `no other service depends on it; its own job (${esc(n.provides || "its function")}) stops`;
       return `<tr><td>${nb(id)} <b>${dn(id)}</b></td><td>${calls}</td>
         <td>${now ? '<span class="tag bad">ISOLATED NOW</span> ' : ""}${impact}.</td>
@@ -718,9 +718,10 @@ function renderState(s) {
       ${n.attempt > 1 && n.phase !== "HEALTHY" ? `<div class="mut">recovery attempt ${n.attempt} of ${n.recovery ? n.recovery.max_attempts : "?"}${n.recovery && n.recovery.failure ? " · last attempt failed: " + esc(n.recovery.failure) : ""}</div>` : ""}
       ${stages(n)}
       <div class="row"><span>${tip("Workload trust", "workloadTrust")}</span><span>${n.workload_trust ?? "-"}</span></div>${bar(n.workload_trust)}
+      ${n.has_agent === false ? `<div class="mut" title="This workload has no security agent of its own. All four agents (A, B, C, D) watch it and a change needs 3 of the 4 to agree, exactly as for the other workloads.">Watched by all four agents (no agent of its own) · placed on Minikube node ${esc(n.zone || "-")}</div>` : `
       <div class="row"><span>${tip("Agent trust", "agentTrust")}</span><span>${n.agent_trust ?? "-"}
-        ${n.agent_trust != null && n.agent_trust < 50 ? '<span class="tag bad">SUSPECT</span>' : ''}</span></div>${bar(n.agent_trust)}
-      ${n.agent_up ? "" : "<div class='mut'><b style='color:var(--bad)'>Agent unavailable</b> (the other agents carry on without it)</div>"}
+        ${n.agent_trust != null && n.agent_trust < 50 ? '<span class="tag bad">SUSPECT</span>' : ''}</span></div>${bar(n.agent_trust)}`}
+      ${n.has_agent === false || n.agent_up ? "" : "<div class='mut'><b style='color:var(--bad)'>Agent unavailable</b> (the other agents carry on without it)</div>"}
       ${n.agent_compromised_sim ? `<div class='mut'><b style='color:var(--bad)'>simulated compromise: ${esc(n.agent_compromised_sim)}</b></div>` : ""}`}
       <div class="mut">${tip("Evidence confidence now", "confidence")}: ${conf}</div>
       ${dd("card-" + id, "Technical details", `<div class="mut">other agents' trust in this agent: ${Object.entries(n.agent_trust_views||{}).map(([p,v])=>`${p}:${v}`).join(" ") || "-"}<br>

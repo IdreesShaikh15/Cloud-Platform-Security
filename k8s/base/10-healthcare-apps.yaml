@@ -26,6 +26,8 @@ spec:
         - {name: RECORDS_URL, value: "http://records-api:8080"}
         - {name: DATABASE_URL, value: "http://database:8080"}
         - {name: PORTAL_URL, value: "http://patient-portal:8080"}
+        - {name: LAB_URL, value: "http://lab-results:8080"}
+        - {name: MEDICATION_URL, value: "http://medication-service:8080"}
         - name: POD_IP
           valueFrom: {fieldRef: {fieldPath: status.podIP}}
         - name: POD_NAME
@@ -70,6 +72,8 @@ spec:
         - {name: RECORDS_URL, value: "http://records-api:8080"}
         - {name: DATABASE_URL, value: "http://database:8080"}
         - {name: PORTAL_URL, value: "http://patient-portal:8080"}
+        - {name: LAB_URL, value: "http://lab-results:8080"}
+        - {name: MEDICATION_URL, value: "http://medication-service:8080"}
         - name: POD_IP
           valueFrom: {fieldRef: {fieldPath: status.podIP}}
         - name: POD_NAME
@@ -114,6 +118,8 @@ spec:
         - {name: RECORDS_URL, value: "http://records-api:8080"}
         - {name: DATABASE_URL, value: "http://database:8080"}
         - {name: PORTAL_URL, value: "http://patient-portal:8080"}
+        - {name: LAB_URL, value: "http://lab-results:8080"}
+        - {name: MEDICATION_URL, value: "http://medication-service:8080"}
         - name: POD_IP
           valueFrom: {fieldRef: {fieldPath: status.podIP}}
         - name: POD_NAME
@@ -158,6 +164,8 @@ spec:
         - {name: RECORDS_URL, value: "http://records-api:8080"}
         - {name: DATABASE_URL, value: "http://database:8080"}
         - {name: PORTAL_URL, value: "http://patient-portal:8080"}
+        - {name: LAB_URL, value: "http://lab-results:8080"}
+        - {name: MEDICATION_URL, value: "http://medication-service:8080"}
         - name: POD_IP
           valueFrom: {fieldRef: {fieldPath: status.podIP}}
         - name: POD_NAME
@@ -174,6 +182,98 @@ kind: Service
 metadata: {name: database, namespace: healthcare}
 spec:
   selector: {app: database}
+  ports: [{port: 8080, targetPort: 8080}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lab-results
+  namespace: healthcare
+  labels: {app: lab-results, resilience.io/node: "E"}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}          # recovery must fully replace the compromised pod
+  selector: {matchLabels: {app: lab-results}}
+  template:
+    metadata:
+      labels: {app: lab-results, resilience.io/node: "E"}
+    spec:
+      nodeSelector: {resilience.io/zone: "b"}
+      containers:
+      - name: app
+        image: cr-healthcare-app:1.0
+        imagePullPolicy: IfNotPresent
+        ports: [{containerPort: 8080}]
+        env:
+        - {name: ROLE, value: "lab-results"}
+        - {name: AUTH_URL, value: "http://auth-service:8080"}
+        - {name: RECORDS_URL, value: "http://records-api:8080"}
+        - {name: DATABASE_URL, value: "http://database:8080"}
+        - {name: PORTAL_URL, value: "http://patient-portal:8080"}
+        - {name: LAB_URL, value: "http://lab-results:8080"}
+        - {name: MEDICATION_URL, value: "http://medication-service:8080"}
+        - name: POD_IP
+          valueFrom: {fieldRef: {fieldPath: status.podIP}}
+        - name: POD_NAME
+          valueFrom: {fieldRef: {fieldPath: metadata.name}}
+        readinessProbe:
+          httpGet: {path: /health, port: 8080}
+          periodSeconds: 2
+        resources:
+          requests: {cpu: 50m, memory: 64Mi}
+          limits: {cpu: 500m, memory: 256Mi}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: lab-results, namespace: healthcare}
+spec:
+  selector: {app: lab-results}
+  ports: [{port: 8080, targetPort: 8080}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: medication-service
+  namespace: healthcare
+  labels: {app: medication-service, resilience.io/node: "F"}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}          # recovery must fully replace the compromised pod
+  selector: {matchLabels: {app: medication-service}}
+  template:
+    metadata:
+      labels: {app: medication-service, resilience.io/node: "F"}
+    spec:
+      nodeSelector: {resilience.io/zone: "c"}
+      containers:
+      - name: app
+        image: cr-healthcare-app:1.0
+        imagePullPolicy: IfNotPresent
+        ports: [{containerPort: 8080}]
+        env:
+        - {name: ROLE, value: "medication-service"}
+        - {name: AUTH_URL, value: "http://auth-service:8080"}
+        - {name: RECORDS_URL, value: "http://records-api:8080"}
+        - {name: DATABASE_URL, value: "http://database:8080"}
+        - {name: PORTAL_URL, value: "http://patient-portal:8080"}
+        - {name: LAB_URL, value: "http://lab-results:8080"}
+        - {name: MEDICATION_URL, value: "http://medication-service:8080"}
+        - name: POD_IP
+          valueFrom: {fieldRef: {fieldPath: status.podIP}}
+        - name: POD_NAME
+          valueFrom: {fieldRef: {fieldPath: metadata.name}}
+        readinessProbe:
+          httpGet: {path: /health, port: 8080}
+          periodSeconds: 2
+        resources:
+          requests: {cpu: 50m, memory: 64Mi}
+          limits: {cpu: 500m, memory: 256Mi}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: medication-service, namespace: healthcare}
+spec:
+  selector: {app: medication-service}
   ports: [{port: 8080, targetPort: 8080}]
 ---
 apiVersion: apps/v1
@@ -202,6 +302,8 @@ spec:
         - {name: RECORDS_URL, value: "http://records-api:8080"}
         - {name: DATABASE_URL, value: "http://database:8080"}
         - {name: PORTAL_URL, value: "http://patient-portal:8080"}
+        - {name: LAB_URL, value: "http://lab-results:8080"}
+        - {name: MEDICATION_URL, value: "http://medication-service:8080"}
         - name: POD_IP
           valueFrom: {fieldRef: {fieldPath: status.podIP}}
         - name: POD_NAME

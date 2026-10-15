@@ -34,11 +34,11 @@ rules:
   verbs: ["create"]                       # create cannot be limited by name; the webhook limits what may be created
 - apiGroups: ["networking.k8s.io"]
   resources: ["networkpolicies"]
-  resourceNames: ["resilience-isolate-patient-portal", "resilience-isolate-auth-service", "resilience-isolate-records-api", "resilience-isolate-database"]  # gen:policy-names
+  resourceNames: ["resilience-isolate-patient-portal", "resilience-isolate-auth-service", "resilience-isolate-records-api", "resilience-isolate-database", "resilience-isolate-lab-results", "resilience-isolate-medication-service"]  # gen:policy-names
   verbs: ["get", "update", "delete"]
 - apiGroups: ["apps"]
   resources: ["deployments"]
-  resourceNames: ["patient-portal", "auth-service", "records-api", "database"]  # gen:workload-names
+  resourceNames: ["patient-portal", "auth-service", "records-api", "database", "lab-results", "medication-service"]  # gen:workload-names
   verbs: ["get", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -94,7 +94,7 @@ metadata: {name: quorum-webhook-reader, namespace: healthcare}
 rules:
 - apiGroups: ["apps"]
   resources: ["deployments"]
-  resourceNames: ["patient-portal", "auth-service", "records-api", "database"]  # gen:workload-names
+  resourceNames: ["patient-portal", "auth-service", "records-api", "database", "lab-results", "medication-service"]  # gen:workload-names
   verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

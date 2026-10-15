@@ -57,10 +57,10 @@ class HttpTelemetrySource:
     def __init__(self, cfg: ClusterConfig, timeout_s: float = 1.5):
         self.cfg = cfg
         self.timeout = timeout_s
-        self._pool = ThreadPoolExecutor(max_workers=len(cfg.nodes))
+        self._pool = ThreadPoolExecutor(max_workers=len(cfg.targets))
 
     def _one(self, node_id: str) -> Snapshot:
-        base = self.cfg.nodes[node_id].telemetry_url.rstrip("/")
+        base = self.cfg.targets[node_id].telemetry_url.rstrip("/")
         now = time.time()
         try:
             code, _ = _get_json(f"{base}/health", self.timeout)
@@ -77,7 +77,7 @@ class HttpTelemetrySource:
         return self._one(target)
 
     def collect(self) -> Dict[str, Snapshot]:
-        ids = list(self.cfg.nodes)
+        ids = list(self.cfg.targets)
         return dict(zip(ids, self._pool.map(self._one, ids)))
 
 

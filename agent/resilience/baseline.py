@@ -53,7 +53,7 @@ class CentralController:
         self.compromise = compromise or CompromiseSource(path=None)
         self.clock = clock
         self.detector = Detector(cfg.baseline_hashes, cfg.process_allowlist)
-        self.states: Dict[str, CentralState] = {n: CentralState() for n in cfg.nodes}
+        self.states: Dict[str, CentralState] = {n: CentralState() for n in cfg.targets}
         self.snaps: Dict[str, Snapshot] = {}
         self.latest: Dict[str, list] = {}
         self.decisions: List[dict] = []

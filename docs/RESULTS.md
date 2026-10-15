@@ -1,5 +1,7 @@
 # Evaluation results (Phase 5)
 
+> **Phase G note:** every result in this file was produced on the **four-workload profile** (`config/workloads-four.json`, which `scripts/evaluate.py` pins). The default configuration now has six workloads (docs/WORKLOADS.md); the evaluation was not re-run on it, so nothing here is a six-workload result.
+
 > **These are simulator results.** Telemetry (what the monitored workloads look like) and the Kubernetes API are
 > simulated (`sim/world.py`). Everything above that line is the real code: the agents, Ed25519 signatures, gRPC over mTLS
 > on localhost, weighted evidence, the 3-of-4 quorum, quorum certificates and the admission policy, the recovery pipeline.

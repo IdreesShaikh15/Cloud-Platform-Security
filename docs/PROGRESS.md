@@ -555,3 +555,38 @@ Nothing in Phases B-F has been run on a real cluster; all results are simulator 
 6. `python3 scripts/verify-baseline.py` -> four `ok`; `scripts/verify-isolation.sh` once (see its header); then `scripts/laptop-dashboard.sh` and follow `docs/LIVE_DEMO.md` section 2.
 Nothing else changed: no new manifests, no new RBAC rules, no new CRDs. To try the re-check live: add `"quorum": {"persist_recheck_s": 6}` to the config JSON, apply, restart the agents.
 * Commit **`04854be`** (Healthcare Phase F), pushed (no force) to `claude/cyber-resilience-platform-xxs3oh` and `claude/inspiring-thompson-ik54a3`.
+
+## Stretch Phase G: six healthcare workloads
+
+**Status: DONE in the simulator and by tests; NOT run on a real cluster / Minikube.** Rollback point = the Phase F version, commit **`c311502`**.
+
+### What was done
+* **Agents and workloads are now separate.** Still exactly **4 identical peer agents (A-D)** and the **3-of-4 quorum, unchanged**. Every agent watches every workload (A-F); E and F have no agent of their own. Code: `ClusterConfig.extra_workloads` / `.targets` (`agent/resilience/config.py`); the agent state, status, certificate target check, admission policy, baseline controller and telemetry source use `targets`; everything about voting, trust, executor ranking and peers still uses the four agents (`nodes`).
+* **Added through the workload config file only** (`config/workloads.json`, now six workloads; validated: E/F optional, `zone` required for them, `needs_for` must be a subset of `depends_on`, priorities 1..N). `config/workloads-four.json` is the exact Phase F profile; `scripts/evaluate.py` pins it so the recorded results (RESULTS.md) remain reproducible.
+* **New workloads, synthetic data only** (`apps/src/app.py`): Laboratory Results Service (`lab-results`, node E, Minikube node b) and Medication Service (`medication-service`, node F, node c); invented lab values and generic medication names; token-protected like the EHR API; the portal shows them at `/api/labs`, `/api/medications` (`/api/patients` and the availability probe are unchanged).
+* **Dependency / impact information**: Laboratory Results and Medication depend on the Login & Access Service and the Clinical Database; the portal depends on them; `needs_for` words the impact ("the Patient Portal cannot show laboratory results"). Presentation only. Priorities: 1 Clinical Database, 2 Login, 3 EHR API, 4 Laboratory, 5 Medication, 6 Portal.
+* **Generator** renders the six Deployments/Services (with `LAB_URL`/`MEDICATION_URL`), the `extra_workloads` block and the RBAC `resourceNames`; with `workloads-four.json` the Phase F files are reproduced exactly (checked before regenerating). `tripwire-test.sh` accepts A-F; `verify-baseline.py` checks every workload.
+* **Simulator**: six workloads; three new healthcare scenarios (`lab-results-tampered`, `medication-failed-logins`, `database-cascade`) listed in the demo picker only for the six-workload profile.
+* **Dashboard**: E/F cards ("watched by all four agents (no agent of their own)"), colours, six-workload summary counts, impact wording from `needs_for`, incident route accepts E/F.
+
+### Load on Minikube (docs/WORKLOADS.md, "Load")
+* Measured on THIS machine (not Minikube), `python3 scripts/measure-load.py --seconds 25` (`results/load-local.json`): agent HTTP requests 32 -> 48 per second; one full poll median 47.8 -> 80.0 ms; workload memory 87.3 -> 131.3 MiB; workload CPU 9.2 -> 17.2 % of one core; 0 failed readings in either run. One run, sandbox machine: order of magnitude only.
+* From the manifests: +100m CPU / +128 MiB requested (limit +1000m / +512 MiB); nodes are 2 CPU / 2200 MiB each.
+* **Not measured: real Minikube.** `scripts/minikube-load.sh` (read-only, needs metrics-server) is for your own cluster.
+
+### Test evidence (commands run, actual results)
+* Simulator, all scenarios: `python3 sim/local_demo.py` -> **15 of 15 PASS** (the 10 earlier cluster scenarios, the 3 new ones, baseline, controller-crash).
+* New tests `tests/test_six_workloads.py` (12) plus updated assumptions in 8 existing test files (four-workload profile where the test is about the historical four).
+* Full suite: `python3 -m pytest -q tests` -> **543 passed in 1010 s, 0 failed** (Phase F: 528). `python3 scripts/gen-workloads.py --check` -> up to date.
+* Problems found and fixed on the way: importing `scripts/evaluate.py` leaked `WORKLOADS_CONFIG` into the test process (9 failures, fixed by restoring the variable after the import); a pre-existing timing race in the tripwire simulator test (evidence is cleared when the isolation commits, so the test now records it while waiting).
+
+### Limitations
+* Nothing in Phase G has run on a real cluster. At most six workloads (A-F); more are not supported. E and F share Minikube nodes b and c with other workloads (placement, not a security boundary). The agents still restart without history (unchanged). The presentation guide and its screenshots still describe the four-workload view (not regenerated in this phase).
+
+### Cluster rebuild / restart for Phase G (the APP IMAGE changes: two new roles)
+1. `git pull`; `python3 scripts/gen-workloads.py --check`.
+2. `scripts/build-images.sh` (new app image and known-good manifest, agent and dashboard images).
+3. `kubectl apply -f k8s/resilience/00-rbac.yaml -f k8s/resilience/10-config.yaml`.
+4. `scripts/upgrade-app.sh` (safe order: stops agents, applies the known-good manifest, applies `k8s/base/10-healthcare-apps.yaml` so E and F are created and the other four roll onto the new image, verifies, restarts agents).
+5. `kubectl -n resilience rollout restart deploy/dashboard deploy/quorum-webhook`; `kubectl -n healthcare get pods` (six workload pods + client; a Pending pod means a node is short of memory).
+6. `python3 scripts/verify-baseline.py` -> six `ok`; then `scripts/minikube-load.sh`.

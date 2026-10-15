@@ -1,7 +1,7 @@
 # Healthcare focus
 
 This project protects, recovers and safely reintegrates **healthcare application workloads** on Kubernetes, using four identical peer
-security agents (A-D) that must agree (3 of 4) before anything is isolated. It runs on **synthetic patient data only**
+security agents (A-D, each watching every workload) that must agree (3 of 4) before anything is isolated. It runs on **synthetic patient data only**
 (`apps/src/app.py: synthetic_patients`: 40 made-up records; nothing real is stored, shown or attacked), and the dashboard says so on
 every page ("SYNTHETIC DATA ONLY").
 
@@ -10,7 +10,7 @@ every page ("SYNTHETIC DATA ONLY").
 > HIPAA compliant. Compliance needs a risk analysis, policies, workforce training, business associate agreements, physical safeguards,
 > encryption at rest, breach procedures and much more than this project contains.
 
-## 1. The four workloads (exactly one per agent)
+## 1. The workloads (six by default; exactly four agents watch all of them)
 Names are presentation only (`config/workloads.json`; internal Kubernetes names, roles and every security rule are unchanged).
 
 | Node | Shown as | Internal name | What it does for patients and staff | Calls | While it is isolated |
@@ -18,17 +18,21 @@ Names are presentation only (`config/workloads.json`; internal Kubernetes names,
 | A | Patient Portal | `patient-portal` | shows patient records | Login & Access Service, EHR API | no other service depends on it; the portal itself is unavailable |
 | B | Login & Access Service | `auth-service` | signs people in and checks their access | nothing | the Patient Portal and the EHR API cannot work (no sign-in, no access check) |
 | C | Electronic Health Records (EHR) API | `records-api` | serves patient records | Login & Access Service, Clinical Database | the Patient Portal cannot show patient records |
-| D | Clinical Database | `database` | stores patient records | nothing | the EHR API cannot serve records, so the Patient Portal cannot show them |
+| D | Clinical Database | `database` | stores patient records | nothing | the EHR API, the Laboratory Results Service and the Medication Service cannot serve their data, so the Patient Portal cannot show it |
+| E *(Phase G, optional)* | Laboratory Results Service | `lab-results` | serves laboratory results (synthetic) | Login & Access Service, Clinical Database | the Patient Portal cannot show laboratory results |
+| F *(Phase G, optional)* | Medication Service | `medication-service` | serves medication lists (synthetic) | Login & Access Service, Clinical Database | the Patient Portal cannot show medications |
+
+E and F have **no agent of their own**: the same four agents A-D watch all six workloads and a change to E or F needs 3 of the 4 to agree, signed, exactly as for A-D. They are added only through `config/workloads.json` (`config/workloads-four.json` is the original four-workload profile). Their data is invented (`synthetic_lab_results`, `synthetic_medications` in `apps/src/app.py`): no real laboratory values, drugs or doses are used and nothing is medically meaningful. Load: docs/WORKLOADS.md, "Load".
 
 The "Calls" column is checked against the application code by a test (`tests/test_workloads.py`): the portal calls auth and records;
 the records API calls auth (`/verify`) and the database. "While it is isolated" is **derived from those dependencies** (everything that
 calls it, directly or through another service), never typed in. The dashboard shows the same table on the Overview, marks a workload
 "ISOLATED NOW" while it is, and says nothing if the agents do not report the metadata.
 
-**Suggested recovery order** (display only, configurable): 1 Clinical Database, 2 Login & Access Service, 3 EHR API, 4 Patient Portal, each with its
+**Suggested recovery order** (display only, configurable): 1 Clinical Database, 2 Login & Access Service, 3 EHR API, 4 Laboratory Results Service, 5 Medication Service, 6 Patient Portal, each with its
 rationale (`priority_rationale`), which is about dependencies (what others need first), not about clinical urgency: **no clinical urgency
 scores are invented.** It does **not** change what the agents do: every incident is recovered independently and in parallel; the order is a suggestion for a
-human operator. Change it in `config/workloads.json` (priorities must be 1-4, all different, or all absent).
+human operator. Change it in `config/workloads.json` (priorities must be 1 to the number of workloads, all different, or all absent).
 
 ## 2. Requirements and what the platform does about them
 | Requirement (plain English) | HIPAA Security Rule category (reference only) | What the platform does | Where to see it | Gap / not covered |
@@ -53,7 +57,10 @@ human operator. Change it in `config/workloads.json` (priorities must be 1-4, al
 | Slow, quiet copying out of the EHR API | A weak but persistent signal is confirmed and contained. |
 | An unexplained weak signal on the EHR API | Human review is requested; nothing is isolated. |
 | The first / every replacement EHR API fails its health check | Retry, then "needs human attention" while it stays isolated. |
+| A file in the Laboratory Results Service is changed *(six-workload profile)* | The four agents agree 3-of-4 to isolate only that service; replaced, checked, returned in stages. |
+| Repeated failed logins from the Medication Service *(six-workload profile)* | The failed logins are traced to that service; it is isolated and recovered; nothing else is touched. |
+| The Clinical Database is compromised while three services read from it *(six-workload profile)* | Only the database is isolated; the services that depend on it are not isolated by mistake. |
 | **A compromised agent refuses to vote while the EHR API is attacked** | New: the other three still contain and recover it; the withheld votes are shown with their reason. |
 
 ## 4. Not in this version
-More than four workloads; a guided tour; new runtime or network sensors; real datasets; encryption at rest; real PHI. See docs/PROGRESS.md "Future work".
+More than six workloads; a guided tour; new runtime or network sensors; real datasets; encryption at rest; real PHI. See docs/PROGRESS.md "Future work".

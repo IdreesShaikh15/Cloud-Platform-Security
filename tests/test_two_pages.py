@@ -485,7 +485,7 @@ def test_agent_status_reports_cluster_and_telemetry_age():
         time.sleep(2)
         st = c.agents["A"].status()
         assert st["cluster"]["kubernetes_version"] == "simulated" and st["cluster"]["name"] == ""
-        assert st["telemetry"]["total"] == 4 and st["telemetry"]["reachable"] == 4
+        assert st["telemetry"]["total"] == 6 and st["telemetry"]["reachable"] == 6      # every agent reads all six workloads
         assert st["telemetry"]["age_s"] is not None and 0 <= st["telemetry"]["age_s"] < 5
     finally:
         c.stop()

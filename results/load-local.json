@@ -1,0 +1,59 @@
+{
+  "measured_on": "this machine, real app processes + real polling client; NOT Minikube",
+  "rows": [
+    {
+      "profile": "workloads-four.json",
+      "workloads": 4,
+      "agents": 4,
+      "seconds": 25.0,
+      "ticks": 25,
+      "http_requests_per_second": 32.0,
+      "poll_unreachable_readings": 0,
+      "full_poll_ms_median": 47.8,
+      "full_poll_ms_max": 148.8,
+      "rss_mib": {
+        "patient-portal": 21.9,
+        "auth-service": 21.8,
+        "records-api": 21.8,
+        "database": 21.8
+      },
+      "rss_mib_total": 87.3,
+      "cpu_seconds": {
+        "patient-portal": 0.58,
+        "auth-service": 0.57,
+        "records-api": 0.57,
+        "database": 0.57
+      },
+      "cpu_percent_of_one_core_total": 9.16
+    },
+    {
+      "profile": "workloads.json",
+      "workloads": 6,
+      "agents": 4,
+      "seconds": 25.0,
+      "ticks": 25,
+      "http_requests_per_second": 48.0,
+      "poll_unreachable_readings": 0,
+      "full_poll_ms_median": 80.0,
+      "full_poll_ms_max": 91.2,
+      "rss_mib": {
+        "patient-portal": 22.0,
+        "auth-service": 21.8,
+        "records-api": 21.9,
+        "database": 21.8,
+        "lab-results": 21.9,
+        "medication-service": 21.8
+      },
+      "rss_mib_total": 131.3,
+      "cpu_seconds": {
+        "patient-portal": 0.71,
+        "auth-service": 0.71,
+        "records-api": 0.71,
+        "database": 0.73,
+        "lab-results": 0.72,
+        "medication-service": 0.72
+      },
+      "cpu_percent_of_one_core_total": 17.2
+    }
+  ]
+}

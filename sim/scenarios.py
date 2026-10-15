@@ -15,7 +15,9 @@ from world import WL, WORKLOADS  # noqa: E402  (names come from config/workloads
 
 NODES = ("A", "B", "C", "D")
 WORKLOAD_C = WORKLOADS["C"]
-D = {n: WL.display(n) for n in NODES}            # what the dashboard calls each workload (Patient Portal, ...)
+TARGETS = tuple(WL.nodes())                      # every workload: A-D, plus E and F in the six-workload profile
+D = {n: WL.display(n) for n in TARGETS}          # what the dashboard calls each workload (Patient Portal, ...)
+SIX = len(TARGETS) == 6
 
 
 @dataclass(frozen=True)
@@ -175,6 +177,47 @@ def failed_validation(r: Runner) -> Tuple[bool, str]:
     return bool(ok and quarantined), f"needs human attention on all agents: {ok}; still quarantined: {quarantined}"
 
 
+def _contained_and_back(r: Runner, target: str, contain_s: float = 30, full_s: float = 120):
+    contained = r.wait(lambda: r.all(lambda a: a.states[target].phase != "HEALTHY"), contain_s)
+    full = contained and r.wait(lambda: r.all(lambda a: a.states[target].phase == "HEALTHY" and a.states[target].epoch == 1
+                                              and a.states[target].stage == "FULL"), full_s)
+    return contained, bool(full)
+
+
+def lab_results_tampered(r: Runner) -> Tuple[bool, str]:
+    c = r.c
+    lab = WL.node_of_role("lab-results")
+    c.mark("lab-results-tampered", lab)
+    c.world.attack(lab, kinds=("tamper",))
+    contained, full = _contained_and_back(r, lab)
+    others = all(a.states[n].epoch == 0 for a in c.agents.values() for n in TARGETS if n != lab)
+    return bool(full and others), (f"{D[lab]} contained by 3-of-4 agreement, recovered and returned in stages: {full}; "
+                                   f"no other workload isolated: {others}")
+
+
+def medication_failed_logins(r: Runner) -> Tuple[bool, str]:
+    c = r.c
+    med = WL.node_of_role("medication-service")
+    c.mark("medication-failed-logins", med)
+    c.world.attack(med, kinds=("bruteforce",))
+    contained, full = _contained_and_back(r, med)
+    others = all(a.states[n].epoch == 0 for a in c.agents.values() for n in TARGETS if n != med)
+    return bool(full and others), (f"repeated failed logins from the {D[med]} confirmed and contained: {contained}; "
+                                   f"recovered and returned in stages: {full}; no other workload isolated: {others}")
+
+
+def database_cascade(r: Runner) -> Tuple[bool, str]:
+    c = r.c
+    db = WL.node_of_role("database")
+    dependants = [n for n in TARGETS if db in WL.node_depends_on(n)]
+    c.mark("database-cascade", db)
+    c.world.attack(db)
+    contained, full = _contained_and_back(r, db, 30, 150)
+    others = all(a.states[n].epoch == 0 for a in c.agents.values() for n in TARGETS if n != db)
+    return bool(full and others), (f"{D[db]} contained and recovered: {full}; the {len(dependants)} services that read from it "
+                                   f"({', '.join(D[n] for n in dependants)}) were not isolated: {others}")
+
+
 CATALOGUE: Dict[str, Tuple[Scenario, Callable[[Runner], Tuple[bool, str]]]] = {s.id: (s, f) for s, f in [
     (Scenario("app-compromise", f"Patient records being copied out of the {D['C']}",
               f"Simulated copying of (synthetic) patient records out of the {D['C']}, a tampered file and repeated failed logins.",
@@ -203,6 +246,17 @@ CATALOGUE: Dict[str, Tuple[Scenario, Callable[[Runner], Tuple[bool, str]]]] = {s
     (Scenario("failed-validation", f"Every replacement {D['C']} fails its health check",
               "Recovery is retried a limited number of times.",
               f"The incident is marked NEEDS HUMAN ATTENTION and the {D['C']} stays isolated. Press Reset afterwards.", 90, True), failed_validation),
+    *(([
+        (Scenario("lab-results-tampered", f"A file in the {D.get('E', 'Laboratory Results Service')} is changed",
+                  f"A file inside the {D.get('E', 'Laboratory Results Service')} (synthetic data only) is modified at runtime.",
+                  f"The four agents, which all watch it, agree 3-of-4 to isolate only the {D.get('E', 'Laboratory Results Service')}; it is replaced, checked and returned in stages. Nothing else is isolated.", 45), lab_results_tampered),
+        (Scenario("medication-failed-logins", f"Repeated failed logins from the {D.get('F', 'Medication Service')}",
+                  f"The {D.get('F', 'Medication Service')} starts hammering the Login & Access Service with wrong passwords.",
+                  f"The failed logins are traced to the {D.get('F', 'Medication Service')}; it is isolated by 3-of-4 agreement, recovered and returned in stages.", 45), medication_failed_logins),
+        (Scenario("database-cascade", f"The {D['D']} is compromised while three services read from it",
+                  f"Records are copied out of the {D['D']}, the service the EHR API, Laboratory Results and Medication services depend on.",
+                  f"Only the {D['D']} is isolated (it is restored first); the services that depend on it are not isolated by mistake.", 60), database_cascade),
+    ]) if SIX else []),
     (Scenario("obstruct", f"A compromised agent refuses to vote while the {D['C']} is attacked",
               f"Agent A withholds every vote about the {D['C']} while its records are being copied out. No made-up evidence is sent: A simply does not take part.",
               f"The other three agents still reach agreement and isolate and recover the {D['C']}. A's withheld votes are shown with the reason. "

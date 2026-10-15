@@ -25,7 +25,7 @@ def names():
     out = subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "gen-workloads.py"), "--names"], capture_output=True, text=True)
     if out.returncode:
         raise SystemExit(f"cannot read the workload names: {out.stderr.strip()}")
-    return out.stdout.split()[:4]                         # the first four are the workloads, the fifth is the client probe
+    return out.stdout.split()[:-1]                        # every line but the last is a workload (four or six); the last is the client probe
 
 
 def main() -> int:

@@ -89,7 +89,7 @@ class AdmissionPolicy:
     def from_config(cls, cfg, registry: KeyRegistry, clock: Callable[[], float] = time.time,
                     epoch_source=None) -> "AdmissionPolicy":
         cp = cfg.certificates
-        return cls([s.workload for s in cfg.nodes.values()], registry,
+        return cls([s.workload for s in cfg.targets.values()], registry,
                    healthcare_ns=cfg.healthcare_namespace, resilience_ns=cfg.resilience_namespace,
                    known_good_image=cfg.known_good_image, quorum=cfg.quorum.quorum,
                    enforced_users=cp.webhook_enforced_users, revoked=cp.revoked_signers,

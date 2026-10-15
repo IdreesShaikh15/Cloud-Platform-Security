@@ -27,6 +27,10 @@ Scenarios
   obstruct           agent A is compromised and WITHHOLDS its votes while the EHR API (Node C) is genuinely
                      compromised: B, C and D still reach 3-of-4 and finish the whole cycle; A's withheld
                      votes are on record with the reason. No new trust rule: A's trust is NOT reduced
+  lab-results-tampered / medication-failed-logins / database-cascade   (six-workload profile only, Phase G)
+                     a file changed in the Laboratory Results Service; repeated failed logins from the
+                     Medication Service; the Clinical Database compromised while three services read from it.
+                     Each is judged by the four agents that watch every workload (3-of-4 quorum)
   baseline           the centralized controller under the same two attacks
   controller-crash   the centralized controller is killed, then Node C is genuinely
                      compromised: no detection or response occurs at all (single point
@@ -44,7 +48,7 @@ import time
 import uuid
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from world import WORKLOADS, LocalBaseline, LocalCluster, fast_config, sim_investigation  # noqa: E402
+from world import WL, WORKLOADS, LocalBaseline, LocalCluster, fast_config, sim_investigation  # noqa: E402
 
 import grpc  # noqa: E402 - after world.py has put agent/ on sys.path
 from resilience.proto import resilience_pb2 as pb  # noqa: E402
@@ -368,6 +372,20 @@ def obstruct() -> bool:
         c.stop()
 
 
+def healthcare6(scenario: str, port: int) -> bool:
+    import scenarios
+    s, fn = scenarios.CATALOGUE[scenario]
+    banner(f"SCENARIO (six workloads): {s.title}")
+    c = LocalCluster(base_port=port, cfg=fast_config(port, sim_investigation())).start()
+    time.sleep(2)
+    try:
+        ok, detail = fn(scenarios.Runner(c, lambda: False))
+        print(f"  {detail}")
+        return ok
+    finally:
+        c.stop()
+
+
 def baseline() -> bool:
     banner("SCENARIO 4: centralized baseline under the same attacks")
     b = LocalBaseline()
@@ -398,13 +416,14 @@ INVESTIGATION_SCENARIOS = ("transient-blip", "slow-burn", "ambiguous")
 OBSTRUCT_SCENARIOS = ("obstruct",)
 RECOVERY_SCENARIOS = ("validation-retry", "failed-validation")
 BASELINE_SCENARIOS = ("baseline", "controller-crash")
+HEALTHCARE6_SCENARIOS = ("lab-results-tampered", "medication-failed-logins", "database-cascade")
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("scenario", nargs="?", default="all",
                     choices=["all", *CLUSTER_SCENARIOS, *INVESTIGATION_SCENARIOS, *RECOVERY_SCENARIOS,
-                             *OBSTRUCT_SCENARIOS, *BASELINE_SCENARIOS])
+                             *OBSTRUCT_SCENARIOS, *HEALTHCARE6_SCENARIOS, *BASELINE_SCENARIOS])
     ap.add_argument("--no-investigation", action="store_true",
                     help="run the investigation scenarios with the feature switched off (comparison)")
     ap.add_argument("--serve", action="store_true",
@@ -451,6 +470,12 @@ def main():
         results["failed-validation"] = failed_validation()
     if a.scenario in ("all", "obstruct"):
         results["obstruct"] = obstruct()
+    for i, sid in enumerate(HEALTHCARE6_SCENARIOS):
+        if a.scenario in ("all", sid):
+            if len(WL.nodes()) < 6:
+                print(f"  {sid}: skipped - needs the six-workload profile (config/workloads.json); this run uses {len(WL.nodes())} workloads")
+                continue
+            results[sid] = healthcare6(sid, 50701 + 10 * i)
     if a.scenario in ("all", "baseline"):
         results["baseline"] = baseline()
     if a.scenario in ("all", "controller-crash"):

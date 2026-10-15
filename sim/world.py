@@ -38,6 +38,7 @@ from resilience import workloads as _wlcfg  # noqa: E402  (config/workloads.json
 WL = _wlcfg.load()
 WORKLOADS = {w.node: w.name for w in WL.workloads}
 ROLES = {w.node: w.role for w in WL.workloads}
+TARGET_IDS = WL.nodes()                             # every simulated workload: A-D, plus E and F in the six-workload profile
 AUTH_NODE = WL.node_of_role("auth-service")          # the workload that counts failed logins per source IP
 TRIPWIRE = "static/TRIPWIRE-TEST.txt"               # apps/src/static/TRIPWIRE-TEST.txt: the one file the live tripwire test touches
 BASELINE_HASHES = {"app.py": "a" * 64, "telemetry.py": "b" * 64, "static/index.html": "c" * 64, TRIPWIRE: "d" * 64}
@@ -70,7 +71,7 @@ class Overlay:
 class FakeWorld:
     def __init__(self):
         self.lock = threading.Lock()
-        self.apps = {n: FakeApp(n, f"10.244.0.{10 + i}") for i, n in enumerate(NODE_IDS)}
+        self.apps = {n: FakeApp(n, f"10.244.0.{10 + i}") for i, n in enumerate(TARGET_IDS)}
         self.overlays: List[Overlay] = []
         # workload -> number of upcoming recoveries that produce a replacement which FAILS validation
         # (simulated unhealthy pod; the recovery itself "succeeds", the new pod just is not good).
@@ -178,7 +179,7 @@ class FakeTelemetry:
 
     def collect(self) -> Dict[str, Snapshot]:
         now = time.time()
-        return {n: self.world.snapshot(n, now, self.observer) for n in NODE_IDS}
+        return {n: self.world.snapshot(n, now, self.observer) for n in TARGET_IDS}
 
     def collect_target(self, target: str) -> Snapshot:
         return self.world.snapshot(target, time.time(), self.observer)
@@ -203,16 +204,19 @@ def sim_recovery(**overrides) -> RecoveryParams:
 
 def fast_config(base_port: int, investigation: Optional[InvestigationParams] = None,
                 validate_timeout_s: float = 30, recovery: Optional[RecoveryParams] = None) -> ClusterConfig:
-    nodes = {n: NodeSpec(node_id=n, agent_name=f"agent-{n.lower()}",
-                         agent_addr=f"localhost:{base_port + i}",
-                         status_url=f"http://localhost:{base_port + 100 + i}/status",
-                         workload=WORKLOADS[n], telemetry_url="sim://", role=ROLES[n],
-                         display_name=WL.display(n), provides=WL.by_node()[n].provides, depends_on=WL.node_depends_on(n),
-                         recovery_priority=WL.by_node()[n].recovery_priority,
-                         priority_rationale=WL.by_node()[n].priority_rationale)
-             for i, n in enumerate(NODE_IDS)}
+    def spec(n, i, agent):
+        return NodeSpec(node_id=n, agent_name=f"agent-{n.lower()}" if agent else "",
+                        agent_addr=f"localhost:{base_port + i}" if agent else "",
+                        status_url=f"http://localhost:{base_port + 100 + i}/status" if agent else "",
+                        workload=WORKLOADS[n], telemetry_url="sim://", role=ROLES[n],
+                        display_name=WL.display(n), provides=WL.by_node()[n].provides, depends_on=WL.node_depends_on(n),
+                        needs_for=WL.node_needs_for(n), zone=WL.zone(n) if n not in NODE_IDS else "",
+                        recovery_priority=WL.by_node()[n].recovery_priority,
+                        priority_rationale=WL.by_node()[n].priority_rationale)
+    nodes = {n: spec(n, i, True) for i, n in enumerate(NODE_IDS)}
+    extra = {n: spec(n, i, False) for i, n in enumerate(TARGET_IDS) if n not in NODE_IDS}
     return ClusterConfig(
-        nodes=nodes, baseline_hashes=dict(BASELINE_HASHES),
+        nodes=nodes, extra_workloads=extra, baseline_hashes=dict(BASELINE_HASHES),
         timers=Timers(tick_s=0.5, evidence_window_s=20, contradiction_grace_s=4,
                       executor_stagger_s=1.5, stage_dwell_s=3, validate_timeout_s=validate_timeout_s),
         trust=TrustParams(agent_decay_per_s=5, agent_recover_per_s=0.5,

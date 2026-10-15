@@ -39,7 +39,14 @@ sys.path.insert(0, os.path.join(ROOT, "sim"))
 OUT_DIR = os.path.join(ROOT, "results")
 RAW = os.path.join(OUT_DIR, "raw", "trials.jsonl")
 NODES = ["A", "B", "C", "D"]
+# The recorded evaluation (results/RESULTS.md) was run on the FOUR-workload profile of Phases A-F. Phase G made six workloads the
+# default, so the harness pins the four-workload profile unless the caller chose one, to keep results reproducible and comparable.
+_pinned = "WORKLOADS_CONFIG" not in os.environ
+if _pinned:
+    os.environ["WORKLOADS_CONFIG"] = os.path.join(ROOT, "config", "workloads-four.json")
 from world import WORKLOADS  # noqa: E402  (names come from config/workloads.json)
+if _pinned:                                   # only for the import: world reads the profile once, and a leaked variable would change other code
+    del os.environ["WORKLOADS_CONFIG"]
 KINDS = ("exfil", "tamper", "bruteforce")
 PORT_BASE = 52000
 MARKER = "TRIAL_RESULT "

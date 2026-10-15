@@ -140,3 +140,6 @@ which runs exactly: `kubectl -n healthcare exec deploy/records-api -- python -c 
 * The agents' history is in `emptyDir`: a deleted agent pod loses it (step 2).
 * The file check covers `/app` inside each workload only; the tripwire is a marker, not a model of a real attack.
 * The telemetry is reported by the workload itself; a fully compromised workload could falsify it.
+
+## Six workloads (Phase G)
+With the default `config/workloads.json` the cluster runs six workloads; the tripwire test accepts `A`-`F` (`scripts/tripwire-test.sh E` is the Laboratory Results Service, `F` the Medication Service) and `verify-baseline.py` should print six `ok`. E and F have no agent of their own: the Live page marks them "watched by all four agents". See docs/WORKLOADS.md for the rebuild steps and the load note.

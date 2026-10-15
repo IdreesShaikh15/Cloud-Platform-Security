@@ -1,7 +1,10 @@
 """Mock cloud-healthcare application (stdlib only).
 
-One image, five roles selected by $ROLE:
-  patient-portal  (Node A)  web UI + /api/patients (calls auth + records)
+One image, selectable roles ($ROLE). The first four are always deployed; the next two are the optional
+healthcare workloads of Phase G (config/workloads.json). All data is synthetic.
+  patient-portal  (Node A)  web UI + /api/patients (calls auth + records), /api/labs, /api/medications
+  lab-results     (Node E)  /results (token-protected synthetic laboratory results, reads patients from database)
+  medication-service (Node F) /medications (token-protected synthetic medication lists, reads patients from database)
   auth-service    (Node B)  /login, /verify - counts failed logins per source IP
   records-api     (Node C)  /records (token-protected, reads from database)
   database        (Node D)  /query - synthetic patient records (no real data)
@@ -35,6 +38,8 @@ APP_ROOT = os.environ.get("APP_ROOT", os.path.dirname(os.path.abspath(__file__))
 AUTH_URL = os.environ.get("AUTH_URL", "http://auth-service:8080")
 RECORDS_URL = os.environ.get("RECORDS_URL", "http://records-api:8080")
 DATABASE_URL = os.environ.get("DATABASE_URL", "http://database:8080")
+LAB_URL = os.environ.get("LAB_URL", "http://lab-results:8080")
+MEDICATION_URL = os.environ.get("MEDICATION_URL", "http://medication-service:8080")
 PORTAL_URL = os.environ.get("PORTAL_URL", "http://patient-portal:8080")
 TOKEN_SECRET = os.environ.get("TOKEN_SECRET", "demo-secret-change-me").encode()
 INSTANCE_ID = uuid.uuid4().hex[:12]           # changes on every (re)start
@@ -62,6 +67,22 @@ def synthetic_patients(n: int = 40) -> list:
 
 
 PATIENTS = synthetic_patients()
+
+
+def synthetic_lab_results(patients: list) -> list:
+    """Invented laboratory values, one row per synthetic patient (not real data, not medically meaningful)."""
+    rng = random.Random(7)
+    return [{"mrn": p["mrn"], "test": rng.choice(["HbA1c", "Cholesterol", "TSH", "Hemoglobin"]),
+             "value": round(rng.uniform(3.0, 9.0), 1), "flag": rng.choice(["normal", "normal", "normal", "review"])}
+            for p in patients]
+
+
+def synthetic_medications(patients: list) -> list:
+    """Invented medication lists (generic names only, one row per synthetic patient)."""
+    rng = random.Random(11)
+    drugs = ["Lisinopril", "Metformin", "Albuterol", "Atorvastatin", "Sumatriptan", "Levothyroxine", "None"]
+    return [{"mrn": p["mrn"], "medication": rng.choice(drugs), "dose_mg": rng.choice([5, 10, 20, 40, 500])}
+            for p in patients]
 
 
 def make_token(user: str) -> str:
@@ -156,6 +177,25 @@ class Handler(BaseHTTPRequestHandler):
         if ROLE == "auth-service" and path == "/verify":
             return self._send(200 if token_valid(q.get("token", [""])[0]) else 401, {})
 
+        if ROLE in ("lab-results", "medication-service") and path in ("/results", "/medications"):
+            token = self.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+            try:
+                urllib.request.urlopen(
+                    f"{AUTH_URL}/verify?token={urllib.parse.quote(token)}", timeout=2)
+            except urllib.error.HTTPError:
+                record_auth_failure(self.client_address[0])
+                return self._send(401, {"error": "invalid token"})
+            except Exception as exc:
+                return self._send(502, {"error": f"auth unavailable: {exc}"})
+            try:
+                rows = http_json(f"{DATABASE_URL}/query")["rows"]
+            except Exception as exc:
+                return self._send(502, {"error": f"database unavailable: {exc}"})
+            if ROLE == "lab-results" and path == "/results":
+                return self._send(200, {"results": synthetic_lab_results(rows), "synthetic": True})
+            if ROLE == "medication-service" and path == "/medications":
+                return self._send(200, {"medications": synthetic_medications(rows), "synthetic": True})
+
         if ROLE == "records-api" and path == "/records":
             token = self.headers.get("Authorization", "").removeprefix("Bearer ").strip()
             try:
@@ -182,6 +222,17 @@ class Handler(BaseHTTPRequestHandler):
                     recs = http_json(f"{RECORDS_URL}/records",
                                      headers={"Authorization": f"Bearer {tok}"})["records"]
                     return self._send(200, {"patients": recs, "served_by": INSTANCE_ID, "synthetic": True})
+                except Exception as exc:
+                    return self._send(503, {"error": f"upstream failure: {exc}"})
+
+            if path in ("/api/labs", "/api/medications"):
+                base, rel, key = ((LAB_URL, "/results", "results") if path == "/api/labs"
+                                  else (MEDICATION_URL, "/medications", "medications"))
+                try:
+                    tok = http_json(f"{AUTH_URL}/login",
+                                    {"username": "portal-svc", "password": "portal-svc-pass"})["token"]
+                    rows = http_json(f"{base}{rel}", headers={"Authorization": f"Bearer {tok}"})[key]
+                    return self._send(200, {key: rows, "served_by": INSTANCE_ID, "synthetic": True})
                 except Exception as exc:
                     return self._send(503, {"error": f"upstream failure: {exc}"})
 

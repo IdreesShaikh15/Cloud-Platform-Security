@@ -7,8 +7,8 @@
     python3 scripts/gen-workloads.py --config my-workloads.json --check
 
 Generated (and only these; everything else in them is left as it is):
-  k8s/base/10-healthcare-apps.yaml      the four workloads, their Services, the client probe   (whole file)
-  k8s/resilience/10-config.yaml         nodes.<A-D>.workload / role / telemetry_url, client_stats_url   (inside the config.json block)
+  k8s/base/10-healthcare-apps.yaml      the four or six workloads, their Services, the client probe   (whole file)
+  k8s/resilience/10-config.yaml         nodes.<A-D>.workload / role / telemetry_url, extra_workloads.<E,F>, client_stats_url   (inside the config.json block)
   k8s/resilience/00-rbac.yaml           the resourceNames lists marked `# gen:workload-names` / `# gen:policy-names`
 
 With the default configuration the output is byte-identical to the committed files (tests/test_workloads.py checks it).
@@ -39,7 +39,7 @@ ENV_BLOCK = """        - {{name: ROLE, value: "{role}"}}
         - {{name: RECORDS_URL, value: "http://{records}:8080"}}
         - {{name: DATABASE_URL, value: "http://{database}:8080"}}
         - {{name: PORTAL_URL, value: "http://{portal}:8080"}}
-        - name: POD_IP
+{optional}        - name: POD_IP
           valueFrom: {{fieldRef: {{fieldPath: status.podIP}}}}
         - name: POD_NAME
           valueFrom: {{fieldRef: {{fieldPath: metadata.name}}}}
@@ -85,10 +85,14 @@ spec:
 def render_apps(wl: "W.Workloads") -> str:
     urls = dict(auth=wl.name_of_role("auth-service"), records=wl.name_of_role("records-api"),
                 database=wl.name_of_role("database"), portal=wl.name_of_role("patient-portal"))
+    urls["optional"] = "".join(
+        f'        - {{name: {var}, value: "http://{wl.name_of_role(role)}:8080"}}\n'
+        for var, role in (("LAB_URL", "lab-results"), ("MEDICATION_URL", "medication-service"))
+        if role in {w.role for w in wl.workloads})
     docs = []
     for w in wl.workloads:
         labels = f'{{app: {w.name}, resilience.io/node: "{w.node}"}}'
-        docs.append(DEPLOYMENT.format(name=w.name, labels=labels, tlabels=labels, zone=w.node.lower(),
+        docs.append(DEPLOYMENT.format(name=w.name, labels=labels, tlabels=labels, zone=wl.zone(w.node),
                                       env=ENV_BLOCK.format(role=w.role, **urls)))
     docs.append(DEPLOYMENT.format(name=wl.client, labels=f"{{app: {wl.client}}}", tlabels=f'{{app: {wl.client}, resilience.io/node: "client"}}',
                                   zone="a", env=ENV_BLOCK.format(role="client", **urls)))
@@ -115,8 +119,9 @@ def render_config(wl: "W.Workloads", text: str) -> str:
     cfg = json.loads(block)
     if json.dumps(cfg, indent=2) != block:
         raise SystemExit("10-config.yaml: the config.json block is not in the canonical json.dumps(indent=2) layout, refusing to rewrite it")
+    extra = {}
     for w in wl.workloads:
-        node = cfg["nodes"][w.node]
+        node = cfg["nodes"].get(w.node) or cfg.get("extra_workloads", {}).get(w.node, {})
         new = {}
         for k, v in node.items():                      # keep the key order; add 'role' right after 'workload'
             if k == "role":
@@ -124,8 +129,10 @@ def render_config(wl: "W.Workloads", text: str) -> str:
             new[k] = v
             if k == "workload":
                 new["workload"], new["role"] = w.name, w.role
+        new.setdefault("workload", w.name)
+        new.setdefault("role", w.role)
         new["telemetry_url"] = f"http://{w.name}.healthcare.svc.cluster.local:8080"
-        for k in ("display_name", "provides", "depends_on", "recovery_priority", "priority_rationale"):     # presentation only
+        for k in ("display_name", "provides", "depends_on", "needs_for", "zone", "recovery_priority", "priority_rationale"):     # presentation only
             new.pop(k, None)
         if w.display_name:
             new["display_name"] = w.display_name
@@ -133,11 +140,21 @@ def render_config(wl: "W.Workloads", text: str) -> str:
             new["provides"] = w.provides
         if w.depends_on:
             new["depends_on"] = wl.node_depends_on(w.node)
+        if wl.node_needs_for(w.node):
+            new["needs_for"] = wl.node_needs_for(w.node)
+        if w.node not in "ABCD":
+            new["zone"] = w.zone
         if w.recovery_priority:
             new["recovery_priority"] = w.recovery_priority
         if w.priority_rationale:
             new["priority_rationale"] = w.priority_rationale
-        cfg["nodes"][w.node] = new
+        if w.node in "ABCD":
+            cfg["nodes"][w.node] = new
+        else:
+            extra[w.node] = new
+    cfg.pop("extra_workloads", None)
+    if extra:                                          # placed right after "nodes"
+        cfg = {k2: v2 for k, v in cfg.items() for k2, v2 in ((k, v),) + ((("extra_workloads", extra),) if k == "nodes" else ())}
     if "client_stats_url" in cfg:
         cfg["client_stats_url"] = f"http://{wl.client}.healthcare.svc.cluster.local:8080/stats"
     body = json.dumps(cfg, indent=2)

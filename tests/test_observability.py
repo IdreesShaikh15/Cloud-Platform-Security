@@ -269,7 +269,7 @@ def test_dashboard_collector_merges_events_and_explains_votes(cluster, monkeypat
         keys = [(e["node"], e["seq"]) for e in col.all_events()]
         assert len(keys) == len(set(keys))
         st = dash.aggregate()
-        assert set(st["nodes"]) == set("ABCD") and "pending_detail" in st
+        assert set(st["nodes"]) == set("ABCDEF") and "pending_detail" in st
         view = dash.agent_view("C")
         assert view["up"] and all(e["node"] == "C" for e in view["events"])
     finally:

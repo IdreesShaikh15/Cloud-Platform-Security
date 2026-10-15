@@ -348,7 +348,7 @@ class CertificateManager:
             return False, str(exc), True
         if not a.registry.verify(msg.signer, QC_KIND, bytes(msg.statement), bytes(msg.statement_signature)):
             return False, "invalid statement signature", True
-        if st.target not in a.cfg.nodes or st.workload != a.cfg.workload_of(st.target):
+        if st.target not in a.cfg.targets or st.workload != a.cfg.workload_of(st.target):
             return False, "statement names a workload that does not match its target", True
         if now * 1000 > st.expires_ms:
             return False, "statement already expired", False

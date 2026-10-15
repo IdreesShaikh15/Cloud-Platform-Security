@@ -4,15 +4,23 @@
     "A": {
       "name": "patient-portal",
       "role": "patient-portal",
-      "description": "web front end; calls the auth service and the records API",
+      "description": "web front end; calls the auth service, the records API, the laboratory results and the medication services",
       "display_name": "Patient Portal",
-      "provides": "show patient records",
-      "recovery_priority": 4,
+      "provides": "show patient records, laboratory results and medications",
+      "recovery_priority": 6,
       "priority_rationale": "Nothing else depends on it; once the services it calls are healthy it works again.",
+      "zone": "a",
       "depends_on": [
         "auth-service",
-        "records-api"
-      ]
+        "records-api",
+        "lab-results",
+        "medication-service"
+      ],
+      "needs_for": {
+        "records-api": "show patient records",
+        "lab-results": "show laboratory results",
+        "medication-service": "show medications"
+      }
     },
     "B": {
       "name": "auth-service",
@@ -21,7 +29,8 @@
       "display_name": "Login & Access Service",
       "provides": "sign people in and check their access",
       "recovery_priority": 2,
-      "priority_rationale": "Every access to records is checked here; the Patient Portal and the EHR API both need it."
+      "priority_rationale": "Every access to records, results and medications is checked here; four other services need it.",
+      "zone": "b"
     },
     "C": {
       "name": "records-api",
@@ -31,6 +40,7 @@
       "provides": "serve patient records",
       "recovery_priority": 3,
       "priority_rationale": "The Patient Portal needs it to show records; it also needs the Login & Access Service and the database.",
+      "zone": "c",
       "depends_on": [
         "auth-service",
         "database"
@@ -43,7 +53,36 @@
       "display_name": "Clinical Database",
       "provides": "store patient records",
       "recovery_priority": 1,
-      "priority_rationale": "It holds the records every other service reads; restoring it first lets the others recover against a healthy source."
+      "priority_rationale": "It holds the records every other service reads; restoring it first lets the others recover against a healthy source.",
+      "zone": "d"
+    },
+    "E": {
+      "name": "lab-results",
+      "role": "lab-results",
+      "description": "token-protected synthetic laboratory results; reads the patient list from the database",
+      "display_name": "Laboratory Results Service",
+      "provides": "serve laboratory results",
+      "recovery_priority": 4,
+      "priority_rationale": "The Patient Portal needs it to show laboratory results; it also needs the Login & Access Service and the database.",
+      "zone": "b",
+      "depends_on": [
+        "auth-service",
+        "database"
+      ]
+    },
+    "F": {
+      "name": "medication-service",
+      "role": "medication-service",
+      "description": "token-protected synthetic medication lists; reads the patient list from the database",
+      "display_name": "Medication Service",
+      "provides": "serve medication lists",
+      "recovery_priority": 5,
+      "priority_rationale": "The Patient Portal needs it to show medications; it also needs the Login & Access Service and the database.",
+      "zone": "c",
+      "depends_on": [
+        "auth-service",
+        "database"
+      ]
     }
   }
 }

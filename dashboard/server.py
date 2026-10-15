@@ -572,7 +572,9 @@ def aggregate() -> dict:
     live = {k: v for k, v in statuses.items() if k in ch().urls}
     base = statuses.get("CENTRAL")
     nodes = {}
-    for nid in ids:
+    # watched workloads: the four agents' own (A-D) plus any extra ones (E, F) that every agent reports on
+    target_ids = ids + sorted({t for s in list(live.values()) + ([base] if base else []) for t in (s.get("targets") or {})} - set(ids))
+    for nid in target_ids:
         views = [s["targets"].get(nid) for s in live.values() if nid in s.get("targets", {})]
         if not views and base:
             views = [base["targets"].get(nid)] if nid in base.get("targets", {}) else []
@@ -581,13 +583,15 @@ def aggregate() -> dict:
         decisions = [v["last_decision"] for v in views if v.get("last_decision")]
         last = max(decisions, key=lambda d: d["t"]) if decisions else None
         peer_views = [s["agent_trust"].get(nid) for p, s in live.items() if p != nid]
-        own = live.get(nid, {}).get("targets", {}).get(nid, {})
+        own = live.get(nid, {}).get("targets", {}).get(nid, {}) or next((v for v in views if v.get("detections")), {})
         v0 = views[0] if views else {}
         nodes[nid] = {
             "workload": views[0]["workload"] if views else "?",
             # presentation metadata reported by the agents (config/workloads.json); display only
             "display_name": v0.get("display_name") or (v0.get("workload") or "?"),
             "provides": v0.get("provides") or "", "depends_on": list(v0.get("depends_on") or []),
+            "needs_for": dict(v0.get("needs_for") or {}), "zone": v0.get("zone") or "",
+            "has_agent": nid in ids,
             "recovery_priority": v0.get("recovery_priority") or 0, "priority_rationale": v0.get("priority_rationale") or "",
             "agent_up": nid in live,
             "agent_compromised_sim": (live.get(nid) or {}).get("compromised"),
@@ -1409,7 +1413,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, png, "image/png")
         if p.startswith("/api/incident/"):
             parts = p.split("/")
-            if len(parts) != 6 or parts[3] not in VALID_SOURCES or parts[4] not in ch().urls or not parts[5].isdigit():
+            if len(parts) != 6 or parts[3] not in VALID_SOURCES or parts[4] not in tuple("ABCDEF") or not parts[5].isdigit():
                 return self._send(404, b'{"error":"no such incident"}', "application/json")
             inc = build_incident(parts[3], parts[4], int(parts[5]))
             if inc is None:

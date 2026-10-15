@@ -30,6 +30,8 @@ class NodeSpec:
     depends_on: List[str] = field(default_factory=list)    # NODE ids this workload calls
     recovery_priority: int = 0
     priority_rationale: str = ""
+    needs_for: Dict[str, str] = field(default_factory=dict)   # dependency id -> what this workload needs it for
+    zone: str = ""             # which Minikube node the workload is placed on (E and F only; others follow their id)
 
 @dataclass
 class Timers:
@@ -135,7 +137,8 @@ class CertParams:
 
 @dataclass
 class ClusterConfig:
-    nodes: Dict[str, NodeSpec]
+    nodes: Dict[str, NodeSpec]         # the four AGENTS (A-D): quorum parties, each also co-located with its own workload
+    extra_workloads: Dict[str, NodeSpec] = field(default_factory=dict)   # workloads E, F: watched by all four agents, no agent of their own
     healthcare_namespace: str = "healthcare"
     resilience_namespace: str = "resilience"
     known_good_image: str = "cr-healthcare-app:known-good"
@@ -150,11 +153,16 @@ class ClusterConfig:
     recovery: RecoveryParams = field(default_factory=RecoveryParams)
     client_stats_url: Optional[str] = None  # synthetic client (availability probe)
 
+    @property
+    def targets(self) -> Dict[str, NodeSpec]:
+        """Every workload that is watched: the four agents' own workloads plus any extra ones (never more than six)."""
+        return {**self.nodes, **self.extra_workloads}
+
     def workload_of(self, node_id: str) -> str:
-        return self.nodes[node_id].workload
+        return self.targets[node_id].workload
 
     def node_of_workload(self, workload: str) -> Optional[str]:
-        for nid, spec in self.nodes.items():
+        for nid, spec in self.targets.items():
             if spec.workload == workload:
                 return nid
         return None
@@ -177,8 +185,12 @@ def load_cluster_config(path: Optional[str] = None) -> ClusterConfig:
     with open(path) as fh:
         raw = json.load(fh)
     nodes = {nid: NodeSpec(node_id=nid, **spec) for nid, spec in raw["nodes"].items()}
+    extra = {nid: NodeSpec(node_id=nid, agent_name="", agent_addr="", status_url="", **spec)
+             for nid, spec in (raw.get("extra_workloads") or {}).items()}
+    if set(extra) & set(nodes):
+        raise ValueError("extra_workloads may not reuse an agent id")
     cfg = ClusterConfig(
-        nodes=nodes,
+        nodes=nodes, extra_workloads=extra,
         healthcare_namespace=raw.get("healthcare_namespace", "healthcare"),
         resilience_namespace=raw.get("resilience_namespace", "resilience"),
         known_good_image=raw.get("known_good_image", "cr-healthcare-app:known-good"),
@@ -192,7 +204,7 @@ def load_cluster_config(path: Optional[str] = None) -> ClusterConfig:
         recovery=_dc(RecoveryParams, raw.get("recovery")),
         client_stats_url=raw.get("client_stats_url"),
     )
-    names = [n.workload for n in nodes.values()]
+    names = [n.workload for n in {**nodes, **extra}.values()]
     dup = sorted({w for w in names if names.count(w) > 1})
     if dup:                                      # defence in depth: the generator already refuses this
         raise ValueError(f"conflicting workload definitions: {', '.join(dup)} used by more than one node")

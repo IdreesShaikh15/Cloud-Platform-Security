@@ -334,7 +334,8 @@ def test_simulator_code_cannot_reach_kubernetes():
 
 def test_every_catalogue_scenario_has_a_driver_and_description():
     assert set(sc.CATALOGUE) == {"app-compromise", "false-accusation", "forge-evidence", "agent-crash", "transient-blip",
-                                 "slow-burn", "ambiguous", "validation-retry", "failed-validation", "obstruct"}
+                                 "slow-burn", "ambiguous", "validation-retry", "failed-validation", "obstruct",
+                                 "lab-results-tampered", "medication-failed-logins", "database-cascade"}
     for s, fn in sc.CATALOGUE.values():
         assert callable(fn) and s.description and s.expect and s.est_s > 0
     assert [x["id"] for x in sc.listing()] == list(sc.CATALOGUE)

@@ -121,10 +121,10 @@ class ResilienceAgent:
         self.votes = VoteBook(q.quorum)
         self.replay = ReplayCache()
         self.agent_trust = TrustLedger(cfg.nodes)
-        self.workload_trust = TrustLedger(cfg.nodes)
-        self.states: Dict[str, TargetState] = {n: TargetState() for n in cfg.nodes}
+        self.workload_trust = TrustLedger(cfg.targets)
+        self.states: Dict[str, TargetState] = {n: TargetState() for n in cfg.targets}
         self.snaps: Dict[str, Snapshot] = {}
-        self.latest: Dict[str, List[Detection]] = {n: [] for n in cfg.nodes}
+        self.latest: Dict[str, List[Detection]] = {n: [] for n in cfg.targets}
         self.local_hist: Dict[str, Deque[Tuple[float, float]]] = defaultdict(lambda: deque(maxlen=300))
         self.scores: Dict[str, ScoreBreakdown] = {}
         self.decisions: Deque[dict] = deque(maxlen=50)
@@ -199,7 +199,7 @@ class ResilienceAgent:
     def resync_from_cluster(self) -> None:
         """Recover replicated state after an agent restart (annotations written
         by executors on the workload Deployments)."""
-        for nid in self.cfg.nodes:
+        for nid in self.cfg.targets:
             try:
                 s = self.backend.read_state(self.workload(nid))
             except Exception:
@@ -1281,11 +1281,13 @@ class ResilienceAgent:
             for nid, st in self.states.items():
                 s = self.snaps.get(nid)
                 targets[nid] = {
-                    **asdict(st), "workload": self.workload(nid), "role": self.cfg.nodes[nid].role,
-                    "display_name": self.cfg.nodes[nid].display_name or self.workload(nid),
-                    "provides": self.cfg.nodes[nid].provides, "depends_on": list(self.cfg.nodes[nid].depends_on),
-                    "recovery_priority": self.cfg.nodes[nid].recovery_priority,
-                    "priority_rationale": self.cfg.nodes[nid].priority_rationale,
+                    **asdict(st), "workload": self.workload(nid), "role": self.cfg.targets[nid].role,
+                    "display_name": self.cfg.targets[nid].display_name or self.workload(nid),
+                    "provides": self.cfg.targets[nid].provides, "depends_on": list(self.cfg.targets[nid].depends_on),
+                    "needs_for": dict(self.cfg.targets[nid].needs_for), "zone": self.cfg.targets[nid].zone,
+                    "has_agent": nid in self.cfg.nodes,
+                    "recovery_priority": self.cfg.targets[nid].recovery_priority,
+                    "priority_rationale": self.cfg.targets[nid].priority_rationale,
                     "workload_trust": round(self.workload_trust.get(nid), 1),
                     "reachable": bool(s and s.reachable), "healthy": bool(s and s.healthy),
                     "instance_id": s.instance_id if s else "",
@@ -1358,7 +1360,7 @@ class ResilienceAgent:
         return {"age_s": round(max(0.0, now - max(times)), 1) if times else None,
                 "oldest_age_s": round(max(0.0, now - min(times)), 1) if times else None,
                 "reachable": sum(1 for s in self.snaps.values() if s is not None and s.reachable),
-                "total": len(self.cfg.nodes)}
+                "total": len(self.cfg.targets)}
 
     def _pending_detail(self) -> Dict[str, dict]:
         tp = self.cfg.trust

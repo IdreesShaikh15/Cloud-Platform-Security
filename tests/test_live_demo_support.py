@@ -161,11 +161,19 @@ def test_the_dry_run_changes_nothing(stub):
     assert not [c for c in calls(log) if "exec" in c]
 
 
-@pytest.mark.parametrize("who", ["client", "kubernetes", "dashboard", "E", "records-api; rm -rf /", "", "../database"])
-def test_only_the_four_healthcare_workloads_are_accepted(stub, who):
+@pytest.mark.parametrize("who", ["client", "kubernetes", "dashboard", "G", "records-api; rm -rf /", "", "../database"])
+def test_only_the_healthcare_workloads_are_accepted(stub, who):
     env, log, _ = stub
     r = run_script(env, who, "--yes")
     assert r.returncode != 0 and not [c for c in calls(log) if "exec" in c]
+
+
+@pytest.mark.parametrize("who,name", [("E", "deploy/lab-results"), ("F", "deploy/medication-service")])
+def test_the_two_optional_workloads_are_accepted_in_a_dry_run(stub, who, name):
+    env, log, _ = stub
+    r = run_script(env, who)
+    assert r.returncode == 0 and "dry run: nothing was changed" in r.stdout and name in r.stdout
+    assert not [c for c in calls(log) if "exec" in c]
 
 
 def test_it_refuses_the_wrong_cluster_and_an_unknown_flag(stub):
@@ -197,13 +205,17 @@ def test_a_tripwire_change_runs_the_whole_pipeline_in_the_simulator():
         time.sleep(2)
         c.mark("tripwire", "C")
         c.world.attack("C", ("tripwire",))
-        assert c.wait_until(lambda: all(a.states["C"].epoch >= 1 for a in c.agents.values()), 15)
+        seen = set()                      # evidence is cleared when the isolation is committed, so record it WHILE waiting (not after)
+
+        def isolated():
+            seen.update(e.observation.value for e in c.agents["B"].pool.recent(time.time(), 60, target="C"))
+            return all(a.states["C"].epoch >= 1 for a in c.agents.values())
+        assert c.wait_until(isolated, 30, poll=0.05)
         dec = next(d for d in c.agents["B"].decisions if d["action"] == "CONTAIN" and d["target"] == "C")
         assert len(dec["voters"]) >= 3
-        ev = [e for e in c.agents["B"].pool.recent(time.time(), 60, target="C")]
-        assert {e.observation.value for e in ev} == {"FILE_INTEGRITY"}                      # nothing but the file change was seen
+        assert seen == {"FILE_INTEGRITY"}                                                   # nothing but the file change was seen
         assert c.wait_until(lambda: all(a.states["C"].phase == "HEALTHY" and a.states["C"].stage == "FULL" for a in c.agents.values()), 120)
-        assert all(a.states[o].epoch == 0 for a in c.agents.values() for o in "ABD")        # no other workload was touched
+        assert all(a.states[o].epoch == 0 for a in c.agents.values() for o in "ABD" + ("EF" if "E" in c.cfg.targets else ""))      # no other workload was touched
     finally:
         c.stop()
 
@@ -216,7 +228,7 @@ def verify(env):
 def test_verify_baseline_passes_when_the_workloads_match_and_flags_every_kind_of_difference(stub, appcopy):
     env, log, base = stub
     r = verify(env)
-    assert r.returncode == 0 and r.stdout.count("ok ") == 4, r.stdout + r.stderr
+    assert r.returncode == 0 and r.stdout.count("ok ") == 6, r.stdout + r.stderr
     open(os.path.join(appcopy, TRIP), "a").write("x\n")
     r = verify(env)
     assert r.returncode == 1 and "modified=['static/TRIPWIRE-TEST.txt']" in r.stdout
@@ -258,7 +270,7 @@ def test_every_patient_response_says_it_is_synthetic(appcopy):
         app.terminate()
         app.wait(timeout=10)
     src = open(os.path.join(ROOT, "apps", "src", "app.py"), encoding="utf-8").read()
-    assert src.count('"synthetic": True') == 3                                           # database, records API, portal
+    assert src.count('"synthetic": True') == 6                                           # database, records API, portal, lab results, medications, portal labs-and-medications
     assert "Synthetic data only" in open(os.path.join(ROOT, "apps", "src", "static", "index.html"), encoding="utf-8").read()
 
 

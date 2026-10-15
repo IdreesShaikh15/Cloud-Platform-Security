@@ -2,19 +2,21 @@
 
     {
       "client": "client",                                   # name of the synthetic availability probe
-      "workloads": {                                        # exactly four, one per resilience node A-D
+      "workloads": {                                        # A-D required, E and F optional (six healthcare workloads by default)
         "A": {"name": "patient-portal", "role": "patient-portal", "description": "..."},
         ...
       }
     }
 
 name   the Kubernetes Deployment and Service name (what the agents isolate and redeploy).
-role   which behaviour the container runs: the app image implements exactly four roles (KNOWN_ROLES), selected by its ROLE
-       environment variable. Each role is used by exactly one workload because the services find each other by role.
-node   A-D: the resilience node (and agent) that is co-located with the workload. Fixed by the architecture: four identical
-       peer agents, one workload each.
+role   which behaviour the container runs: the app image implements six roles (KNOWN_ROLES), selected by its ROLE environment
+       variable. The four core roles must each be used once; the two optional ones (laboratory results, medication) at most once.
+node   A-F: the workload's id. There are exactly FOUR identical peer agents (A-D, the quorum parties, 3 of 4) and every agent
+       watches EVERY workload. A-D each have an agent co-located with their workload; E and F (when present) have none: they are
+       watched by all four agents like the others. Fixed by the architecture, not configurable.
+zone   a-d: which Minikube node (resilience.io/zone) hosts the workload (required for E and F).
 
-Defaults are the original four (name == role). docs/WORKLOADS.md describes how the file is used and how the Kubernetes manifests
+Defaults are the six healthcare workloads; config/workloads-four.json is the original four. docs/WORKLOADS.md describes how the file is used and how the Kubernetes manifests
 are generated from it (scripts/gen-workloads.py). Invalid or conflicting definitions are REJECTED with every problem listed;
 an explicitly requested file that is missing or unreadable is an error, never a silent fallback to the defaults.
 """
@@ -26,32 +28,44 @@ import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
-NODES: Tuple[str, ...] = ("A", "B", "C", "D")
-KNOWN_ROLES: Tuple[str, ...] = ("patient-portal", "auth-service", "records-api", "database")
+NODES: Tuple[str, ...] = ("A", "B", "C", "D")                  # the four agents (quorum parties); also the ids of the first four workloads
+WORKLOAD_NODES: Tuple[str, ...] = ("A", "B", "C", "D", "E", "F")   # workload ids: A-D required, E-F optional
+CORE_ROLES: Tuple[str, ...] = ("patient-portal", "auth-service", "records-api", "database")
+OPTIONAL_ROLES: Tuple[str, ...] = ("lab-results", "medication-service")
+KNOWN_ROLES: Tuple[str, ...] = CORE_ROLES + OPTIONAL_ROLES
+ZONES: Tuple[str, ...] = ("a", "b", "c", "d")
 NAME_MAX = 40                                   # "resilience-isolate-" + name must stay a valid 63-character label
 # DNS-1035 label: Kubernetes Service names must start with a letter
 DNS_LABEL = re.compile(r"^[a-z]([-a-z0-9]*[a-z0-9])?$")
 RESERVED_NAMES = {"dashboard", "central-controller", "quorum-webhook", "kubernetes", "default", "healthcare", "resilience"}
 RESERVED_PREFIXES = ("agent-", "resilience-", "kube-")
 ALLOWED_TOP = {"client", "workloads"}
-ALLOWED_WORKLOAD = {"name", "role", "description", "display_name", "provides", "depends_on", "recovery_priority", "priority_rationale"}
+ALLOWED_WORKLOAD = {"name", "role", "description", "display_name", "provides", "depends_on", "needs_for", "zone", "recovery_priority", "priority_rationale"}
 ENV_VAR = "WORKLOADS_CONFIG"
 
 DEFAULTS = {
     "client": "client",
     "workloads": {
-        "A": {"name": "patient-portal", "role": "patient-portal", "description": "web front end; calls the auth service and the records API",
-              "display_name": "Patient Portal", "provides": "show patient records", "depends_on": ["auth-service", "records-api"],
-              "recovery_priority": 4, "priority_rationale": "Nothing else depends on it; once the services it calls are healthy it works again."},
+        "A": {"name": "patient-portal", "role": "patient-portal", "description": "web front end; calls the auth service, the records API, the laboratory results and the medication services",
+              "display_name": "Patient Portal", "provides": "show patient records, laboratory results and medications",
+              "depends_on": ["auth-service", "records-api", "lab-results", "medication-service"],
+              "needs_for": {"records-api": "show patient records", "lab-results": "show laboratory results", "medication-service": "show medications"},
+              "zone": "a", "recovery_priority": 6, "priority_rationale": "Nothing else depends on it; once the services it calls are healthy it works again."},
         "B": {"name": "auth-service", "role": "auth-service", "description": "login and token verification; counts failed logins per source IP",
               "display_name": "Login & Access Service", "provides": "sign people in and check their access", "depends_on": [],
-              "recovery_priority": 2, "priority_rationale": "Every access to records is checked here; the Patient Portal and the EHR API both need it."},
+              "zone": "b", "recovery_priority": 2, "priority_rationale": "Every access to records, results and medications is checked here; four other services need it."},
         "C": {"name": "records-api", "role": "records-api", "description": "token-protected patient records; reads from the database",
               "display_name": "Electronic Health Records (EHR) API", "provides": "serve patient records", "depends_on": ["auth-service", "database"],
-              "recovery_priority": 3, "priority_rationale": "The Patient Portal needs it to show records; it also needs the Login & Access Service and the database."},
+              "zone": "c", "recovery_priority": 3, "priority_rationale": "The Patient Portal needs it to show records; it also needs the Login & Access Service and the database."},
         "D": {"name": "database", "role": "database", "description": "synthetic patient records store",
               "display_name": "Clinical Database", "provides": "store patient records", "depends_on": [],
-              "recovery_priority": 1, "priority_rationale": "It holds the records every other service reads; restoring it first lets the others recover against a healthy source."},
+              "zone": "d", "recovery_priority": 1, "priority_rationale": "It holds the records every other service reads; restoring it first lets the others recover against a healthy source."},
+        "E": {"name": "lab-results", "role": "lab-results", "description": "token-protected synthetic laboratory results; reads the patient list from the database",
+              "display_name": "Laboratory Results Service", "provides": "serve laboratory results", "depends_on": ["auth-service", "database"],
+              "zone": "b", "recovery_priority": 4, "priority_rationale": "The Patient Portal needs it to show laboratory results; it also needs the Login & Access Service and the database."},
+        "F": {"name": "medication-service", "role": "medication-service", "description": "token-protected synthetic medication lists; reads the patient list from the database",
+              "display_name": "Medication Service", "provides": "serve medication lists", "depends_on": ["auth-service", "database"],
+              "zone": "c", "recovery_priority": 5, "priority_rationale": "The Patient Portal needs it to show medications; it also needs the Login & Access Service and the database."},
     },
 }
 
@@ -76,6 +90,8 @@ class Workload:
     depends_on: Tuple[str, ...] = ()   # ROLES this workload calls; the impact of isolating X is everything that (transitively) calls X
     recovery_priority: int = 0         # suggested order for a human operator (1 = first); display only, agents recover incidents in parallel
     priority_rationale: str = ""
+    needs_for: Tuple[Tuple[str, str], ...] = ()   # (role it calls, what it can no longer do without it), for the impact sentences
+    zone: str = ""                     # Minikube node (resilience.io/zone) that hosts it; empty = the node letter in lower case
 
 
 @dataclass(frozen=True)
@@ -105,6 +121,13 @@ class Workloads:
     def node_of_name(self, name: str) -> Optional[str]:
         return next((w.node for w in self.workloads if w.name == name), None)
 
+    def nodes(self) -> List[str]:
+        """The workload ids in this configuration (A-D, plus E/F when configured)."""
+        return [w.node for w in self.workloads]
+
+    def zone(self, node: str) -> str:
+        return self.by_node()[node].zone or node.lower()
+
     def policy_name(self, node: str) -> str:
         return f"resilience-isolate-{self.name(node)}"
 
@@ -112,16 +135,22 @@ class Workloads:
         out = {}
         for w in self.workloads:
             d = {"name": w.name, "role": w.role, "description": w.description}
-            for k in ("display_name", "provides", "recovery_priority", "priority_rationale"):
+            for k in ("display_name", "provides", "recovery_priority", "priority_rationale", "zone"):
                 if getattr(w, k):
                     d[k] = getattr(w, k)
             if w.depends_on:
                 d["depends_on"] = list(w.depends_on)
+            if w.needs_for:
+                d["needs_for"] = dict(w.needs_for)
             out[w.node] = d
         return {"client": self.client, "workloads": out}
 
     def display(self, node: str) -> str:
         return self.by_node()[node].display_name or self.name(node)
+
+    def node_needs_for(self, node: str) -> Dict[str, str]:
+        """{NODE id of a service it calls: what it can no longer do without it}."""
+        return {self.node_of_role(r): t for r, t in self.by_node()[node].needs_for}
 
     def node_depends_on(self, node: str) -> List[str]:
         """The NODE ids this workload calls (its configured roles resolved to nodes)."""
@@ -156,15 +185,15 @@ def validate(raw, source: str = "") -> Workloads:
     wl = raw.get("workloads")
     out: List[Workload] = []
     if not isinstance(wl, dict):
-        errs.append("'workloads' must be an object with exactly the nodes A, B, C and D")
+        errs.append("'workloads' must be an object with the nodes A, B, C and D (and optionally E and F)")
     else:
         missing = [n for n in NODES if n not in wl]
-        extra = [n for n in wl if n not in NODES]
+        extra = [n for n in wl if n not in WORKLOAD_NODES]
         if missing:
-            errs.append(f"workloads missing for node(s) {', '.join(missing)}: there must be exactly one workload per resilience node A-D")
+            errs.append(f"workloads missing for node(s) {', '.join(missing)}: A, B, C and D are required (E and F are optional)")
         if extra:
-            errs.append(f"unknown node(s) {', '.join(map(str, extra))}: the platform has exactly four peer agents, A-D")
-        for n in NODES:
+            errs.append(f"unknown node(s) {', '.join(map(str, extra))}: workloads are A-F; the platform has exactly four peer agents, A-D, and each watches every workload")
+        for n in WORKLOAD_NODES:
             w = wl.get(n)
             if w is None:
                 continue
@@ -208,19 +237,42 @@ def validate(raw, source: str = "") -> Workloads:
                 if role in dep:
                     errs.append(f"workload {n}: a workload cannot depend on itself")
             prio = w.get("recovery_priority", 0)
-            if isinstance(prio, bool) or not isinstance(prio, int) or not (0 <= prio <= len(NODES)):
-                errs.append(f"workload {n}: 'recovery_priority' must be a whole number from 1 to {len(NODES)}")
+            if isinstance(prio, bool) or not isinstance(prio, int) or not (0 <= prio <= len(WORKLOAD_NODES)):
+                errs.append(f"workload {n}: 'recovery_priority' must be a whole number from 1 to {len(wl)}")
                 prio = 0
+            zone = w.get("zone", "")
+            if zone and (not isinstance(zone, str) or zone not in ZONES):
+                errs.append(f"workload {n}: 'zone' must be one of {', '.join(ZONES)} (the Minikube node that hosts it)")
+                zone = ""
+            if not zone and n not in NODES:
+                errs.append(f"workload {n}: 'zone' ({'/'.join(ZONES)}) is required for nodes E and F: it says which Minikube node hosts the workload")
+            nf = w.get("needs_for", {})
+            needs = []
+            if not isinstance(nf, dict):
+                errs.append(f"workload {n}: 'needs_for' must be an object {{role: what it cannot do without it}}")
+            else:
+                for r_, phrase in nf.items():
+                    if r_ not in dep:
+                        errs.append(f"workload {n}: needs_for names {r_!r}, which is not in its depends_on")
+                    elif not isinstance(phrase, str) or not phrase or len(phrase) > 80 or any(ord(c) < 32 for c in phrase):
+                        errs.append(f"workload {n}: needs_for[{r_!r}] must be a plain string of 1-80 characters")
+                    else:
+                        needs.append((r_, phrase))
             if isinstance(name, str) and isinstance(role, str):
                 out.append(Workload(n, name, role, desc if isinstance(desc, str) else "", texts["display_name"], texts["provides"],
-                                    tuple(x for x in dep if x in KNOWN_ROLES), prio, texts["priority_rationale"]))
+                                    tuple(x for x in dep if x in KNOWN_ROLES), prio, texts["priority_rationale"], tuple(needs), zone))
         for label, vals in (("name", [x.name for x in out]), ("role", [x.role for x in out])):
             for v in sorted({v for v in vals if vals.count(v) > 1}):
                 who = ", ".join(x.node for x in out if getattr(x, label) == v)
                 errs.append(f"conflict: {label} {v!r} is used by more than one workload (nodes {who}); each {label} must be unique")
         prios = [x.recovery_priority for x in out if x.recovery_priority]
         if prios and (len(prios) != len(out) or sorted(prios) != list(range(1, len(out) + 1))):
-            errs.append("recovery_priority: either give every workload a different priority 1.." + str(len(NODES)) + " or none at all")
+            errs.append("recovery_priority: either give every workload a different priority 1.." + str(len(out)) + " or none at all")
+        present = {x.role for x in out}
+        for x in out:
+            for dep_role in x.depends_on:
+                if dep_role not in present and not any(e.startswith("unknown role") for e in errs):
+                    errs.append(f"workload {x.node}: depends_on {dep_role!r}, but no workload in this configuration has that role")
         graph = {x.role: set(x.depends_on) for x in out}
         def reaches(a, b, seen=()):
             return any(d == b or (d not in seen and reaches(d, b, seen + (d,))) for d in graph.get(a, ()))
@@ -229,12 +281,12 @@ def validate(raw, source: str = "") -> Workloads:
                 errs.append(f"depends_on: {r_!r} depends on itself through a cycle")
                 break
         if not any(e.startswith("unknown role") for e in errs) and not missing:
-            absent = [r for r in KNOWN_ROLES if r not in [x.role for x in out]]
-            if absent and len(out) == 4 and not any("conflict: role" in e for e in errs):
-                errs.append(f"roles not used: {', '.join(absent)}")
+            absent = [r for r in CORE_ROLES if r not in [x.role for x in out]]
+            if absent and not any("conflict: role" in e for e in errs):
+                errs.append(f"roles not used: {', '.join(absent)} (the four core roles are required; {', '.join(OPTIONAL_ROLES)} are optional)")
     if errs:
         raise WorkloadConfigError(errs, source)
-    return Workloads(client=client, workloads=tuple(sorted(out, key=lambda w: NODES.index(w.node))), source=source or "defaults")
+    return Workloads(client=client, workloads=tuple(sorted(out, key=lambda w: WORKLOAD_NODES.index(w.node))), source=source or "defaults")
 
 
 def default_path() -> str:

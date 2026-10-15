@@ -18,11 +18,13 @@ _spec = importlib.util.spec_from_file_location("gen_workloads", GEN)
 gen = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(gen)
 
+FOUR = os.path.join(ROOT, "config", "workloads-four.json")      # the Phase A-F profile; the default file now has six workloads (Phase G)
+FOURRAW = json.load(open(FOUR))
 HISTORICAL = {"A": "patient-portal", "B": "auth-service", "C": "records-api", "D": "database"}
 
 
 def custom():
-    d = copy.deepcopy(W.DEFAULTS)
+    d = copy.deepcopy(FOURRAW)
     for n, name in zip("ABCD", ["portal-web", "login-svc", "records-svc", "patient-db"]):
         d["workloads"][n]["name"] = name
     d["client"] = "probe"
@@ -36,11 +38,12 @@ def errors_of(raw):
 
 
 def test_defaults_are_the_historical_names():
-    wl = W.load()
+    wl = W.load(FOUR)
     assert {w.node: w.name for w in wl.workloads} == HISTORICAL
     assert {w.node: w.role for w in wl.workloads} == HISTORICAL
     assert wl.client == "client"
-    assert W.validate(W.DEFAULTS).as_dict() == wl.as_dict()      # built-in fallback == the committed file
+    assert W.validate(FOURRAW).as_dict() == wl.as_dict()
+    assert W.validate(W.DEFAULTS).as_dict() == W.load().as_dict()   # built-in fallback == the committed (six-workload) default file
 
 
 def test_committed_file_matches_builtin_defaults():
@@ -55,7 +58,7 @@ def test_custom_valid_config_accepted():
 
 @pytest.mark.parametrize("mut,frag", [
     (lambda d: d["workloads"].pop("D"), "missing"),
-    (lambda d: d["workloads"].update(E=dict(d["workloads"]["A"])), "unknown node"),
+    (lambda d: d["workloads"].update(G=dict(d["workloads"]["A"])), "unknown node"),
     (lambda d: d["workloads"]["B"].update(name="patient-portal"), "name 'patient-portal' is used by more than one"),
     (lambda d: d["workloads"]["B"].update(role="patient-portal"), "role 'patient-portal' is used by more than one"),
     (lambda d: d["workloads"]["B"].update(role="mystery"), "unknown role"),
@@ -73,13 +76,13 @@ def test_custom_valid_config_accepted():
     (lambda d: d["workloads"]["A"].update(name=5), "must be a string"),
 ])
 def test_invalid_rejected(mut, frag):
-    d = copy.deepcopy(W.DEFAULTS)
+    d = copy.deepcopy(FOURRAW)
     mut(d)
     assert any(frag in e for e in errors_of(d)), errors_of(d)
 
 
 def test_all_problems_listed_not_only_first():
-    d = copy.deepcopy(W.DEFAULTS)
+    d = copy.deepcopy(FOURRAW)
     d["workloads"]["B"].update(name="patient-portal", role="nope")
     d["workloads"]["C"]["name"] = "BAD"
     assert len(errors_of(d)) >= 3
@@ -170,11 +173,11 @@ def test_cli_check_passes_on_defaults():
 
 
 def test_cli_names():
-    assert run_gen("--names").stdout.split() == list(HISTORICAL.values()) + ["client"]
+    assert run_gen("--names").stdout.split() == list(HISTORICAL.values()) + ["lab-results", "medication-service", "client"]
 
 
 def test_cli_rejects_invalid_config_with_exit_2_and_writes_nothing(tmp_path):
-    d = copy.deepcopy(W.DEFAULTS)
+    d = copy.deepcopy(FOURRAW)
     d["workloads"]["B"]["name"] = "patient-portal"
     p = tmp_path / "bad.json"
     p.write_text(json.dumps(d))
@@ -215,7 +218,7 @@ def test_docs_exist_and_name_the_one_file():
 
 # ---- healthcare presentation metadata (Phase C): display names, dependencies, recovery priority. Presentation only.
 def test_healthcare_presentation_defaults():
-    wl = W.load()
+    wl = W.load(FOUR)
     assert [wl.display(n) for n in "ABCD"] == ["Patient Portal", "Login & Access Service", "Electronic Health Records (EHR) API", "Clinical Database"]
     assert {w.node: w.name for w in wl.workloads} == HISTORICAL                    # internal identifiers unchanged
     assert wl.node_depends_on("A") == ["B", "C"] and wl.node_depends_on("C") == ["B", "D"]
@@ -231,7 +234,7 @@ def test_dependencies_in_the_config_match_what_the_apps_actually_call():
     records = src[src.index('if ROLE == "records-api"'):src.index('if ROLE == "patient-portal":')]
     assert "AUTH_URL" in portal and "RECORDS_URL" in portal and "DATABASE_URL" not in portal
     assert "AUTH_URL" in records and "DATABASE_URL" in records and "RECORDS_URL" not in records
-    wl = W.load()
+    wl = W.load(FOUR)
     assert set(wl.by_node()["A"].depends_on) == {"auth-service", "records-api"}
     assert set(wl.by_node()["C"].depends_on) == {"auth-service", "database"}
 
@@ -251,13 +254,13 @@ def test_dependencies_in_the_config_match_what_the_apps_actually_call():
     (lambda d: d["workloads"]["B"].update(depends_on="auth-service"), "list of roles"),
 ])
 def test_invalid_presentation_metadata_rejected(mut, frag):
-    d = copy.deepcopy(W.DEFAULTS)
+    d = copy.deepcopy(FOURRAW)
     mut(d)
     assert any(frag in e for e in errors_of(d)), errors_of(d)
 
 
 def test_presentation_metadata_is_optional():
-    d = copy.deepcopy(W.DEFAULTS)
+    d = copy.deepcopy(FOURRAW)
     for w in d["workloads"].values():
         for k in ("display_name", "provides", "depends_on", "recovery_priority", "priority_rationale"):
             w.pop(k, None)
@@ -266,8 +269,8 @@ def test_presentation_metadata_is_optional():
 
 
 def test_presentation_metadata_never_changes_the_names_in_the_manifests():
-    base = gen.generate(W.load())
-    d = copy.deepcopy(W.DEFAULTS)
+    base = gen.generate(W.load(FOUR))
+    d = copy.deepcopy(FOURRAW)
     for n, w in d["workloads"].items():
         w["display_name"] = "Renamed " + n
     other = gen.generate(W.validate(d))
@@ -283,4 +286,4 @@ def test_agent_config_and_status_carry_the_metadata(tmp_path):
     p.write_text(json.dumps(j))
     c = load_cluster_config(str(p))
     assert c.nodes["C"].display_name == "Electronic Health Records (EHR) API" and c.nodes["C"].depends_on == ["B", "D"]
-    assert c.nodes["D"].recovery_priority == 1 and c.nodes["A"].provides == "show patient records"
+    assert c.nodes["D"].recovery_priority == 1 and c.nodes["A"].provides == "show patient records, laboratory results and medications"

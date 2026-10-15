@@ -99,12 +99,19 @@ data:
           "role": "patient-portal",
           "telemetry_url": "http://patient-portal.healthcare.svc.cluster.local:8080",
           "display_name": "Patient Portal",
-          "provides": "show patient records",
+          "provides": "show patient records, laboratory results and medications",
           "depends_on": [
             "B",
-            "C"
+            "C",
+            "E",
+            "F"
           ],
-          "recovery_priority": 4,
+          "needs_for": {
+            "C": "show patient records",
+            "E": "show laboratory results",
+            "F": "show medications"
+          },
+          "recovery_priority": 6,
           "priority_rationale": "Nothing else depends on it; once the services it calls are healthy it works again."
         },
         "B": {
@@ -117,7 +124,7 @@ data:
           "display_name": "Login & Access Service",
           "provides": "sign people in and check their access",
           "recovery_priority": 2,
-          "priority_rationale": "Every access to records is checked here; the Patient Portal and the EHR API both need it."
+          "priority_rationale": "Every access to records, results and medications is checked here; four other services need it."
         },
         "C": {
           "agent_name": "agent-c",
@@ -146,6 +153,36 @@ data:
           "provides": "store patient records",
           "recovery_priority": 1,
           "priority_rationale": "It holds the records every other service reads; restoring it first lets the others recover against a healthy source."
+        }
+      },
+      "extra_workloads": {
+        "E": {
+          "telemetry_url": "http://lab-results.healthcare.svc.cluster.local:8080",
+          "workload": "lab-results",
+          "role": "lab-results",
+          "display_name": "Laboratory Results Service",
+          "provides": "serve laboratory results",
+          "depends_on": [
+            "B",
+            "D"
+          ],
+          "zone": "b",
+          "recovery_priority": 4,
+          "priority_rationale": "The Patient Portal needs it to show laboratory results; it also needs the Login & Access Service and the database."
+        },
+        "F": {
+          "telemetry_url": "http://medication-service.healthcare.svc.cluster.local:8080",
+          "workload": "medication-service",
+          "role": "medication-service",
+          "display_name": "Medication Service",
+          "provides": "serve medication lists",
+          "depends_on": [
+            "B",
+            "D"
+          ],
+          "zone": "c",
+          "recovery_priority": 5,
+          "priority_rationale": "The Patient Portal needs it to show medications; it also needs the Login & Access Service and the database."
         }
       }
     }

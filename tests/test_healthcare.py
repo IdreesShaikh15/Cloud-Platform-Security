@@ -18,7 +18,8 @@ def test_every_scenario_is_described_in_healthcare_terms_and_keeps_its_id():
     import scenarios as sc
     from world import WL
     assert set(sc.CATALOGUE) == {"app-compromise", "false-accusation", "forge-evidence", "agent-crash", "transient-blip", "slow-burn",
-                                 "ambiguous", "validation-retry", "failed-validation", "obstruct"}
+                                 "ambiguous", "validation-retry", "failed-validation", "obstruct",
+                                 "lab-results-tampered", "medication-failed-logins", "database-cascade"}   # last three: six-workload profile (Phase G)
     ehr, login = WL.display("C"), WL.display("B")
     for sid, (s, _fn) in sc.CATALOGUE.items():
         text = f"{s.title} {s.description} {s.expect}"
@@ -33,14 +34,14 @@ def test_every_scenario_is_described_in_healthcare_terms_and_keeps_its_id():
 
 def test_the_demo_picker_lists_the_obstruct_scenario():
     import scenarios as sc
-    assert [x["id"] for x in sc.listing()][-1] == "obstruct"
+    assert "obstruct" in [x["id"] for x in sc.listing()]
     d = sc.CATALOGUE["obstruct"][0]
     assert "refuses to vote" in d.title and "trust is not reduced" in d.expect
 
 
 # ------------------------------------------------------------------ the page
 def test_page_has_the_synthetic_label_and_the_dependency_panel():
-    for text in ("SYNTHETIC DATA ONLY: no real patient information", 'id="depsec"', "function dependentsOf", "cannot ${esc(nodes[d].provides",
+    for text in ("SYNTHETIC DATA ONLY: no real patient information", 'id="depsec"', "function dependentsOf", "cannot ${esc((nodes[d].needs_for || {})[id] || nodes[d].provides",
                  "does not change what the agents do", "suggested recovery order"):
         assert text in HTML, text
 
