@@ -151,7 +151,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, self._telemetry())
 
         if ROLE == "database" and path == "/query":
-            return self._send(200, {"rows": PATIENTS})
+            return self._send(200, {"rows": PATIENTS, "synthetic": True})
 
         if ROLE == "auth-service" and path == "/verify":
             return self._send(200 if token_valid(q.get("token", [""])[0]) else 401, {})
@@ -167,7 +167,7 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 return self._send(502, {"error": f"auth unavailable: {exc}"})
             try:
-                return self._send(200, {"records": http_json(f"{DATABASE_URL}/query")["rows"]})
+                return self._send(200, {"records": http_json(f"{DATABASE_URL}/query")["rows"], "synthetic": True})
             except Exception as exc:
                 return self._send(502, {"error": f"database unavailable: {exc}"})
 
@@ -181,7 +181,7 @@ class Handler(BaseHTTPRequestHandler):
                                     {"username": "portal-svc", "password": "portal-svc-pass"})["token"]
                     recs = http_json(f"{RECORDS_URL}/records",
                                      headers={"Authorization": f"Bearer {tok}"})["records"]
-                    return self._send(200, {"patients": recs, "served_by": INSTANCE_ID})
+                    return self._send(200, {"patients": recs, "served_by": INSTANCE_ID, "synthetic": True})
                 except Exception as exc:
                     return self._send(503, {"error": f"upstream failure: {exc}"})
 

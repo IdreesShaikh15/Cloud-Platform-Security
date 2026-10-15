@@ -39,7 +39,8 @@ WL = _wlcfg.load()
 WORKLOADS = {w.node: w.name for w in WL.workloads}
 ROLES = {w.node: w.role for w in WL.workloads}
 AUTH_NODE = WL.node_of_role("auth-service")          # the workload that counts failed logins per source IP
-BASELINE_HASHES = {"app.py": "a" * 64, "telemetry.py": "b" * 64, "static/index.html": "c" * 64}
+TRIPWIRE = "static/TRIPWIRE-TEST.txt"               # apps/src/static/TRIPWIRE-TEST.txt: the one file the live tripwire test touches
+BASELINE_HASHES = {"app.py": "a" * 64, "telemetry.py": "b" * 64, "static/index.html": "c" * 64, TRIPWIRE: "d" * 64}
 ATTACK_KINDS = ("exfil", "tamper", "bruteforce")
 
 
@@ -152,6 +153,8 @@ class FakeWorld:
                 conns = max(conns, int(ov.level_fn(now - ov.t0)))
             if "tamper" in a.attacks:
                 hashes["static/index.html"] = "f" * 64
+            if "tripwire" in a.attacks:                 # not in ATTACK_KINDS: only the tripwire test asks for it
+                hashes[TRIPWIRE] = "e" * 64
             auth = {}
             if nid == AUTH_NODE:  # the auth-service role counts failures by source ip
                 for other in self.apps.values():

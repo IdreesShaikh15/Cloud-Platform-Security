@@ -1,0 +1,5 @@
+TRIPWIRE TEST FILE - NOT USED BY ANY SERVICE.
+
+This file exists only so that one harmless, operator-initiated change can be made to it and detected by the
+file-integrity check of the resilience agents (docs/LIVE_DEMO.md, "Tripwire test"). Nothing reads it. It contains no data.
+Appending a line to THIS file (and nothing else) is the whole test; replacing the pod from the known-good image restores it.

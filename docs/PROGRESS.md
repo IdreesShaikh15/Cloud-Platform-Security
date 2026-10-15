@@ -496,3 +496,34 @@ Conflicts flagged for decision: (1) obstruct's "obstructer loses trust" is NOT a
 ### Cluster rebuild / restart for Phase D
 * **Rebuild `cr-dashboard:1.0` only** (`scripts/build-images.sh`) and **restart the dashboard** (`kubectl -n resilience rollout restart deploy/dashboard`). **No agent rebuild, no manifest or config change, no app image change.** The laptop dashboard (`scripts/laptop-dashboard.sh`) needs only a `git pull`. It works with the old agents too (the five states are computed by the dashboard), but the new agent image from Phase B/C is still needed for the cluster identity, telemetry age, display names and obstruct.
 * Commit **`3f34c4f`** (Healthcare Phase D), pushed (no force) to `claude/cyber-resilience-platform-xxs3oh` and `claude/inspiring-thompson-ik54a3`.
+
+## Healthcare focus, Phase E: live demonstration support
+
+**Status: DONE in code, scripts, docs and tests; NOT run against a real cluster.** Runbook: `docs/LIVE_DEMO.md`. Your decisions applied: the tripwire is the narrow, explicit exception to "attacks only in the simulator" (one harmless, operator-initiated change to ONE designated marker file, via `python -c`, never `sh`); agent restart losing history is documented; the live run log is a placeholder table for your own runs. No quorum policy, detector threshold, workload default or agent decision logic changed.
+
+### What was done
+* **Tripwire marker:** `apps/src/static/TRIPWIRE-TEST.txt` (one file, in the shared app image, so present in all four workloads). It is part of the known-good manifest, so the existing **File Changes** check covers it; nothing in the application reads it.
+* **`scripts/tripwire-test.sh <A-D|workload> [--yes]`:** dry run by default; with `--yes` it runs exactly `kubectl -n healthcare exec deploy/<workload> -- python -c 'open("/app/static/TRIPWIRE-TEST.txt","a").write(...)'`. Refuses anything but the four workloads (not the client probe), refuses a kubectl context other than `cr-platform`, makes no other kubectl call. Restore steps are in the runbook (normally: do nothing, the platform replaces the pod; otherwise `scripts/reset.sh` or a `rollout restart`).
+* **Safety net for the manifest (a real risk I found):** the agents treat any difference from `known-good-hashes` as tampering, and `k8s/generated/` is git-ignored, so an OLD manifest (without the new file, or after any app change) would make the agents **isolate healthy workloads**. New `scripts/verify-baseline.py` (read-only pre-flight: compares each running workload's files with the applied ConfigMap), new `scripts/upgrade-app.sh` (agents OFF -> apply manifest -> roll workloads -> verify -> agents ON; leaves them off on a mismatch), and `scripts/deploy.sh` now always regenerates the manifest instead of reusing a stale one.
+* **Synthetic label in the application:** the database, records API and portal JSON responses carry `"synthetic": true` (the portal page already said so).
+* **Simulator parity:** a `tripwire` change kind (not in the default attack kinds, so existing scenarios are unchanged) and the marker in the simulated baseline.
+* **Live Page in centralized mode:** it was reported NOT CONNECTED when only the baseline controller exists (no agents); now it says "CENTRALIZED BASELINE MODE" (`connection_view` counts the controller). `scripts/laptop-dashboard.sh` also forwards `svc/central-controller` (`LIVE_BASELINE_URL`).
+* **`docs/LIVE_DEMO.md`:** step-by-step runbook (healthy state, agent outage, tripwire, compromised agent, forgery, obstruct + tripwire, centralized comparison): exact commands, what to point at, expected behaviour (marked expected, not observed), reset, limits, and an empty run-log table for you.
+
+### Test evidence (commands run, actual results)
+* `python3 -m pytest -q tests` -> **524 passed in 1006 s, 0 failed** (504 + 20 new in `tests/test_live_demo_support.py`).
+* `python3 sim/local_demo.py` -> **12 of 12 PASS**.
+* New tests: the REAL application process + the REAL detector with the documented command run through the script (stand-in `kubectl`, `/app` mapped to a temp copy): a clean workload reports no file change; after the command the detector reports exactly one `FILE_INTEGRITY` (0.95, "1 modified file(s): static/TRIPWIRE-TEST.txt"); exactly that one file changed on disk; restoring the file clears it. The script: exactly one `exec` of `python` on the marker and no other kubectl call, dry run changes nothing, refuses `client` / unknown names / injection attempts / the wrong context / an unknown flag, follows configured workload names. The simulator runs the whole pipeline (3+ voters, only File Changes seen, full return, no other workload touched). `verify-baseline` passes when matching and flags modified / new / missing files and a STALE manifest, exits 2 when it cannot check. `upgrade-app.sh` order (agents off before the manifest, verify before agents on). Synthetic flag. Centralized baseline shown as connected.
+* The detection test cannot assert on network/process readings: the test process shares `/proc` with the machine, so only the file-integrity result is asserted (documented in the test).
+
+### Limitations
+* **Nothing in Phase E has been run on a real cluster.** The tripwire's end-to-end effect (detection by four real agents, real isolation by Calico, real pod start) is expected, not observed; the timings in the runbook are derived from the configured timers, not measured.
+* The tripwire file is a marker, not a model of a real attack; it triggers real containment of a synthetic-data workload (by design).
+* `kubectl exec` needs a working exec path to the pod; if the pod's `/app/static` were not writable by the container user the command fails visibly (the image owns `/app` as uid 10001).
+* A deleted agent pod rejoins with empty history and fresh trust (agents use `emptyDir`); documented.
+
+### Cluster rebuild / restart for Phase E (this one changes the APP IMAGE)
+1. `scripts/build-images.sh` (rebuilds `cr-healthcare-app:1.0` and `:known-good`, `cr-agent:1.0`, `cr-dashboard:1.0`, and regenerates the known-good manifest).
+2. **`scripts/upgrade-app.sh`** (do NOT just roll the workloads: it stops the agents, applies the new manifest, rolls the workloads onto the new image, verifies, starts the agents).
+3. `kubectl apply -f k8s/resilience/10-config.yaml` and `kubectl -n resilience rollout restart deploy/agent-a deploy/agent-b deploy/agent-c deploy/agent-d deploy/dashboard` (needed if you have not yet applied the Phase B/C config and agent image).
+4. `python3 scripts/verify-baseline.py` -> four `ok`; then follow `docs/LIVE_DEMO.md` section 2.

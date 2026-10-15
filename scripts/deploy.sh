@@ -7,7 +7,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MODE="${1:-distributed}"
 
 [ -f "$ROOT/k8s/generated/pki.json" ] || python3 "$ROOT/scripts/gen-certs.py"
-[ -f "$ROOT/k8s/generated/known-good-hashes.json" ] || python3 "$ROOT/scripts/gen-baseline-hashes.py"
+# always regenerate: a stale manifest (an old copy of the app) would make the agents treat healthy workloads as tampered
+python3 "$ROOT/scripts/gen-baseline-hashes.py" >/dev/null
 # The admission webhook's certificate + configuration are generated together with the PKI.
 # (Re-running gen-certs.py rotates EVERY key; restart the agents afterwards.)
 [ -f "$ROOT/k8s/generated/webhook-config.json" ] || python3 "$ROOT/scripts/gen-certs.py"

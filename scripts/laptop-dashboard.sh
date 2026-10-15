@@ -21,7 +21,10 @@ for i in 0 1 2 3; do
   PIDS+=($!)
   LIVE="${LIVE:+$LIVE,}http://127.0.0.1:$lp/status"
 done
-export LIVE_STATUS_URLS="$LIVE" PORT BIND=127.0.0.1
+# the centralized baseline controller (only exists after scripts/switch-mode.sh baseline); its forward simply keeps retrying otherwise
+( while true; do kubectl -n "$NS" port-forward --address 127.0.0.1 "svc/central-controller" "$((BASE+4)):8081" >/dev/null 2>&1; sleep 3; done ) &
+PIDS+=($!)
+export LIVE_STATUS_URLS="$LIVE" LIVE_BASELINE_URL="http://127.0.0.1:$((BASE+4))" PORT BIND=127.0.0.1
 echo ">> Live agents via port-forward: $LIVE_STATUS_URLS"
 
 if [ "${1:-}" = "live" ]; then

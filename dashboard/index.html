@@ -630,7 +630,8 @@ function renderBanner(s) {
     sub = `Cluster: ${esc(cl.name || "name not set")}${cl.kubernetes_version ? " · Kubernetes " + esc(cl.kubernetes_version) : ""}` +
       ` · agents reachable: ${c.agents_up} of ${c.agents_total}${c.agents_down && c.agents_down.length ? " (unreachable: " + c.agents_down.map(esc).join(", ") + ")" : ""}` +
       ` · telemetry age: ${age == null ? "not reported" : age.toFixed(0) + " s" + (age > 10 ? " (STALE)" : "")}`;
-    if (c.state === "DEGRADED") main += " — DEGRADED";
+    if (c.central && !c.agents_up) { main += " — CENTRALIZED BASELINE MODE"; sub += " · a single central controller decides (no agents, no agreement of 3 of 4)"; }
+    else if (c.state === "DEGRADED") main += " — DEGRADED";
   } else {
     cls = d === "SIMULATOR" ? "SIMULATOR" : "UNKNOWN";
     main = d === "SIMULATOR" ? "DEMO MODE — SIMULATED DATA. No real healthcare workload is being attacked." : "DATA SOURCE UNKNOWN — provenance could not be established";

@@ -659,8 +659,9 @@ def connection_view(statuses: dict) -> dict:
     clusters = [(statuses[k].get("cluster") or {}) for k in up]
     names = {x.get("name") for x in clusters if x.get("name")}
     vers = {x.get("kubernetes_version") for x in clusters if x.get("kubernetes_version")}
-    state = "NOT_CONNECTED" if not up else "CONNECTED" if len(up) == len(c.urls) else "DEGRADED"
-    return {"channel": c.name, "expect": c.expect, "state": state, "connected": bool(up),
+    central = "CENTRAL" in statuses          # the centralized baseline controller answers (it is the decision-maker in that mode, no agents)
+    state = "NOT_CONNECTED" if not (up or central) else "CONNECTED" if (central and not up) or len(up) == len(c.urls) else "DEGRADED"
+    return {"channel": c.name, "expect": c.expect, "state": state, "connected": bool(up) or central, "central": central,
             "agents_total": len(c.urls), "agents_up": len(up), "agents_down": [k for k in c.urls if k not in statuses],
             "rejected_sources": dict(c.collector.rejected), "dropped_records": c.collector.dropped_events,
             "telemetry_age_s": max(tel) if tel else None, "telemetry_reporting": len(tel),
