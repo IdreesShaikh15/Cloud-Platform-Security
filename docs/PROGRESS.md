@@ -527,3 +527,4 @@ Conflicts flagged for decision: (1) obstruct's "obstructer loses trust" is NOT a
 2. **`scripts/upgrade-app.sh`** (do NOT just roll the workloads: it stops the agents, applies the new manifest, rolls the workloads onto the new image, verifies, starts the agents).
 3. `kubectl apply -f k8s/resilience/10-config.yaml` and `kubectl -n resilience rollout restart deploy/agent-a deploy/agent-b deploy/agent-c deploy/agent-d deploy/dashboard` (needed if you have not yet applied the Phase B/C config and agent image).
 4. `python3 scripts/verify-baseline.py` -> four `ok`; then follow `docs/LIVE_DEMO.md` section 2.
+* Commit **`ec6b451`** (Healthcare Phase E), pushed (no force) to `claude/cyber-resilience-platform-xxs3oh` and `claude/inspiring-thompson-ik54a3`.
