@@ -495,3 +495,4 @@ Conflicts flagged for decision: (1) obstruct's "obstructer loses trust" is NOT a
 
 ### Cluster rebuild / restart for Phase D
 * **Rebuild `cr-dashboard:1.0` only** (`scripts/build-images.sh`) and **restart the dashboard** (`kubectl -n resilience rollout restart deploy/dashboard`). **No agent rebuild, no manifest or config change, no app image change.** The laptop dashboard (`scripts/laptop-dashboard.sh`) needs only a `git pull`. It works with the old agents too (the five states are computed by the dashboard), but the new agent image from Phase B/C is still needed for the cluster identity, telemetry age, display names and obstruct.
+* Commit **`3f34c4f`** (Healthcare Phase D), pushed (no force) to `claude/cyber-resilience-platform-xxs3oh` and `claude/inspiring-thompson-ik54a3`.
