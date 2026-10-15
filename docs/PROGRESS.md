@@ -466,3 +466,4 @@ Conflicts flagged for decision: (1) obstruct's "obstructer loses trust" is NOT a
 
 ### Cluster rebuild / restart for Phase C
 * **Rebuild** `cr-agent:1.0` (re-check, obstruct, status metadata, config fields) and `cr-dashboard:1.0` (names, Services panel). **Apply** `k8s/resilience/10-config.yaml` (adds display names, dependencies, priorities per node; no `persist_recheck_s`, so the re-check stays off). **Restart** the agents and the dashboard. **Important order:** apply the config only together with the new agent image (the old image rejects unknown node keys). The app image, RBAC, webhook and `10-healthcare-apps.yaml` are unchanged. To try the re-check live, add `"quorum": {"persist_recheck_s": 6}` to the config JSON, apply and restart the agents.
+* Commit **`04e059f`** (Healthcare Phase C), pushed (no force) to `claude/cyber-resilience-platform-xxs3oh` and `claude/inspiring-thompson-ik54a3`.
