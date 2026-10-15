@@ -432,3 +432,4 @@ Conflicts flagged for decision: (1) obstruct's "obstructer loses trust" is NOT a
 
 ### Cluster rebuild / restart for Phase B
 * **Rebuild** `cr-agent:1.0` (new `/status` fields, `cluster_name`) and `cr-dashboard:1.0` (channels, pages). **Apply** `k8s/resilience/10-config.yaml` (adds `cluster_name`). **Restart** the agents and the dashboard. App image and other manifests unchanged. The laptop dashboard needs only `scripts/laptop-dashboard.sh`.
+* Commit **`da1ba8c`** (Healthcare Phase B), pushed (no force) to `claude/cyber-resilience-platform-xxs3oh` and `claude/inspiring-thompson-ik54a3`.
