@@ -259,6 +259,33 @@ def test_upgrade_script_keeps_the_agents_off_until_the_manifest_is_verified():
     assert '[ -f "$ROOT/k8s/generated/known-good-hashes.json" ] ||' not in d and "gen-baseline-hashes.py" in d      # always regenerated
 
 
+def test_upgrade_restarts_the_webhook_on_the_new_configuration_before_the_agents_return(tmp_path, stub):
+    """Found on the sandbox cluster: a webhook still on the OLD configuration refused to isolate a NEW workload (lab-results). The upgrade
+    must apply RBAC + configuration and restart the webhook while the agents are still off. Run against a recording stand-in for kubectl."""
+    env, log, base = stub
+    fake = tmp_path / "bin"
+    fake.mkdir()
+    k = fake / "kubectl"
+    k.write_text(STUB.replace("sys.exit(1)\n", "sys.exit(1 if 'central-controller' in args else 0)\n"))
+    k.chmod(k.stat().st_mode | stat.S_IEXEC)
+    env = dict(env, PATH=f"{fake}{os.pathsep}{env['PATH']}")
+    p = subprocess.run(["bash", os.path.join(ROOT, "scripts", "upgrade-app.sh")], capture_output=True, text=True, env=env, cwd=ROOT, timeout=120)
+    assert p.returncode == 0, p.stdout + p.stderr
+    cmds = [" ".join(c) for c in calls(log)]
+
+    def first(*needles):
+        return next(i for i, c in enumerate(cmds) if all(n in c for n in needles))
+    off, cfg = first("scale", "agent-a", "--replicas=0"), first("apply", "10-config.yaml")
+    rbac, wl = first("apply", "00-rbac.yaml"), first("apply", "10-healthcare-apps.yaml")
+    hook, on = first("rollout restart", "deploy/quorum-webhook"), first("scale", "agent-a", "--replicas=1")
+    dash = first("rollout restart", "deploy/dashboard")
+    assert off < rbac < wl and off < cfg < wl                            # config + RBAC only while the agents are off
+    assert wl < hook < on < dash                                          # webhook restarted (and rolled out) BEFORE the agents return
+    assert first("rollout status", "deploy/quorum-webhook") < on
+    assert "6/7 starting them again" in p.stdout and "OK" not in p.stderr
+    assert p.stdout.count("ok       ") == len(__import__("subprocess").run([sys.executable, os.path.join(ROOT, "scripts", "gen-workloads.py"), "--names"], capture_output=True, text=True).stdout.split()) - 1
+
+
 # ------------------------------------------------------------------ synthetic label in the application itself
 def test_every_patient_response_says_it_is_synthetic(appcopy):
     app, port = start_app(appcopy, "database")
