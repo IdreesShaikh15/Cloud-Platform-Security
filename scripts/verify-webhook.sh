@@ -91,6 +91,19 @@ expect_denied() {
   else fail "$desc: refused, but NOT by the webhook (so the webhook is unproven): $(printf '%s' "$out" | head -1 | cut -c1-160)"; fi
 }
 
+# expect_refused DESCRIPTION kubectl-args...   like expect_denied, but a refusal by RBAC is accepted too. Used for DELETE: since the Phase 3
+# least-privilege tightening the agents have no delete verb at all, so on a real cluster the API server refuses it before the webhook is
+# consulted. That is a stronger protection than the webhook, not a gap; the webhook's own refusal of deletes is covered by tests/test_admission.py.
+expect_refused() {
+  local desc="$1" out rc; shift
+  out="$(kc "$@" 2>&1)"; rc=$?
+  if [ $rc -eq 0 ]; then fail "$desc: the request was ALLOWED (it would have been stored without a dry run!)"
+  elif printf '%s' "$out" | grep -q "cr-quorum-webhook"; then pass "$desc: denied by the webhook ($(printf '%s' "$out" | sed -n 's/.*cr-quorum-webhook: //p' | head -1 | cut -c1-110))"
+  elif printf '%s' "$out" | grep -q "is forbidden: User" && printf '%s' "$out" | grep -q "cannot delete"; then
+    pass "$desc: refused by RBAC (the agent has no delete permission at all, so the request never reaches the webhook; the webhook also refuses it)"
+  else fail "$desc: refused, but neither by the webhook nor by an RBAC 'cannot delete': $(printf '%s' "$out" | head -1 | cut -c1-160)"; fi
+}
+
 POL="resilience-isolate-$TARGET"
 expect_denied "1 isolate $TARGET with NO certificate" "$(policy_json "" "$POL")" \
   --as="$AS" create --dry-run=server -f -
@@ -103,7 +116,7 @@ expect_denied "4a scale $TARGET to 0 replicas with NO certificate" "" \
 expect_denied "4b change $TARGET's image with NO certificate" "" \
   --as="$AS" -n "$NS" patch deployment "$TARGET" --dry-run=server \
   -p '{"spec":{"template":{"spec":{"containers":[{"name":"app","image":"cr-healthcare-app:known-good"}]}}}}'
-expect_denied "5 delete $TARGET" "" --as="$AS" -n "$NS" delete deployment "$TARGET" --dry-run=server
+expect_refused "5 delete $TARGET" --as="$AS" -n "$NS" delete deployment "$TARGET" --dry-run=server
 
 # control: an admin is not an enforced principal; this also proves the webhook answers
 if policy_json "" "$POL" | kc create --dry-run=server -f - >/dev/null 2>&1; then

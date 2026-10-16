@@ -164,11 +164,20 @@ PY_DNS='
 import signal, socket, sys
 def _h(*a): raise TimeoutError("dns timeout")
 signal.signal(signal.SIGALRM, _h); signal.alarm(int(sys.argv[2]))
+# A blocked lookup fails after about 5 s on a real cluster, close to the alarm, so the alarm is cancelled FIRST in every path (found on the
+# sandbox cluster: without that, the alarm fired inside the except block and the probe died with a traceback instead of printing "blocked").
 try:
-    socket.getaddrinfo(sys.argv[1], None)
-    print("PROBE=reachable resolved")
-except Exception as e:
-    print("PROBE=blocked reason=%s" % type(e).__name__)
+    try:
+        socket.getaddrinfo(sys.argv[1], None)
+        r = "reachable resolved"
+    except Exception as e:
+        signal.alarm(0)
+        r = "blocked reason=%s" % type(e).__name__
+    finally:
+        signal.alarm(0)
+except TimeoutError:
+    r = "blocked reason=TimeoutError"
+print("PROBE=" + r)
 '
 SH_DNS='
 py="$1"; name="$2"; t="$3"

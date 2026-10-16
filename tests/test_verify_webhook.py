@@ -48,6 +48,23 @@ def test_denial_by_rbac_alone_does_not_count_as_proof(env):
     assert "NOT by the webhook" in p.stdout and "webhook is unproven" in p.stdout
 
 
+def test_delete_refused_by_rbac_counts_as_protection(env):
+    """Found on the sandbox cluster (docs/SANDBOX-CLUSTER.md): the agents have no delete verb, so the API server refuses DELETE before the
+    webhook is consulted. The old script reported that as a failure ("webhook unproven"); it is stronger protection and must PASS."""
+    env["FAKE_RBAC_NO_DELETE"] = "1"
+    p = run(env)
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert p.stdout.count("[PASS]") == 7 and "[FAIL]" not in p.stdout
+    assert "5 delete records-api: refused by RBAC" in p.stdout
+    assert p.stdout.count("denied by the webhook") == 5          # steps 1, 2, 3, 4a, 4b are still proven by the webhook itself
+
+
+def test_a_delete_that_is_allowed_is_still_a_failure(env):
+    env["FAKE_ALLOW_ALL"] = "1"
+    p = run(env)
+    assert "[FAIL] 5 delete records-api: the request was ALLOWED" in p.stdout
+
+
 def test_missing_webhook_configuration_is_a_preflight_error(env):
     env["FAKE_NO_HOOK"] = "1"
     p = run(env)

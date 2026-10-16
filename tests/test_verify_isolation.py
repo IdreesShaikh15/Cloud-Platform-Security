@@ -195,3 +195,37 @@ def test_unexpected_abort_is_never_reported_as_success(env, tmp_path):
     env["KUBECTL"] = str(broken)
     p = run(env)
     assert p.returncode != 0, p.stdout
+
+
+# ---- found on the sandbox cluster (docs/SANDBOX-CLUSTER.md): the in-pod DNS probe crashed when the blocked lookup failed close to the alarm
+def _py_dns():
+    import re
+    src = open(SCRIPT, encoding="utf-8").read()
+    return re.search(r"PY_DNS='\n(.*?)\n'\n", src, re.S).group(1)
+
+
+def _run_dns(stub, alarm_s=1):
+    code = stub + "\n" + _py_dns()
+    return subprocess.run([sys.executable, "-c", code, "no-such-name.example", str(alarm_s)], capture_output=True, text=True, timeout=30)
+
+
+def test_dns_probe_reports_blocked_even_if_the_alarm_fires_while_the_error_is_handled():
+    slow_name = ("import socket, time\n"
+                 "class Meta(type):\n"
+                 "    @property\n"
+                 "    def __name__(cls):\n"
+                 "        time.sleep(1.6)                       # handling the error takes longer than the 1 s alarm\n"
+                 "        return 'SlowGaiError'\n"
+                 "class SlowGai(OSError, metaclass=Meta): pass\n"
+                 "def fail(*a, **k): raise SlowGai('Temporary failure in name resolution')\n"
+                 "socket.getaddrinfo = fail\n")
+    r = _run_dns(slow_name)
+    assert r.returncode == 0 and "Traceback" not in r.stderr, r.stderr
+    assert r.stdout.strip() == "PROBE=blocked reason=SlowGaiError"
+
+
+def test_dns_probe_still_reports_reachable_blocked_and_timeout():
+    assert _run_dns("import socket; socket.getaddrinfo = lambda *a, **k: [1]").stdout.strip() == "PROBE=reachable resolved"
+    assert _run_dns("import socket\ndef f(*a, **k): raise socket.gaierror(-3, 'x')\nsocket.getaddrinfo = f").stdout.strip() == "PROBE=blocked reason=gaierror"
+    hang = _run_dns("import socket, time\nsocket.getaddrinfo = lambda *a, **k: time.sleep(5)")
+    assert hang.returncode == 0 and hang.stdout.strip() == "PROBE=blocked reason=TimeoutError"

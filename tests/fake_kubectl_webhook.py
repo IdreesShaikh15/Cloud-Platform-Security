@@ -4,6 +4,7 @@ for server-side dry runs, calls the REAL AdmissionPolicy, exactly as the API ser
 webhook. Failure injection via environment variables:
   FAKE_ALLOW_ALL=1   the webhook is not enforcing (everything is allowed)
   FAKE_RBAC_DENY=1   RBAC refuses the request before the webhook is ever consulted
+  FAKE_RBAC_NO_DELETE=1  only DELETE is refused by RBAC, with the real API server's message (the agents have no delete verb)
   FAKE_FAILOPEN=1    with the webhook scaled to 0, requests are still allowed (failurePolicy Ignore)
   FAKE_NO_HOOK=1     the ValidatingWebhookConfiguration is not installed
 """
@@ -90,6 +91,9 @@ def main(argv):
     # ---- a server-side dry run: authenticate -> RBAC -> admission webhook
     if os.environ.get("FAKE_RBAC_DENY") and user != "kubernetes-admin":
         die(f'Error from server (Forbidden): User "{user}" cannot do this in the namespace "healthcare"')
+    if os.environ.get("FAKE_RBAC_NO_DELETE") and args[:2] == ["delete", "deployment"] and user != "kubernetes-admin":
+        die(f'Error from server (Forbidden): deployments.apps "{args[2]}" is forbidden: User "{user}" cannot delete resource '
+            f'"deployments" in API group "apps" in the namespace "healthcare"')
     if st["replicas"] == 0 and user != "kubernetes-admin" and os.environ.get("FAKE_FAILOPEN"):
         print("networkpolicy/x created (server dry run)")      # failurePolicy Ignore: webhook down => allowed
         sys.exit(0)
