@@ -111,6 +111,33 @@ then `ADVANCE_STAGE` to RESTRICTED, MONITORED, PEER_VALIDATED and FULL about 10 
 **total about 80 s** from the tripwire to normal access. On the Live page: a Security Alert "E Laboratory Results Service #1", then `RESOLVED, Healthy, Normal Access Restored`.
 Afterwards `python3 scripts/verify-baseline.py` shows six `ok` again (the tripwire line disappears with the old pod). Do the same with `F` for the Medication Service if you like.
 
+## FALLBACK: only the original four workloads, everything else kept
+Use this if six workloads will not run on your laptop (for example a Pending pod from lack of memory). It keeps the 3-of-4 quorum, the staged return, the admission webhook, the
+laptop dashboard, the guided walkthrough and the baselines; only the Laboratory Results and Medication services are left out. Rehearsed on the sandbox cluster, **on the latest code, starting
+from the six-workload deployment** (the harder case; if you never deployed the two extra services, the removal lines below simply do not appear).
+```bash
+cd "/mnt/c/Users/IDREES SHAIKH/resilience-platform" && source .venv/bin/activate
+# do sections A (pull, line endings) and C (build-images) first, exactly as above, then:
+git checkout -b fallback-4-workloads                 # a LOCAL branch, so the main branch stays clean
+cp config/workloads-four.json config/workloads.json  # the exact four-workload profile of the earlier phases
+python3 scripts/gen-workloads.py --write             # expect: wrote k8s/base/10-healthcare-apps.yaml, k8s/resilience/10-config.yaml, k8s/resilience/00-rbac.yaml
+python3 scripts/gen-workloads.py --check             # expect: configuration OK (...); all 3 generated files are up to date
+git add -A && git commit -q -m "local: four-workload fallback"
+bash scripts/upgrade-app.sh
+```
+Expect from `upgrade-app.sh`: `>> removing lab-results: it is deployed but not in config/workloads.json` (and the same for `medication-service`) **only if they were deployed**, each followed by
+`... deleted from healthcare namespace`; then **four** `ok` lines in step 4/7 (patient-portal, auth-service, records-api, database); `>> done.`; exit code 0.
+Then check it the same way as sections E, F, H, with these differences:
+```bash
+for t in patient-portal auth-service records-api database; do bash scripts/verify-rbac.sh --namespace healthcare --target $t | tail -1; done   # four lines: 27 passed, 0 failed
+bash scripts/verify-webhook.sh --namespace healthcare --target records-api | tail -1                                                           # 7 passed, 0 failed
+bash scripts/tripwire-test.sh C --yes      # C = records-api. Expect CONTAIN within about 2 s and normal access after about 80 s (rehearsal: 11:48:05 -> FULL 11:49:22)
+bash scripts/tripwire-test.sh E            # expect a refusal: 'E' is not one of the healthcare workloads (patient-portal auth-service records-api database)
+```
+The dashboard shows four workload cards and "Agents connected 4 of 4"; Demo Mode runs the same four-workload profile (the three six-workload-only scenarios are not offered).
+To return to six workloads later: `git checkout claude/cyber-resilience-platform-xxs3oh && bash scripts/upgrade-app.sh` (not rehearsed; it is the same upgrade as section D).
+Note: interrupting `upgrade-app.sh` (for example a lost connection) leaves the agents OFF, which is the safe state; just run the script again.
+
 ## Things that can differ on your laptop
 Kubernetes version and Minikube driver; Docker Desktop memory (6 workloads fit easily in the 2200 MiB per node `scripts/setup-cluster.sh` uses); WSL networking (the dashboard
 binds 127.0.0.1; Windows normally forwards WSL's localhost); corporate proxies. If anything here prints something different, send me the output.

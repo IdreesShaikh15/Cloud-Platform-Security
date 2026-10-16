@@ -27,3 +27,11 @@ def test_the_documented_expectations_match_the_scripts():
     assert 'sed -i \'s/\\r$//\' scripts/*.sh' in DOC and "bash scripts/" in DOC
     assert "/mnt/c/Users/IDREES SHAIKH/resilience-platform" in DOC                  # the path with a space is quoted everywhere it is used
     assert not re.search(r'cd /mnt/c/Users/IDREES SHAIKH', DOC)
+
+
+def test_the_four_workload_fallback_uses_files_that_exist_and_matches_the_script():
+    assert "FALLBACK: only the original four workloads" in DOC
+    assert os.path.isfile(os.path.join(ROOT, "config", "workloads-four.json"))
+    assert "cp config/workloads-four.json config/workloads.json" in DOC and "gen-workloads.py --write" in DOC
+    up = open(os.path.join(ROOT, "scripts", "upgrade-app.sh"), encoding="utf-8").read()
+    assert "it is deployed but not in config/workloads.json" in up and "it is deployed but not in config/workloads.json" in DOC
