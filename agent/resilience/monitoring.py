@@ -28,6 +28,7 @@ class Snapshot:
     processes: List[dict] = field(default_factory=list)
     file_hashes: Dict[str, str] = field(default_factory=dict)
     auth_failures_by_ip: Dict[str, int] = field(default_factory=dict)
+    requests_total: Optional[int] = None      # how many requests the workload has served: a COUNT (never any content); None = not reported
 
     @classmethod
     def from_telemetry(cls, target: str, now: float, healthy: bool, t: dict) -> "Snapshot":
@@ -35,6 +36,7 @@ class Snapshot:
                    instance_id=t.get("instance_id", ""), pod_ip=t.get("pod_ip", ""),
                    outbound_connections=int(t.get("outbound_connections", 0)),
                    tx_bytes=int(t.get("tx_bytes", 0)),
+                   requests_total=(int(t["requests_total"]) if t.get("requests_total") is not None else None),
                    processes=t.get("processes", []),
                    file_hashes=t.get("file_hashes", {}),
                    auth_failures_by_ip={k: int(v) for k, v in

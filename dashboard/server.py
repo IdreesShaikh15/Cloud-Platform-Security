@@ -114,6 +114,10 @@ class Collector:
         self.invs: "OrderedDict" = OrderedDict()        # (agent, investigation id) -> investigation row
         self.gseq = 0
         self.last_poll = 0.0
+        # Rolling readings per workload for the Live page charts (requests/s, outbound connections, data sent, failed logins), taken from what
+        # the agents themselves measured on this channel. Bounded (5 minutes at 1 s); lost when the dashboard restarts.
+        self.series: dict = {}
+        self.series_meta: dict = {}
 
     def _fetch(self, sid: str, url: str):
         boot, seq = self.cursor.get(sid, (None, None))
@@ -160,6 +164,26 @@ class Collector:
                 self.status[sid] = res
                 self._remember(sid, res)
             self.last_poll = time.time()
+            self._record_series()
+
+    def _record_series(self) -> None:
+        """One point per workload per poll, from the first accepted agent that reports observations (every agent watches every workload)."""
+        for sid in sorted(self.status):
+            res = self.status[sid]
+            obs = res.get("observations") or {}
+            if not obs:
+                continue
+            now = time.time()
+            for t, m in obs.items():
+                net, auth = (m.get("network") or {}), (m.get("auth") or {})
+                pt = {"t": round(now, 1), "rps": net.get("requests_per_s"), "conns": net.get("outbound_connections"),
+                      "tx_Bps": net.get("tx_rate_Bps"), "auth_fail": auth.get("failures_in_window"), "reachable": m.get("reachable")}
+                self.series.setdefault(t, deque(maxlen=300)).append(pt)
+            tel = res.get("telemetry") or {}
+            self.series_meta = {"agent": sid, "data_source": clean_source(res.get("data_source")), "age_s": tel.get("age_s"),
+                                "oldest_age_s": tel.get("oldest_age_s"), "as_of": now,
+                                "names": {k: (v.get("display_name") or v.get("workload") or k) for k, v in (res.get("targets") or {}).items()}}
+            return
 
     def _scrub(self, res: dict) -> None:
         """Remove, from the status this channel is about to keep, every stamped record that belongs to another source (a
@@ -644,6 +668,20 @@ def aggregate() -> dict:
             "central_compromised": (base or {}).get("compromised"),
             "last_poll": ch().collector.last_poll, "gseq": ch().collector.gseq,
             "channel": ch().name, "configured": True, "connection": connection_view(statuses)}
+
+
+def series_view() -> dict:
+    """Rolling per-workload readings for the Live page charts. Only for the Live channel: the Demo channel never serves charts, so a
+    simulated reading cannot be drawn on the Live page."""
+    c = ch()
+    if c.expect != LIVE_CLUSTER:
+        return {"available": False, "channel": c.name, "message": "Live charts exist on the Live Monitoring page only."}
+    with c.collector.lock:
+        meta = dict(c.collector.series_meta)
+        points = {k: list(v) for k, v in c.collector.series.items()}
+    return {"available": bool(points), "channel": c.name, "data_source": meta.get("data_source") or "UNKNOWN", "agent": meta.get("agent"),
+            "age_s": meta.get("age_s"), "oldest_age_s": meta.get("oldest_age_s"), "as_of": meta.get("as_of"),
+            "names": meta.get("names", {}), "points": points}
 
 
 def connection_view(statuses: dict) -> dict:
@@ -1370,7 +1408,7 @@ class Handler(BaseHTTPRequestHandler):
                               {"WWW-Authenticate": "Bearer"})
         if p == "/api/channels":
             return self._json(channels_view())
-        if p in ("/api/state", "/api/events", "/api/export", "/api/metrics", "/api/sim/state") or p.startswith(
+        if p in ("/api/state", "/api/events", "/api/export", "/api/metrics", "/api/series", "/api/sim/state") or p.startswith(
                 ("/api/agent/", "/api/snapshot/", "/api/incident/")):
             name = (q.get("channel") or [""])[0] or None
             chn, why = resolve(name)
@@ -1383,6 +1421,8 @@ class Handler(BaseHTTPRequestHandler):
             _ctx.channel = chn
         if p == "/api/state":
             return self._json(aggregate())
+        if p == "/api/series":
+            return self._json(series_view())
         if p == "/api/events":
             since = int(q.get("since", ["0"])[0] or 0)
             limit = int(q.get("limit", ["1000"])[0] or 1000)

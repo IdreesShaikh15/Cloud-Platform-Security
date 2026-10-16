@@ -62,6 +62,7 @@ class Detector:
         self.allow = set(process_allowlist)
         self.th = thresholds or Thresholds()
         self._last_tx: Dict[str, Tuple[float, int, str]] = {}
+        self._last_req: Dict[str, Tuple[float, int, str]] = {}
         self._auth_hist: Dict[str, Deque[Tuple[float, int]]] = defaultdict(lambda: deque(maxlen=120))
         self._auth_ip: Dict[str, str] = {}   # target -> pod ip the history above belongs to
         # Observability only: the raw value, effective threshold and resulting
@@ -78,13 +79,21 @@ class Detector:
         if prev and prev[2] == s.instance_id and s.time > prev[0] and s.tx_bytes >= prev[1]:
             rate = (s.tx_bytes - prev[1]) / (s.time - prev[0])
         self._last_tx[s.target] = (s.time, s.tx_bytes, s.instance_id)
+        # Activity (display only, never used in a decision): requests served per second, from a plain counter the workload exports.
+        req_rate = None
+        preq = self._last_req.get(s.target)
+        if s.requests_total is not None:
+            if preq and preq[2] == s.instance_id and s.time > preq[0] and s.requests_total >= preq[1]:
+                req_rate = round((s.requests_total - preq[1]) / (s.time - preq[0]), 2)
+            self._last_req[s.target] = (s.time, s.requests_total, s.instance_id)
         conf_r = ramp(rate, self.th.tx_rate_Bps * sens, self.th.tx_rate_scale)
         conf = max(conf_c, conf_r)
         self.measurements.setdefault(s.target, {})["network"] = {
             "outbound_connections": s.outbound_connections,
             "conn_threshold": self.th.outbound_conns * sens, "conn_confidence": conf_c,
             "tx_rate_Bps": round(rate, 1), "tx_threshold": self.th.tx_rate_Bps * sens,
-            "tx_confidence": conf_r, "confidence": conf}
+            "tx_confidence": conf_r, "confidence": conf,
+            "requests_total": s.requests_total, "requests_per_s": req_rate}
         if conf <= 0:
             return None
         return Detection(s.target, ObsType.NETWORK, conf,

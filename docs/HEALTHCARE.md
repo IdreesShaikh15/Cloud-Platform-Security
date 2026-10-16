@@ -2,7 +2,7 @@
 
 This project protects, recovers and safely reintegrates **healthcare application workloads** on Kubernetes, using four identical peer
 security agents (A-D, each watching every workload) that must agree (3 of 4) before anything is isolated. It runs on **synthetic patient data only**
-(`apps/src/app.py: synthetic_patients`: 40 made-up records; nothing real is stored, shown or attacked), and the dashboard says so on
+(`apps/src/data/synthea-sample.json`: 200 patients produced by the Synthea generator, docs/DATASET.md; nothing real is stored, shown or attacked), and the dashboard says so on
 every page ("SYNTHETIC DATA ONLY").
 
 > **This is not a compliance claim.** The tables below map what the platform does to the *categories* of the HIPAA Security Rule

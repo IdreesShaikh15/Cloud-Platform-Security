@@ -177,6 +177,10 @@
 <section id="depsec" hidden><b>Services, what depends on them, and what isolating each one means</b>
   <span class="mut">(from config/workloads.json, display only. "Suggested recovery order" is for a human operator: it does not change what the agents do, each incident is recovered in parallel.)</span>
   <table id="deptable"></table></section>
+<section id="livecharts" hidden><b>Live telemetry per service</b> <span class="src src-LIVE_CLUSTER">LIVE_CLUSTER</span>
+  <span class="mut" id="lcfresh"></span>
+  <div class="mut" style="margin-top:4px">Measured by the four agents on the real workloads, last 5 minutes, one reading per second. Counts and rates only: the agents never read patient records. Nothing on this page is simulated.</div>
+  <div id="lcgrid" style="margin-top:8px"></div></section>
 <section id="simctl"><b>Demo controls</b> <span class="src src-SIMULATOR">SIMULATOR ONLY</span>
   <span class="mut">(these buttons exist only when this dashboard is connected to the simulator; the backend refuses them for a live cluster. Live scenarios are terminal scripts.)</span>
   <div class="filters" style="margin-top:8px"><select id="simsel" aria-label="Scenario"></select>
@@ -827,6 +831,34 @@ document.getElementById("tourstart").onclick = async () => {
   await simPost("api/sim/start", {scenario: "app-compromise"});
 };
 
+// ---------------------------------------------------------------- live telemetry charts (Live page only; readings the agents measured on the real cluster)
+const LC = [["rps", "Requests per second", 1, v => v.toFixed(1)], ["conns", "Outbound connections", 10, v => String(Math.round(v))],
+            ["tx_Bps", "Data sent", 10000, v => (v / 1024).toFixed(1) + " KiB/s"], ["auth_fail", "Failed logins (10 s)", 5, v => String(Math.round(v))]];
+function spark(vals, floor, color) {
+  const pts = vals.filter(v => v != null);
+  if (pts.length < 2) return '<div class="mut" style="width:150px;font-size:12px">not reported yet</div>';
+  const W = 150, H = 34, hi = Math.max(floor, ...pts), step = W / Math.max(1, vals.length - 1);
+  const path = vals.map((v, i) => v == null ? null : `${(i * step).toFixed(1)},${(H - 2 - (H - 4) * v / hi).toFixed(1)}`).filter(Boolean).join(" ");
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="chart"><rect width="${W}" height="${H}" fill="none" stroke="var(--line)"/><polyline fill="none" stroke="${color}" stroke-width="1.6" points="${path}"/></svg>`;
+}
+async function refreshSeries() {
+  const box = document.getElementById("livecharts");
+  if (CH !== "live") { box.hidden = true; return; }
+  let v; try { v = await (await fetch(U("api/series"))).json(); } catch (e) { return; }
+  if (!v || !v.available || v.data_source !== "LIVE_CLUSTER") { box.hidden = true; return; }       // never draw anything that is not stamped LIVE_CLUSTER
+  box.hidden = false;
+  const age = v.age_s;
+  document.getElementById("lcfresh").textContent = `· telemetry age ${age == null ? "not reported" : age.toFixed(0) + " s" + (age > 10 ? " (STALE)" : "")}` +
+    (v.oldest_age_s != null ? ` (oldest reading ${v.oldest_age_s.toFixed(0)} s)` : "");
+  const ids = Object.keys(v.points).sort();
+  document.getElementById("lcgrid").innerHTML = '<table><tr><th>service</th>' + LC.map(c => `<th>${c[1]}</th>`).join("") + "</tr>" + ids.map(id => {
+    const rows = v.points[id];
+    return `<tr><td>${nb(id)} <b>${esc((v.names || {})[id] || id)}</b></td>` + LC.map(([k, , floor, fmt]) => {
+      const vals = rows.map(r => r[k]), last = [...vals].reverse().find(x => x != null);
+      return `<td>${spark(vals, floor, `var(--node-${id}, #388bfd)`)}<div class="mut" style="font-size:12px">now: ${last == null ? "not reported" : fmt(last)}</div></td>`;
+    }).join("") + "</tr>";
+  }).join("") + "</table>";
+}
 // ---------------------------------------------------------------- dependencies and the impact of isolating each workload
 function dependentsOf(id, nodes) {
   const seen = new Set(), todo = [id];
@@ -1050,7 +1082,7 @@ async function refresh() {
   try { renderState(s); } catch (e) { console.error("render failed", e); }
   isConnected = !(s.configured === false || !(s.connection || {}).connected);
   if (!isConnected) return;                                    // NOT CONNECTED: the banner says so, and nothing else is polled or shown
-  for (const f of [pullEvents, refreshSim, refreshIncident, () => openAgent ? refreshDrawer() : null]) {
+  for (const f of [pullEvents, refreshSim, refreshSeries, refreshIncident, () => openAgent ? refreshDrawer() : null]) {
     try { await f(); } catch (e) { console.error("refresh step failed", e); }                                   // a failing step never claims the backend is unreachable
   }
 }

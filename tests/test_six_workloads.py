@@ -117,10 +117,10 @@ def test_app_roles_serve_synthetic_data_over_real_processes():
     try:
         time.sleep(1.5)
         get = lambda r, path: json.loads(urllib.request.urlopen(f"http://127.0.0.1:{ports[r]}{path}", timeout=5).read())   # noqa: E731
-        labs = get("patient-portal", "/api/labs")
-        meds = get("patient-portal", "/api/medications")
-        assert labs["synthetic"] and len(labs["results"]) == 40 and meds["synthetic"] and len(meds["medications"]) == 40
-        assert set(labs["results"][0]) == {"mrn", "test", "value", "flag"}
+        labs = get("patient-portal", "/api/labs?limit=15")
+        meds = get("patient-portal", "/api/medications?limit=15")
+        assert labs["synthetic"] and labs["source"] == "Synthea" and len(labs["results"]) == 15 and meds["synthetic"] and len(meds["medications"]) == 15
+        assert {"mrn", "date", "loinc", "test", "value", "units"} <= set(labs["results"][0])
         with pytest.raises(Exception):                                     # no token -> refused
             get("lab-results", "/results")
     finally:

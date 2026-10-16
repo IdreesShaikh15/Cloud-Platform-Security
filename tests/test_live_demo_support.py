@@ -314,13 +314,13 @@ def test_every_patient_response_says_it_is_synthetic(appcopy):
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/query", timeout=5) as r:
             body = json.loads(r.read())
-        assert body["synthetic"] is True and len(body["rows"]) == 40
+        assert body["synthetic"] is True and body["source"] == "Synthea" and body["total"] == 200 and len(body["rows"]) == 25
     finally:
         app.terminate()
         app.wait(timeout=10)
     src = open(os.path.join(ROOT, "apps", "src", "app.py"), encoding="utf-8").read()
-    assert src.count('"synthetic": True') == 6                                           # database, records API, portal, lab results, medications, portal labs-and-medications
-    assert "Synthetic data only" in open(os.path.join(ROOT, "apps", "src", "static", "index.html"), encoding="utf-8").read()
+    assert src.count('"synthetic": True') >= 6 and src.count('"source": SOURCE') >= 6                    # every answer is labelled synthetic and as Synthea
+    assert "Synthea synthetic data only" in open(os.path.join(ROOT, "apps", "src", "static", "index.html"), encoding="utf-8").read()
 
 
 def test_the_runbook_quotes_the_exact_command_the_script_runs():
