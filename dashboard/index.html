@@ -361,6 +361,7 @@ function renderTimeline() {
 }
 async function pullEvents() {
   const r = await (await fetch(`api/events?since=${gseq}&limit=2000`)).json();
+  if (!r || !Array.isArray(r.events)) return;                 // an error answer (for example "Live Monitoring is not configured") has no events: nothing to add
   if (r.gseq < gseq) { events = []; gseq = 0; return pullEvents(); }   // dashboard restarted
   if (r.events.length) { events = events.concat(r.events).slice(-3000); gseq = r.gseq; renderTimeline(); }
 }
@@ -1028,6 +1029,7 @@ async function refreshDrawer() {
 
 // ---------------------------------------------------------------- metrics (unchanged)
 async function refreshMetrics() {
+  if (!isConnected) return;
   try {
     const rows = await (await fetch("api/metrics")).json();
     const by = {};
@@ -1040,9 +1042,17 @@ async function refreshMetrics() {
 }
 
 // ---------------------------------------------------------------- refresh loop + pause
+let isConnected = false;                                       // set from the state the backend just returned; not-connected pages ask for nothing else
 async function refresh() {
-  try { renderState(await (await fetch("api/state")).json()); await pullEvents(); refreshSim(); refreshIncident(); if (openAgent) await refreshDrawer(); }
-  catch (e) { document.getElementById("sub").textContent = "dashboard backend unreachable: " + e; }
+  let s;
+  try { s = await (await fetch("api/state")).json(); }
+  catch (e) { document.getElementById("sub").textContent = "dashboard backend unreachable: " + e; return; }     // only when the backend itself cannot be reached
+  try { renderState(s); } catch (e) { console.error("render failed", e); }
+  isConnected = !(s.configured === false || !(s.connection || {}).connected);
+  if (!isConnected) return;                                    // NOT CONNECTED: the banner says so, and nothing else is polled or shown
+  for (const f of [pullEvents, refreshSim, refreshIncident, () => openAgent ? refreshDrawer() : null]) {
+    try { await f(); } catch (e) { console.error("refresh step failed", e); }                                   // a failing step never claims the backend is unreachable
+  }
 }
 function start() { refresh(); refreshMetrics(); timers = [setInterval(refresh, 1000), setInterval(refreshMetrics, 5000)]; }
 function stop() { timers.forEach(clearInterval); timers = []; }
