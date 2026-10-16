@@ -641,4 +641,5 @@ Simulator only, four-workload profile; one attack family; the implant delay (2-2
 * Deployed 6 workloads + 4 agents + dashboard + webhook with the project's own scripts. verify-baseline 6/6, verify-rbac 27/27 x 6 workloads, verify-webhook 7/7 (+ failsafe 8/8), verify-isolation 16/16 on E and F, controlled tripwire on E and F: full pipeline in about 83 s with real timers; the laptop two-page dashboard shows the live cluster.
 * **Four bugs found and fixed with tests:** (1) verify-webhook step 5 rejected an RBAC refusal of delete; (2) verify-isolation DNS probe crashed when the alarm fired inside the error handler; (3) **upgrade-app.sh left the webhook on the old configuration, so new workloads would not have been contained after the documented upgrade** (now restarts it before the agents return); (4) verify-webhook step 4b was a no-op patch on an already-recovered workload.
 * Not measured: kubectl top (Metrics API unreachable in the sandbox; kubelet stats used instead), four versus six on the cluster, anything on WSL.
-* Full suite and simulator: see the end of this entry.
+* Full suite: `python3 -m pytest -q tests` -> **562 passed in 1064 s, 0 failed** (Phase I: 554). `python3 sim/local_demo.py` -> **15 of 15 PASS**. `python3 scripts/gen-workloads.py --check` -> up to date.
+* Commits: `c7169d5`, `5b6e8b5`, `349279f` (fixes, report) plus this entry.
