@@ -608,3 +608,28 @@ Nothing else changed: no new manifests, no new RBAC rules, no new CRDs. To try t
 
 ### Limitations
 One fixed scenario; the walkthrough counts from the moment Start is pressed and a page reload ends it; time shown is simulator time, not wall-clock of a real cluster. Presentation guide not regenerated.
+
+## Stretch Phase I: evaluation-only baselines
+
+**Status: DONE (simulator results only).** Rollback points: Phase H = `0c0409c` (screenshots `0fa0d98`), Phase G = `6529379`, Phase F = `c311502`. Nothing under `agent/` changed: the platform has no baseline switch.
+
+### What was done
+* New experiment **`baselines`** in `scripts/evaluate.py` (9 variants x 20 trials = **180 trials**, identical seeds for the policies of one scenario; four-workload profile; `results/raw/trials.jsonl` now 1140 trials, **0 errors**). Docs: `docs/RESULTS.md` section 4.11 (definitions, denominators, "Simulator time versus wall-clock time", data, honest reading), figure `results/fig9_baselines.png`, `results/baselines_trials.csv`.
+* **Baseline 1, immediate reintegration**: in one trial's process only, `can_advance` is replaced by "yes" (no dwell, trust threshold or anomaly re-check); Recovery Check, 3-of-4 agreement and certificates unchanged.
+* **Baseline 2, single-agent decision**: the simulated cluster's own config sets `f = 0` (quorum 1; the simulated admission policy and certificate check read the same number).
+* Scenarios: genuine compromise (3 policies); a dormant implant that shows itself 2-20 s after the replacement began its return (real vs immediate); a false accusation by one agent and a short traffic spike seen by 1-2 agents (real vs single-agent).
+
+### Results (all simulator seconds; denominators in RESULTS.md 4.11)
+* Genuine compromise: contained 20/20 for all three; median time to isolate 1.1 s real, 1.1 s immediate, 0.5 s single; median time to full access **18.3 s real, 8.5 s immediate, 15.5 s single**.
+* Dormant implant during the staged return: full access while compromised **0/14 real vs 10/14 immediate** (exposure about 1 s median, both re-isolated and ended clean in every trial). After the staged window: 5/6 real vs 6/6 immediate (no meaningful difference).
+* False isolation: **0/20 real vs 20/20 single-agent** for both a false accusation and a short spike (for quorum 1 this is close to true by construction; a milder policy was not tested).
+* Negative or unflattering findings stated in the docs: the 3-of-4 agreement costs about 0.6 s of isolation time; the staged return costs about 9.8 simulator seconds of time to full access in every incident (more on a real cluster); it gives no protection once it is over; the exposure it prevents is short because re-detection is fast; the real platform's 0/20 means "below about 16%", not "never"; the 14/6 split gives wide intervals.
+* Simulator versus wall-clock: times are real seconds of a compressed timeline (shortened timers, 2 s fake pod replacement); a whole trial took a median 20 s wall-clock including build and tear-down. Not predictions for a cluster.
+
+### Test evidence
+* New `tests/test_baselines.py` (7 tests): the platform code contains no baseline switch; importing the harness changes nothing in the platform; a baseline is applied inside one trial process only (quorum 1 / gates gone, parent untouched); 20 trials per variant with identical seeds per scenario; a real baseline trial behaves as expected; recorded data meets 20 trials per variant and the RESULTS.md tables equal a recomputation from `trials.jsonl`; the docs state the simulator-versus-wall-clock distinction and the negative results. Existing evaluation-tab tests updated for section 4.11 and the ninth figure.
+* Two measurement bugs found and fixed in my own harness before the real run (exposure was compared against the node letter instead of the workload name; the first version injected an instantly visible re-infection, which both policies catch, so the dormant-implant design was adopted).
+* Full suite: `python3 -m pytest -q tests` -> **554 passed in 1057 s, 0 failed** (Phase H: 547). `python3 sim/local_demo.py` -> **15 of 15 PASS**. `python3 scripts/gen-workloads.py --check` -> up to date.
+
+### Limitations
+Simulator only, four-workload profile; one attack family; the implant delay (2-20 s) and the 12 s window are my choices, fixed before the run; the baselines remove gates but keep the Recovery Check and certificates; no cluster measurement; presentation guide not regenerated. No cluster rebuild or restart needed (evaluation and docs only).

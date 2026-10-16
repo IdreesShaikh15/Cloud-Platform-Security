@@ -68,11 +68,16 @@ EXPERIMENTS = {
     # healthcare phase C: the persistence re-check (quorum.persist_recheck_s = 0 s vs 6 s, identical seeds) and obstruction
     "recheck": ([f"{t}-{r}" for t in ("benign", "genuine", "netexfil", "pulse") for r in ("r0", "r6")], 120, False),
     "obstruct": (["obstruct", "control"], 240, False),
+    # healthcare phase I: evaluation-only baselines (never part of the platform) against the unmodified platform, identical seeds per scenario.
+    # real = the platform as shipped; immediate = reintegration without the stage gates; single = one agent's vote is enough (quorum 1).
+    "baselines": (["genuine-real", "genuine-immediate", "genuine-single", "reinfect-real", "reinfect-immediate",
+                   "accuse-real", "accuse-single", "blip-real", "blip-single"], 300, False),
 }
 EXTRA_TRIALS = {("mixed", "genuine"): 10, ("mixed", "benign"): 10}     # mixed run uses 30 per class by default
+STAGED_WINDOW_S = 12.0        # with the simulator's timers (3 s per stage) the real staged return takes about 13 s from the start of REINTEGRATING
 TRUST_LIE_AT, TRUST_RESTORE_AT, TRUST_END = 3.0, 33.0, 123.0      # seconds: lying starts / stops, trial ends
 SEED_BASE = {"scenario": 1000, "trust": 2000, "dvc": 3000, "investigation": 4000, "fault": 5000, "crash": 6000,
-             "mixed": 7000, "overhead": 8000, "recheck": 9000, "obstruct": 9500}
+             "mixed": 7000, "overhead": 8000, "recheck": 9000, "obstruct": 9500, "baselines": 9700}
 RECHECK_WAIT = {"r0": 0.0, "r6": 6.0}                                  # quorum.persist_recheck_s of the two arms
 
 
@@ -611,7 +616,85 @@ def w_obstruct(variant, seed, port):
         c.stop()
 
 
-WORKERS = {"recheck": w_recheck, "obstruct": w_obstruct, "scenario": w_scenario, "trust": w_trust, "dvc": w_dvc, "investigation": w_investigation,
+# --------------------------------------------------------------------------------------------- phase I: evaluation-only baselines
+# These exist ONLY inside this evaluation (each trial is its own process). Nothing under agent/ contains a baseline switch, so the
+# platform cannot be put into either mode by configuration: "single" changes one number in the SIMULATED cluster's own config (the
+# simulator's admission policy and certificate check read the same number, so the baseline is internally consistent), and "immediate"
+# replaces one function inside this trial's process only.
+def _baseline_cluster(port: int, policy: str):
+    from world import LocalCluster, fast_config, sim_investigation
+    cfg = fast_config(port, sim_investigation(), validate_timeout_s=30)
+    if policy == "single":
+        cfg.quorum.f = 0                       # quorum = 2f+1 = 1: a single agent's signed vote is enough, everywhere in the simulated cluster
+    elif policy == "immediate":
+        import resilience.agent as A           # this trial's process only: no stage gate (dwell, workload trust, anomaly re-check)
+        from resilience.reintegration import next_stage
+        A.can_advance = lambda stage, dwell, min_dwell, trust, conf, limit=0.3: next_stage(stage) is not None
+    c = LocalCluster(base_port=port, cfg=cfg).start()
+    time.sleep(2)
+    return c
+
+
+def w_baselines(variant, seed, port):
+    scen, policy = variant.split("-")
+    rng = random.Random(seed)
+    target = rng.choice(NODES)
+    c = _baseline_cluster(port, policy)
+    t0 = time.time()
+    try:
+        if scen in ("genuine", "reinfect"):
+            c.mark("baselines", target)
+            c.world.attack(target, KINDS)
+            contained = bool(c.wait_until(lambda: max_epoch(c, target) >= 1, 40))
+            res = {"target": target, "contained": contained}
+            if scen == "genuine":
+                full = contained and bool(c.wait_until(lambda: fully_reintegrated(c, target, NODES), 120))
+                m = incident_min(c, "baselines")
+                other = any(max(a.states[o].epoch for a in c.agents.values()) >= 1 for o in NODES if o != target)
+                res.update(reintegrated=full, tti_s=m["tti_s"], ttf_s=m["ttf_s"], other_workload_isolated=other,
+                           outcome="completed" if full else ("contained_not_reintegrated" if contained else "not_contained"))
+                return res
+            # reinfect: the replacement is compromised again the moment it has been validated and starts its way back.
+            # exposure = seconds the workload had NO isolation policy (full access) while it was compromised.
+            back = contained and bool(c.wait_until(lambda: any(a.states[target].phase == "REINTEGRATING" for a in c.agents.values()), 60))
+            samp = None
+            delay = round(rng.uniform(2.0, 20.0), 1)           # a dormant implant: it shows itself this long after the return began
+            if back:
+                time.sleep(delay)
+                c.world.attack(target, KINDS)
+                samp = Sampler(lambda: (WORKLOADS[target] not in isolated_set(c.backend)) and bool(c.world.apps[target].attacks), 0.25)   # counted from the re-infection on
+            end_ok = back and bool(c.wait_until(lambda: max_epoch(c, target) >= 2 or fully_reintegrated(c, target, NODES), 40))
+            settled = end_ok and bool(c.wait_until(lambda: fully_reintegrated(c, target, NODES) and not c.world.apps[target].attacks, 120))
+            rows = samp.stop() if samp else []
+            exposed = 0.25 * sum(1 for _, x in rows if x)
+            res.update(returning=back, reveal_delay_s=delay, exposed_full_access_s=round(exposed, 2), full_access_while_compromised=exposed > 0,
+                       recontained=max_epoch(c, target) >= 2, ended_clean=settled,
+                       outcome="completed" if settled else ("not_settled" if back else "not_reached_reintegration"))
+            return res
+        if scen == "accuse":
+            liar = rng.choice(NODES)
+            victim = rng.choice([n for n in NODES if n != liar])
+            c.mark("baselines", victim, attacker=liar)
+            c.compromise_agent(liar, victim)
+            t1 = time.time()
+            iso = bool(c.wait_until(lambda: max_epoch(c, victim) >= 1, 25))
+            return {"target": victim, "liar": liar, "false_isolation": iso,
+                    "t_false_isolation_s": round(time.time() - t1, 2) if iso else None, "outcome": "completed"}
+        if scen == "blip":
+            observers = "".join(sorted(rng.sample(NODES, rng.choice([1, 2]))))
+            level, dur = round(rng.uniform(16, 40), 1), round(rng.uniform(1.5, 3.5), 2)
+            c.mark("baselines", target)
+            c.world.inject_connections(target, lambda t, v=level: v, observers=set(observers), duration=dur)
+            t1 = time.time()
+            iso = bool(c.wait_until(lambda: max_epoch(c, target) >= 1, 30))
+            return {"target": target, "observers": observers, "level": level, "duration": dur, "false_isolation": iso,
+                    "t_false_isolation_s": round(time.time() - t1, 2) if iso else None, "outcome": "completed"}
+        raise ValueError(variant)
+    finally:
+        c.stop()
+
+
+WORKERS = {"baselines": w_baselines, "recheck": w_recheck, "obstruct": w_obstruct, "scenario": w_scenario, "trust": w_trust, "dvc": w_dvc, "investigation": w_investigation,
            "fault": w_fault, "crash": w_crash, "mixed": w_mixed, "overhead": w_overhead}
 
 
@@ -657,6 +740,8 @@ def group_index(exp: str, variant: str, variants: list) -> int:
         return [t for t in dict.fromkeys(v.rsplit("-", 1)[0] for v in variants)].index(variant.rsplit("-", 1)[0])
     if exp == "obstruct":         # obstruct and control see identical inputs
         return 0
+    if exp == "baselines":        # every policy of one scenario sees identical inputs
+        return [t for t in dict.fromkeys(v.split("-")[0] for v in variants)].index(variant.split("-")[0])
     return variants.index(variant)
 
 
@@ -1062,9 +1147,44 @@ def fig_confusion(plt, rows):
     finish(plt, fig, "fig8_false_positive_negative.png", "Mixed run: genuine attacks and benign transients")
 
 
+def fig_baselines(plt, rows):
+    d = by(rows, "baselines")
+    if not d:
+        return
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+    # (a) a healthy workload wrongly isolated
+    labs, ks, ns, cols = [], [], [], []
+    for scen, what in (("accuse", "false accusation\nby one agent"), ("blip", "short spike\nseen by 1-2 agents")):
+        for pol, col in (("real", SERIES[0]), ("single", SERIES[1])):
+            rs = ok(d.get(f"{scen}-{pol}", []))
+            labs.append(f"{what}\n{'real platform' if pol == 'real' else 'single-agent'}")
+            ks.append(sum(1 for r in rs if r.get("false_isolation")))
+            ns.append(len(rs))
+            cols.append(col)
+    bars_rate(axes[0], labs, ks, ns, cols, "healthy workload wrongly isolated (rate)")
+    axes[0].tick_params(axis="x", labelsize=7)
+    axes[0].set_title("(a) false isolation", fontsize=10)
+    # (b) full access while compromised, implant shown during the staged-return window
+    labs, ks, ns, cols = [], [], [], []
+    for pol, col, lab in (("real", SERIES[0], "real platform\n(staged return)"), ("immediate", SERIES[2], "baseline:\nimmediate return")):
+        rs = [r for r in ok(d.get(f"reinfect-{pol}", [])) if r.get("returning") and r.get("reveal_delay_s", 99) <= STAGED_WINDOW_S]
+        labs.append(lab)
+        ks.append(sum(1 for r in rs if r.get("full_access_while_compromised")))
+        ns.append(len(rs))
+        cols.append(col)
+    bars_rate(axes[1], labs, ks, ns, cols, "had full access while compromised (rate)")
+    axes[1].set_title("(b) implant shows itself during the staged return", fontsize=10)
+    # (c) time to full access after a genuine compromise
+    pols = [("real", "real platform"), ("immediate", "immediate return"), ("single", "single-agent")]
+    data = [[r["ttf_s"] for r in ok(d.get(f"genuine-{p}", [])) if r.get("ttf_s") is not None] for p, _ in pols]
+    boxes(axes[2], data, [f"{lab}\nn={len(x)}" for (_, lab), x in zip(pols, data)], color=SERIES[0], ylabel="time to full access (simulator s)")
+    axes[2].set_title("(c) genuine compromise", fontsize=10)
+    finish(plt, fig, "fig9_baselines.png", "Evaluation-only baselines against the real platform (simulator, identical seeds)")
+
+
 def make_figs(rows):
     plt = mpl()
-    for f in (fig_scenarios, fig_trust, fig_dvc, fig_investigation, fig_fault, fig_crash, fig_overhead, fig_confusion):
+    for f in (fig_scenarios, fig_trust, fig_dvc, fig_investigation, fig_fault, fig_crash, fig_overhead, fig_confusion, fig_baselines):
         try:
             f(plt, rows)
         except Exception as exc:
@@ -1200,6 +1320,36 @@ def tables(rows) -> dict:
                      f"{sum(1 for r in rs if r.get('attacker_voted'))}/{len(rs)} | {fmt(quant([r.get('withheld_proposals', 0) for r in rs], .5), 0)} | "
                      f"{fmt(min((r.get('min_trust_in_attacker', 100) for r in rs), default=None), 1)} | {sum(1 for r in rs if r.get('other_workload_isolated'))}/{len(rs)} |")
     t["obstruct"] = "\n".join(s)
+    # --- phase I: evaluation-only baselines
+    d = by(rows, "baselines")
+    lab = {"real": "real platform (3 of 4, staged return)", "immediate": "baseline 1: immediate reintegration (no stage gates)",
+           "single": "baseline 2: single-agent decision (quorum 1)"}
+    def rows_for(scen):
+        return [(lab[v.split("-")[1]], ok(d.get(v, []))) for v in EXPERIMENTS["baselines"][0] if v.startswith(scen + "-") and d.get(v)]
+    s = ["| Policy | Trials (denominator) | Contained | Time to isolate, simulator s | Time to full access, simulator s | Reached full access | Another workload isolated |", "|---|---|---|---|---|---|---|"]
+    for name, rs in rows_for("genuine"):
+        s.append(f"| {name} | {len(rs)} | {pct(sum(1 for r in rs if r.get('contained')), len(rs))} | {dist([r.get('tti_s') for r in rs])} | "
+                 f"{dist([r.get('ttf_s') for r in rs])} | {pct(sum(1 for r in rs if r.get('reintegrated')), len(rs))} | "
+                 f"{sum(1 for r in rs if r.get('other_workload_isolated'))}/{len(rs)} |")
+    t["baselines_genuine"] = "\n".join(s)
+    s = ["| Implant shows itself | Policy | Trials that reached the return stage (denominator) | Full access while compromised | Seconds at full access while compromised | Contained again | Ended clean |", "|---|---|---|---|---|---|---|"]
+    for band, bf in (("during the staged return (2-12 s after the return began)", lambda r: r.get("reveal_delay_s", 99) <= STAGED_WINDOW_S),
+                     ("after the staged return would have finished (> 12 s)", lambda r: r.get("reveal_delay_s", 0) > STAGED_WINDOW_S)):
+        for name, rs in rows_for("reinfect"):
+            rs2 = [r for r in rs if r.get("returning") and bf(r)]
+            s.append(f"| {band} | {name} | {len(rs2)} | {pct(sum(1 for r in rs2 if r.get('full_access_while_compromised')), len(rs2))} | "
+                     f"{dist([r.get('exposed_full_access_s') for r in rs2], 2)} | {pct(sum(1 for r in rs2 if r.get('recontained')), len(rs2))} | "
+                     f"{pct(sum(1 for r in rs2 if r.get('ended_clean')), len(rs2))} |")
+    t["baselines_reinfect"] = "\n".join(s)
+    s = ["| Situation | Policy | Trials (denominator) | Healthy workload wrongly isolated | Time to the wrong isolation, simulator s |", "|---|---|---|---|---|"]
+    for scen, what in (("accuse", "one compromised agent signs a false accusation"), ("blip", "a short traffic spike seen by 1-2 agents")):
+        for name, rs in rows_for(scen):
+            s.append(f"| {what} | {name} | {len(rs)} | {pct(sum(1 for r in rs if r.get('false_isolation')), len(rs))} | "
+                     f"{dist([r.get('t_false_isolation_s') for r in rs])} |")
+    t["baselines_false"] = "\n".join(s)
+    wall = [r.get("elapsed_s") for r in rows if r.get("exp") == "baselines" and r.get("elapsed_s") is not None]
+    t["baselines_wall"] = (f"Wall-clock time of a whole baseline trial (build, scenario, tear-down): {dist(wall, 0)} s. "
+                           "The times in the tables above are simulator seconds measured inside the trial (see 'Simulator time versus wall-clock time').")
     # --- overhead
     d = by(rows, "overhead")
     s = ["| Configuration | Trials | CPU, % of one core, per unit | Memory added per unit (MB) | Whole process RSS (MB) |", "|---|---|---|---|---|"]

@@ -55,7 +55,7 @@ The tables below the `<!-- BEGIN -->` markers are **rewritten by the script**; t
   overhead experiment (section 4.7) runs alone for that reason.
 
 <!-- BEGIN:errors -->
-All 960 trials produced a result (0 errors).
+All 1140 trials produced a result (0 errors).
 <!-- END:errors -->
 
 <!-- BEGIN:overview -->
@@ -108,6 +108,15 @@ All 960 trials produced a result (0 errors).
 | recheck | pulse-r6 | 20 | 0 | 9300-9319 |
 | obstruct | obstruct | 20 | 0 | 9500-9519 |
 | obstruct | control | 20 | 0 | 9500-9519 |
+| baselines | genuine-real | 20 | 0 | 9700-9719 |
+| baselines | genuine-immediate | 20 | 0 | 9700-9719 |
+| baselines | genuine-single | 20 | 0 | 9700-9719 |
+| baselines | reinfect-real | 20 | 0 | 9800-9819 |
+| baselines | reinfect-immediate | 20 | 0 | 9800-9819 |
+| baselines | accuse-real | 20 | 0 | 9900-9919 |
+| baselines | accuse-single | 20 | 0 | 9900-9919 |
+| baselines | blip-real | 20 | 0 | 10000-10019 |
+| baselines | blip-single | 20 | 0 | 10000-10019 |
 <!-- END:overview -->
 
 ## 2. Definitions (start event, end event, denominator)
@@ -152,6 +161,7 @@ costly one: a healthy workload is cut off.
 | **scenario** | genuine compromise (all signals, random target and start delay); single-signal attack; slow burn (weak anomaly that grows, seen by two agents first); first replacement pod fails validation | 4 x 20 |
 | **trust** | one random agent lies for 30 s (fabricated evidence + votes against a healthy workload), then is restored; 90 s of recovery observed | 20 |
 | **dvc** (distributed vs centralized) | same seeds: (a) the decision-maker lies about a healthy workload; (b) a genuine attack; (c) the decision-maker crashes first, then a genuine attack | 6 x 20 |
+| **baselines** | *(Phase I, evaluation only)* the real platform against two weakened variants under identical seeds: genuine compromise (3 policies), a dormant implant that shows itself after the replacement started its way back (real vs immediate return), a false accusation by one agent and a short traffic spike seen by 1-2 agents (real vs single-agent) | 9 variants x 20 |
 | **investigation** | the same inputs with the investigation feature ON and OFF: transient blip, weak persistent signal, slow burn, genuine attack | 8 x 20 |
 | **fault** | k = 0..3 liars accusing a healthy workload; k = 0..2 liars plus one honest agent that sees a weak real blip; k = 0..2 agents silent during a real attack | 10 x 20 |
 | **crash** | 4, 3 or 2 agents alive, then a genuine attack | 3 x 20 |
@@ -401,6 +411,69 @@ of them (0 of 20), each obstructing agent's 6 withheld proposals (median) were r
 0.5 s to full access (19.0 s against 18.5 s), small next to the 0.5 s polling interval and the 20 trials. In the control rows the "vote counted" column only says whether the randomly chosen agent happened to be among the signers. **A limitation, stated plainly:** the obstructing agent
 was **not penalised** (lowest trust any honest agent gave it: 100). The platform lowers an agent's trust only when its *positive claims* are contradicted; a withheld vote is not a claim, so it is shown and logged but costs the agent nothing. With one obstructing agent there is no slack: if a
 second agent were also silent or obstructing, nothing would be contained (section 4.5).
+
+### 4.11 What the safeguards buy: two evaluation-only baselines (Phase I)
+
+**These baselines exist only in this evaluation.** Nothing under `agent/` contains a switch for either of them, so the platform cannot be put into either mode by configuration. Each trial is its own process:
+* **Baseline 1, immediate reintegration (no staged checks).** In that trial's process only, the function that decides whether an agent may vote for the next stage (`can_advance`) is replaced by "yes": no minimum dwell, no workload-trust threshold, no anomaly re-check. The Recovery Check (validation of the replacement), the 3-of-4 agreement and the certificates are unchanged; the stages still happen, one quorum step per tick, so the workload reaches full access a few ticks after it validates.
+* **Baseline 2, single-agent decision.** In the simulated cluster's own configuration the quorum is set to 1 (`f = 0`, so 2f+1 = 1). The simulated admission policy and certificate check read the same number, so the baseline is internally consistent: one agent's signed vote is enough to isolate, and nothing else changes.
+* **"Real platform"** is the platform as shipped (3 of 4, staged return, investigation on). Policies of one scenario use **identical seeds** (the same target, attack kinds, observers, levels, delays); 20 trials each. Four-workload profile, like every other result here.
+
+**Metric definitions and denominators.**
+| Metric | Start event | End event | Denominator |
+|---|---|---|---|
+| Contained | attack injected | any agent isolates the workload within 40 s | all trials of the row |
+| Time to isolate | attack injected | first agent isolates it (same as TTI above) | trials that isolated |
+| Time to full access | attack injected | first agent confirms normal access (TTF) | trials that reached it (the table says n) |
+| Full access while compromised | the dormant implant starts (injected after the stated delay, once the replacement began its return) | any 0.25 s sample in which the workload has **no isolation policy** (full access) **and** is compromised | trials in which the replacement reached the return stage (the "returning" trials; the table gives the number) |
+| Seconds at full access while compromised | same start | sum of those samples x 0.25 s | same trials |
+| Contained again / ended clean | the implant starts | a second isolation (epoch 2) / back at full access with a clean replacement | same trials |
+| Healthy workload wrongly isolated | accusation signed / spike started | any agent isolates a workload that was never attacked within 25 s / 30 s | all trials of the row |
+A trial that errors is excluded from every denominator and listed; **this run had 0 errors in all 1140 trials**.
+
+**Simulator time versus wall-clock time.** Every time in the tables below is measured inside the trial with the machine's real clock, so it is a count of real seconds, but of a **compressed timeline**: the simulator shortens the platform's timers (tick 0.5 s instead of 1 s, 3 s per stage instead of 10 s, evidence window 20 s instead of 30 s, contradiction grace 4 s instead of 8 s, executor stagger 1.5 s instead of 3 s, recovery validation timeout 30 s instead of 90 s) and the simulated cluster replaces a pod in 2 s without starting a container. Read them as simulator seconds, good for comparing policies with each other, **not** as predictions for a cluster: the real staged return has at least 4 x 10 s of dwell, for example. The wall-clock cost of a whole trial (building the simulated cluster, running, tearing down) is reported separately, the last line of this section.
+
+**A genuine compromise (all signals), 20 trials per policy.**
+<!-- BEGIN:baselines_genuine -->
+| Policy | Trials (denominator) | Contained | Time to isolate, simulator s | Time to full access, simulator s | Reached full access | Another workload isolated |
+|---|---|---|---|---|---|---|
+| real platform (3 of 4, staged return) | 20 | 20/20 = 100% (95% CI 84-100%) | median 1.1 (IQR 1.1-1.1, min 1.1, max 1.5, n=20) | median 18.3 (IQR 18.0-18.5, min 17.5, max 19.0, n=20) | 20/20 = 100% (95% CI 84-100%) | 0/20 |
+| baseline 1: immediate reintegration (no stage gates) | 20 | 20/20 = 100% (95% CI 84-100%) | median 1.1 (IQR 1.1-1.1, min 0.6, max 1.6, n=20) | median 8.5 (IQR 8.5-8.5, min 7.0, max 9.0, n=20) | 20/20 = 100% (95% CI 84-100%) | 0/20 |
+| baseline 2: single-agent decision (quorum 1) | 20 | 20/20 = 100% (95% CI 84-100%) | median 0.5 (IQR 0.5-0.5, min 0.0, max 0.5, n=20) | median 15.5 (IQR 15.5-15.5, min 15.0, max 15.5, n=20) | 20/20 = 100% (95% CI 84-100%) | 0/20 |
+<!-- END:baselines_genuine -->
+
+**A dormant implant that shows itself after the replacement started its way back** (compromised again after a delay drawn uniformly from 2-20 s; "during the staged return" means 12 s or less, the time the real staged return takes with the simulator's timers).
+<!-- BEGIN:baselines_reinfect -->
+| Implant shows itself | Policy | Trials that reached the return stage (denominator) | Full access while compromised | Seconds at full access while compromised | Contained again | Ended clean |
+|---|---|---|---|---|---|---|
+| during the staged return (2-12 s after the return began) | real platform (3 of 4, staged return) | 14 | 0/14 = 0% (95% CI 0-22%) | median 0.00 (IQR 0.00-0.00, min 0.00, max 0.00, n=14) | 14/14 = 100% (95% CI 78-100%) | 14/14 = 100% (95% CI 78-100%) |
+| during the staged return (2-12 s after the return began) | baseline 1: immediate reintegration (no stage gates) | 14 | 10/14 = 71% (95% CI 45-88%) | median 1.00 (IQR 0.19-1.00, min 0.00, max 1.50, n=14) | 14/14 = 100% (95% CI 78-100%) | 14/14 = 100% (95% CI 78-100%) |
+| after the staged return would have finished (> 12 s) | real platform (3 of 4, staged return) | 6 | 5/6 = 83% (95% CI 44-97%) | median 1.00 (IQR 0.81-1.00, min 0.00, max 1.00, n=6) | 6/6 = 100% (95% CI 61-100%) | 6/6 = 100% (95% CI 61-100%) |
+| after the staged return would have finished (> 12 s) | baseline 1: immediate reintegration (no stage gates) | 6 | 6/6 = 100% (95% CI 61-100%) | median 1.00 (IQR 0.81-1.19, min 0.75, max 1.50, n=6) | 6/6 = 100% (95% CI 61-100%) | 6/6 = 100% (95% CI 61-100%) |
+<!-- END:baselines_reinfect -->
+
+**A healthy workload wrongly isolated** (one compromised agent signs a false accusation; a 1.5-3.5 s spike of 16-40 connections seen by one or two agents).
+<!-- BEGIN:baselines_false -->
+| Situation | Policy | Trials (denominator) | Healthy workload wrongly isolated | Time to the wrong isolation, simulator s |
+|---|---|---|---|---|
+| one compromised agent signs a false accusation | real platform (3 of 4, staged return) | 20 | 0/20 = 0% (95% CI 0-16%) | n/a (no trial reached it) |
+| one compromised agent signs a false accusation | baseline 2: single-agent decision (quorum 1) | 20 | 20/20 = 100% (95% CI 84-100%) | median 0.8 (IQR 0.8-0.8, min 0.2, max 0.8, n=20) |
+| a short traffic spike seen by 1-2 agents | real platform (3 of 4, staged return) | 20 | 0/20 = 0% (95% CI 0-16%) | n/a (no trial reached it) |
+| a short traffic spike seen by 1-2 agents | baseline 2: single-agent decision (quorum 1) | 20 | 20/20 = 100% (95% CI 84-100%) | median 0.8 (IQR 0.6-0.8, min 0.2, max 0.8, n=20) |
+<!-- END:baselines_false -->
+
+<!-- BEGIN:baselines_wall -->
+Wall-clock time of a whole baseline trial (build, scenario, tear-down): median 20 (IQR 10-27, min 2, max 43, n=180) s. The times in the tables above are simulator seconds measured inside the trial (see 'Simulator time versus wall-clock time').
+<!-- END:baselines_wall -->
+
+![baselines](../results/fig9_baselines.png)
+
+**What the data shows, including what does not favour the platform.**
+* **Staged return: it prevents full access during the window, and costs time.** When the implant showed itself during the staged return, the real platform never gave the compromised workload full access (0 of 14 trials, 95% CI 0-22%), whereas immediate reintegration did in 10 of 14 (71%, CI 45-88%). **But** the exposure was short, about 1 s (median) in the baseline, because the agents re-detect and re-isolate within about a second either way, and **both ended clean in every trial**. The price is paid in every incident, genuine or not: the median time to full access was **18.3 s with the staged return against 8.5 s without it** (about 9.8 simulator seconds longer; with the real 10 s dwell per stage the difference on a real cluster would be larger, not measured here).
+* **Staged return does not help once it is over.** For implants that surfaced after the 12 s window the real platform had full access while compromised in 5 of 6 trials, against 6 of 6 for the baseline: no meaningful difference (6 trials each, intervals overlap almost entirely). The staged return protects only the return itself.
+* **Single-agent decision: faster, and fatally easy to abuse.** It isolated a genuinely compromised workload about 0.6 s sooner (median 0.5 s against 1.1 s) and reached full access sooner too (15.5 s against 18.3 s): **the 3-of-4 agreement costs roughly half a second of isolation time in this simulator**, a small, honest price. In exchange it was never fooled: a single false accusation wrongly isolated a healthy workload in **20 of 20** trials for the single-agent policy against **0 of 20** for the real platform (CI 0-16%), and a short traffic spike seen by one or two agents did the same, 20 of 20 against 0 of 20. A caveat that cuts the other way: with a quorum of one this outcome is close to **true by construction** (any one signed vote commits), so it shows what the quorum is for, not how bad a milder policy (say 2 of 4) would be, which was not tested. The 0 of 20 for the platform means "below about 16%", not "never".
+* **Containment itself was the same everywhere:** 20 of 20 for all three policies, no other workload isolated in any genuine trial.
+* **Limits.** The implant model (shows itself after 2-20 s) and the 12 s window are my choices, fixed before the run; the split gives only 14 and 6 trials per policy, so the intervals are wide; one attack family; the baselines remove gates but leave the Recovery Check and certificates; simulator results only, four-workload profile, nothing measured on a cluster.
 
 ## 5. Honest limitations of this evaluation
 
