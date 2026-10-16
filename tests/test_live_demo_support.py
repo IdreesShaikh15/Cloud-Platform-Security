@@ -286,6 +286,28 @@ def test_upgrade_restarts_the_webhook_on_the_new_configuration_before_the_agents
     assert p.stdout.count("ok       ") == len(__import__("subprocess").run([sys.executable, os.path.join(ROOT, "scripts", "gen-workloads.py"), "--names"], capture_output=True, text=True).stdout.split()) - 1
 
 
+def test_upgrade_removes_a_deployed_workload_that_is_no_longer_in_the_configuration(tmp_path, stub):
+    """Switching from six workloads back to the four-workload profile must not leave lab-results / medication-service behind."""
+    env, log, base = stub
+    fake = tmp_path / "bin2"
+    fake.mkdir()
+    k = fake / "kubectl"
+    k.write_text(STUB.replace("sys.exit(1)\n", "sys.exit(1 if 'central-controller' in args else 0)\n").replace(
+        'if "exec" in args:', 'if "deploy" in args and "-l" in args and "jsonpath" in " ".join(args):\n'
+        '    print("patient-portal\\nauth-service\\nrecords-api\\ndatabase\\nlab-results\\nmedication-service"); sys.exit(0)\nif "exec" in args:'))
+    k.chmod(k.stat().st_mode | stat.S_IEXEC)
+    env = dict(env, PATH=f"{fake}{os.pathsep}{env['PATH']}", WORKLOADS_CONFIG=os.path.join(ROOT, "config", "workloads-four.json"))
+    p = subprocess.run(["bash", os.path.join(ROOT, "scripts", "upgrade-app.sh")], capture_output=True, text=True, env=env, cwd=ROOT, timeout=120)
+    assert p.returncode == 0, p.stdout + p.stderr
+    cmds = [" ".join(c) for c in calls(log)]
+    deleted = [c for c in cmds if " delete " in c]
+    assert any("delete deploy,svc lab-results" in c for c in deleted) and any("delete deploy,svc medication-service" in c for c in deleted)
+    assert any("networkpolicy resilience-isolate-lab-results" in c for c in deleted)
+    assert not any(w in c for c in deleted for w in ("patient-portal", "auth-service", "records-api", "database", "client"))
+    assert cmds.index(next(c for c in cmds if "delete deploy,svc lab-results" in c)) > cmds.index(next(c for c in cmds if "--replicas=0" in c))   # agents already off
+    assert p.stdout.count("ok       ") == 4                               # the baseline check covers only the four configured workloads
+
+
 # ------------------------------------------------------------------ synthetic label in the application itself
 def test_every_patient_response_says_it_is_synthetic(appcopy):
     app, port = start_app(appcopy, "database")

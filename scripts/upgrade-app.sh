@@ -26,6 +26,17 @@ echo ">> 3/7 applying RBAC + configuration + the manifest, and rolling the workl
 kubectl apply -f "$ROOT/k8s/resilience/00-rbac.yaml" -f "$ROOT/k8s/resilience/10-config.yaml"
 kubectl apply -f "$ROOT/k8s/generated/known-good-hashes.json"
 kubectl apply -f "$ROOT/k8s/base/10-healthcare-apps.yaml"
+# A workload that is deployed but no longer in config/workloads.json (for example after switching from six workloads back to the four-workload
+# profile, docs/LAPTOP-UPGRADE.md "fallback") would be left behind and, with the agents back on, seen as an unknown workload. Remove it, its
+# Service and its isolation policy now, while the agents are off. Only objects labelled resilience.io/node (never the client) are considered.
+WANT=" $(python3 "$ROOT/scripts/gen-workloads.py" --names | tr '\n' ' ')"
+for d in $(kubectl -n healthcare get deploy -l resilience.io/node -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do
+  case "$WANT" in *" $d "*) ;; *)
+    echo ">> removing $d: it is deployed but not in config/workloads.json"
+    kubectl -n healthcare delete deploy,svc "$d" --ignore-not-found
+    kubectl -n healthcare delete networkpolicy "resilience-isolate-$d" --ignore-not-found ;;
+  esac
+done
 kubectl -n healthcare rollout restart deploy
 kubectl -n healthcare rollout status deploy --timeout=240s
 echo ">> 4/7 checking the running workloads against the manifest (read-only)"
