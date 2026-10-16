@@ -59,6 +59,15 @@ def test_delete_refused_by_rbac_counts_as_protection(env):
     assert p.stdout.count("denied by the webhook") == 5          # steps 1, 2, 3, 4a, 4b are still proven by the webhook itself
 
 
+def test_the_image_check_still_proves_the_webhook_after_a_recovery(env):
+    """After an incident the workload already runs cr-healthcare-app:known-good; the old check patched it to that same image (a no-op the
+    webhook rightly allows) and reported a failure. The check now uses an image that is always a real change."""
+    env["FAKE_CURRENT_IMAGE"] = "cr-healthcare-app:known-good"
+    p = run(env)
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert "[PASS] 4b change records-api's image with NO certificate: denied by the webhook" in p.stdout
+
+
 def test_a_delete_that_is_allowed_is_still_a_failure(env):
     env["FAKE_ALLOW_ALL"] = "1"
     p = run(env)

@@ -113,9 +113,11 @@ expect_denied "3 create a policy that is not an isolation policy" "$(policy_json
   --as="$AS" create --dry-run=server -f -
 expect_denied "4a scale $TARGET to 0 replicas with NO certificate" "" \
   --as="$AS" -n "$NS" patch deployment "$TARGET" --dry-run=server -p '{"spec":{"replicas":0}}'
+# The image must really CHANGE: after an incident the workload already runs ...:known-good, and patching it to the same image is a no-op the
+# webhook rightly lets through (found on the sandbox cluster, docs/SANDBOX-CLUSTER.md). A tag that no deployment uses is always a change.
 expect_denied "4b change $TARGET's image with NO certificate" "" \
   --as="$AS" -n "$NS" patch deployment "$TARGET" --dry-run=server \
-  -p '{"spec":{"template":{"spec":{"containers":[{"name":"app","image":"cr-healthcare-app:known-good"}]}}}}'
+  -p '{"spec":{"template":{"spec":{"containers":[{"name":"app","image":"cr-healthcare-app:verify-webhook-dry-run"}]}}}}'
 expect_refused "5 delete $TARGET" --as="$AS" -n "$NS" delete deployment "$TARGET" --dry-run=server
 
 # control: an admin is not an enforced principal; this also proves the webhook answers

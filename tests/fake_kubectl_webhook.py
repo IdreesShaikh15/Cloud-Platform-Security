@@ -112,7 +112,7 @@ def main(argv):
         patch = json.loads(args[args.index("-p") + 1])
         old = {"metadata": {"name": name, "annotations": {}},
                "spec": {"replicas": 1, "template": {"metadata": {"annotations": {}},
-                                                    "spec": {"containers": [{"name": "app", "image": "cr-healthcare-app:1.0"}]}}}}
+                                                    "spec": {"containers": [{"name": "app", "image": os.environ.get("FAKE_CURRENT_IMAGE", "cr-healthcare-app:1.0")}]}}}}
         req.update(operation="UPDATE", kind={"kind": "Deployment"}, name=name, oldObject=old, object=merge(old, patch))
         what = "patched"
     elif args[:2] == ["delete", "deployment"]:
