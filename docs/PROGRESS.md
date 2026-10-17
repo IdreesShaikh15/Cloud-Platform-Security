@@ -659,3 +659,8 @@ Simulator only, four-workload profile; one attack family; the implant delay (2-2
 * New screenshots `docs/img/dashboard-pK-01..10-*.png`: 01-07 and 10 from the simulator (Demo Mode, Simple/Detailed), 08-09 from the sandbox cluster (Live charts and the connected Live page, labelled as such), 02 the real not-connected page.
 * Stale test fixed: `test_dependencies_in_the_config_match_what_the_apps_actually_call` (it described the four-workload app).
 * docs/LAPTOP-UPGRADE.md: new "FROM 713d0ea" section (item 6).
+
+## Final regression for items 1-6 (final commit below)
+* `python3 -m pytest -q tests`: **589 passed, 1 failed in 1079 s**; the one failure (`test_recovery.py::test_scenario_first_replacement_fails_validation_then_succeeds`) was a gRPC port left in TIME_WAIT by the previous test and **passed on its own rerun** (31 s). Earlier full run: 580 passed, 5 failed + 4 guide errors, all traced (stale `test_dependencies_in_the_config...` test fixed; port reuse; guide images not yet generated).
+* `python3 sim/local_demo.py`: **15 of 15 PASS** when gRPC is told not to use this sandbox's HTTP proxy (`GRPC_ENABLE_HTTP_PROXY=0 NO_PROXY=127.0.0.1,localhost`). Without that, two scenarios (app-compromise, agent-crash) FAIL here because the sandbox's egress proxy intercepts the localhost TLS links (CERTIFICATE_VERIFY_FAILED); the same two fail identically on the older commit 713d0ea, so it is the environment, not this change. On a laptop without a proxy no such setting is needed.
+* `python3 scripts/gen-workloads.py --check`: up to date.
