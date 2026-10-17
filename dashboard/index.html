@@ -11,8 +11,8 @@
           /* node identity (validated categorical slots 1-4, dark steps); the letter badge is the primary cue */
           --node-A:#3987e5; --node-B:#d95926; --node-C:#199e70; --node-D:#c98500; --node-E:#8957e5; --node-F:#cf4f9b; --node-CENTRAL:#8b949e; }
   * { box-sizing:border-box; }
-  body { margin:0; padding:16px; background:var(--bg); color:var(--fg); font:14px/1.4 system-ui, sans-serif; }
-  h1 { font-size:18px; margin:0 0 4px; } .mut { color:var(--mut); font-size:12px; }
+  body { margin:0 auto; max-width:1280px; padding:16px; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui, sans-serif; }
+  h1 { font-size:22px; margin:0 0 4px; } .mut { color:var(--mut); font-size:14px; }
   .top { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; }
   .toolbar { display:flex; gap:8px; align-items:center; }
   button, .btn { background:var(--card2); color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:6px 12px;
@@ -33,9 +33,9 @@
   .tag.bad { background:var(--bad); color:#000; } .tag.warn { background:var(--warn); color:#000; } .tag.ok { background:var(--ok); color:#000; }
   .nb { display:inline-flex; align-items:center; gap:4px; font-weight:700; white-space:nowrap; }
   .nb i { width:10px; height:10px; border-radius:3px; display:inline-block; }
-  table { width:100%; border-collapse:collapse; font-size:12px; } td,th { text-align:left; padding:3px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  table { width:100%; border-collapse:collapse; font-size:14px; } td,th { text-align:left; padding:3px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
   section { background:var(--card); border-radius:8px; padding:12px; margin-top:12px; overflow-x:auto; }
-  .hint { font-size:11px; color:var(--mut); margin-top:6px; }
+  .hint { font-size:13px; color:var(--mut); margin-top:6px; }
   tr.click { cursor:pointer; } tr.click:hover td { background:var(--card2); }
   .expand td { background:#141a21; }
   pre { margin:0; white-space:pre-wrap; word-break:break-word; font-size:11px; color:var(--mut); }
@@ -66,14 +66,26 @@
   .timeleft { display:inline-block; width:70px; height:6px; background:var(--line); border-radius:3px; vertical-align:middle; margin-right:6px; overflow:hidden; }
   .timeleft i { display:block; height:100%; background:var(--info); }
   /* data provenance: every event, decision and metric row says where it came from (text, not only colour) */
-  #srcbanner { display:none; position:sticky; top:0; z-index:20; text-align:center; font-weight:700; letter-spacing:.04em; padding:7px 10px; margin:-16px -16px 12px; }
+  #topbar { position:sticky; top:0; z-index:20; margin:-16px -16px 12px; background:var(--bg); border-bottom:1px solid var(--line); }
+  #topbar #modebar { margin:0; padding:8px 16px; }
+  #srcbanner { display:none; text-align:center; font-weight:700; letter-spacing:.04em; padding:7px 10px; }
   #srcbanner.SIMULATOR { display:block; background:#d29922; color:#000; }
   #srcbanner.MIXED, #srcbanner.UNKNOWN { display:block; background:var(--bad); color:#000; }
   #srcbanner.LIVE_CLUSTER { display:block; background:#1f6f43; color:#fff; font-weight:600; }
   #srcbanner.NOCONN { display:block; background:var(--bad); color:#000; }
-  #srcbanner small { display:block; font-weight:500; letter-spacing:0; font-size:12px; margin-top:3px; }
+  #srcbanner small { display:block; font-weight:500; letter-spacing:0; font-size:14px; margin-top:3px; }
+  body.noconn #srcbanner small { display:none; }
+  body.noconn #notconn-title { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
   #modebar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0 0 12px; }
-  #modebar a { padding:6px 16px; border:2px solid var(--line); border-radius:999px; color:var(--fg); text-decoration:none; font-weight:600; font-size:13px; }
+  #modebar a, #modebar .vsw button { padding:6px 16px; border:2px solid var(--line); border-radius:999px; color:var(--fg); text-decoration:none; font-weight:600; font-size:14px; background:transparent; cursor:pointer; font-family:inherit; }
+  #modebar .vsw { display:inline-flex; gap:4px; margin-left:auto; align-items:center; } #modebar .vsw button[aria-pressed="true"] { border-color:var(--fg); background:var(--card, #1c2128); }
+  /* Simple view hides the technical sections; Detailed shows everything */
+  body[data-view="simple"] .adv, body[data-view="simple"] details.tech { display:none !important; }
+  .story { border-left:4px solid var(--info); background:var(--card2); padding:10px 14px; border-radius:6px; font-size:17px; line-height:1.55; margin:8px 0 12px; }
+  .story.bad { border-left-color:var(--bad); } .story.ok { border-left-color:var(--ok); } .story.warn { border-left-color:var(--warn); }
+  .kcards { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin:10px 0; }
+  .kcard { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; }
+  .kcard .kv { font-size:38px; font-weight:800; line-height:1.1; } .kcard .kl { margin-top:6px; font-size:15px; } .kcard.sim .kv { font-size:26px; color:var(--warn); }
   #modebar a[aria-current="page"] { border-color:var(--fg); background:var(--card, #1c2128); }
   #modebar a.off { opacity:.6; }
   #notconn { display:none; border:2px solid var(--bad); } body.noconn #notconn { display:block; }
@@ -132,13 +144,16 @@
 </style>
 </head>
 <body>
+<header id="topbar">
 <div id="srcbanner" role="status"></div>
 <nav id="modebar" aria-label="Choose the data source">
   <a id="mode-demo" href="?mode=demo" title="Simulated data only. Scenario controls are here.">Demo Mode</a>
   <a id="mode-live" href="?mode=live" title="The real test cluster only. Read-only: no scenario controls.">Live Monitoring</a>
   <span class="tag warn" id="synth" title="Every patient record in this platform is made up (apps/src/app.py: synthetic_patients). No real patient information is stored, shown or attacked.">SYNTHETIC DATA ONLY: no real patient information</span>
   <span class="mut" id="modehint"></span>
+  <span class="vsw" role="group" aria-label="How much detail to show"><span class="mut">View:</span><button type="button" id="view-simple" data-view="simple" aria-pressed="true" title="Plain-English view for presenting">Simple</button><button type="button" id="view-detailed" data-view="detailed" aria-pressed="false" title="Everything: votes, evidence, technical details">Detailed</button></span>
 </nav>
+</header>
 <section id="notconn"><b id="notconn-title"></b><div class="mut" id="notconn-why"></div></section>
 <div class="top">
   <div>
@@ -156,17 +171,17 @@
 <nav class="tabs" role="tablist" aria-label="Dashboard sections">
   <button role="tab" id="tab-overview" data-tab="overview" aria-controls="panel-overview" aria-selected="true">Overview</button>
   <button role="tab" id="tab-incidents" data-tab="incidents" aria-controls="panel-incidents" aria-selected="false">Security Alerts <span class="badge" id="badge-incidents"></span></button>
-  <button role="tab" id="tab-investigations" data-tab="investigations" aria-controls="panel-investigations" aria-selected="false">Investigate <span class="badge" id="badge-investigations"></span></button>
+  <button class="adv" role="tab" id="tab-investigations" data-tab="investigations" aria-controls="panel-investigations" aria-selected="false">Investigate <span class="badge" id="badge-investigations"></span></button>
   <button role="tab" id="tab-recovery" data-tab="recovery" aria-controls="panel-recovery" aria-selected="false">Recovery <span class="badge" id="badge-recovery"></span></button>
   <button role="tab" id="tab-evaluation" data-tab="evaluation" aria-controls="panel-evaluation" aria-selected="false">Performance Results</button>
-  <button role="tab" id="tab-audit" data-tab="audit" aria-controls="panel-audit" aria-selected="false">Activity Log <span class="badge" id="badge-audit"></span></button>
+  <button class="adv" role="tab" id="tab-audit" data-tab="audit" aria-controls="panel-audit" aria-selected="false">Activity Log <span class="badge" id="badge-audit"></span></button>
 </nav>
 
 <div class="panel" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview" data-panel="overview">
 <div class="counters" id="counters" aria-label="Summary counters"></div>
 <div class="grid" id="nodes"></div>
 <div class="hint">Click a card to open that agent's own view (what it measures, whom it trusts, how it scores the evidence, why it has or has not agreed).</div>
-<details class="evd meaning" id="meaning"><summary>What do the numbers on these cards mean? (four separate things; there is deliberately no single combined "security score")</summary>
+<details class="evd meaning adv" id="meaning"><summary>What do the numbers on these cards mean? (four separate things; there is deliberately no single combined "security score")</summary>
   <ul>
     <li><b>Workload trust (0-100)</b>: how much the agents trust <i>this workload</i> right now. It falls while they see something wrong, restarts at 0 when a workload is isolated, and has to climb back (20, 40, 60, 80) before each step back to normal access.</li>
     <li><b>Agent trust (0-100)</b>: how much the <i>other agents</i> trust <i>this agent's evidence</i> (their median). It falls only when what an agent claims is contradicted by what the others see themselves. A low value marks it SUSPECT; a very low one means its votes are ignored.</li>
@@ -205,9 +220,9 @@
 <div id="inclist">
 <section id="incsec"><b>Security Alerts</b> <span class="mut">(each one is a workload that the agents agreed to isolate; click a row for everything that happened: what triggered it, the evidence, who agreed, the actions and their real results)</span>
   <table id="inctable"></table></section>
-<section><b>Agreements reached (3 of 4)</b> <span class="mut">(click a row for the technical details: the votes and evidence behind it)</span><table id="dec"></table></section>
-<section><b>Waiting for agreement</b> <span class="mut">(3 of 4 agents must agree. A missing vote is never counted as approval; each agent that has not agreed says why.)</span><div id="pend"></div></section>
-<section><b>How fast it went</b> <span class="mut">(seconds since the attack was injected; the fastest agent's time)</span><table id="met"></table></section>
+<section class="adv"><b>Agreements reached (3 of 4)</b> <span class="mut">(click a row for the technical details: the votes and evidence behind it)</span><table id="dec"></table></section>
+<section class="adv"><b>Waiting for agreement</b> <span class="mut">(3 of 4 agents must agree. A missing vote is never counted as approval; each agent that has not agreed says why.)</span><div id="pend"></div></section>
+<section class="adv"><b>How fast it went</b> <span class="mut">(seconds since the attack was injected; the fastest agent's time)</span><table id="met"></table></section>
 </div>
 <div id="incdetail" hidden></div>
 </div>
@@ -231,9 +246,9 @@
 </div>
 
 <div class="panel" id="panel-audit" role="tabpanel" aria-labelledby="tab-audit" data-panel="audit" hidden>
-<section><b>Tamper check of the decision logs</b> <span class="mut">(each agent keeps a log of the agreements it saw, chained so that a changed, deleted or re-ordered record is detected)</span><table id="dlogtab"></table></section>
-<section><b>Messages that failed verification</b> <span class="mut">(a message whose signature or identity could not be verified is rejected and never counted)</span><table id="rej"></table></section>
-<section><b>Export</b> <span class="mut">every buffered event from every agent, each labelled with its source</span> <a class="btn" id="export2" href="api/export" download>Export events (JSON)</a></section>
+<section class="adv"><b>Tamper check of the decision logs</b> <span class="mut">(each agent keeps a log of the agreements it saw, chained so that a changed, deleted or re-ordered record is detected)</span><table id="dlogtab"></table></section>
+<section class="adv"><b>Messages that failed verification</b> <span class="mut">(a message whose signature or identity could not be verified is rejected and never counted)</span><table id="rej"></table></section>
+<section class="adv"><b>Export</b> <span class="mut">every buffered event from every agent, each labelled with its source</span> <a class="btn" id="export2" href="api/export" download>Export events (JSON)</a></section>
 </div>
 
 <div id="shade"></div>
@@ -508,15 +523,34 @@ function evidenceGroups(ev) {
   });
 }
 const nextStepText = st => String(st || "").replace(/^advance to (\w+)/, (_m, x) => `Move to ${stageName(x)}`);
+// plain-English wording of one raw reading (the raw text stays available in the Detailed view)
+function readingText(sig, raw) {
+  const s = String(raw || ""); let m;
+  if (sig === "NETWORK" && (m = s.match(/(\d+) outbound conns, tx (\d+) KiB\/s/))) return `It had ${m[1]} open connections to other machines and was sending about ${m[2]} KiB of data every second.`;
+  if (sig === "PROCESS" && (m = s.match(/unexpected processes: (.*)/))) return `A program that should not be running was found: ${m[1]}.`;
+  if (sig === "FILE_INTEGRITY" && (m = s.match(/^(.*) file\(s\): (.*)$/))) return `Files that should never change were altered (${m[1]}): ${m[2]}.`;
+  if (sig === "AUTH" && (m = s.match(/(\d+) failed auths from (\S+) in (\d+)s/))) return `${m[1]} failed login attempts came from one address (${m[2]}) within ${m[3]} seconds.`;
+  return s;
+}
+const STORY_END = {RESOLVED: ["ok", "It has been replaced with a clean copy, checked, and is back to normal."], ACTIVE: ["warn", "It is still being recovered; the agents bring it back one careful step at a time."],
+  NEEDS_HUMAN: ["bad", "The agents could not finish on their own; a person needs to look at it."], SUPERSEDED: ["warn", "A newer alert for the same workload replaced this one."]};
+function alertStory(i, groups) {
+  const top = groups.flatMap(([a, sigs]) => sigs).sort((p, q) => q.count - p.count)[0];
+  const seen = (i.trigger.seen_by || []), what = top ? readingText(top.sig, top.latest.summary) : "";
+  const [cls, end] = STORY_END[i.status] || ["warn", "The agents are still working on it."];
+  return `<div class="story ${cls}"><b>What happened:</b> at ${t(i.window.contained_at)} the agents noticed something wrong with the ${dn(i.target)}. ${esc(what)}
+    ${seen.length} of the 4 security agents agreed (${seen.map(nb).join(" ")}; 3 are required), so the ${dn(i.target)} was cut off from the rest of the system to stop any damage from spreading. ${esc(end)}</div>`;
+}
 function renderIncident(i) {
   const c = i.current.consensus || {}, ns = c.next_step, w = i.window;
   const per = Object.entries(i.current.per_agent || {}).map(([a, v]) => `${nb(a)} ${esc(phaseName(v.phase))}${v.stage ? " / " + esc(stageName(v.stage)) : ""}`).join(" · ");
   const groups = evidenceGroups(i.trigger.evidence_by_agent);
-  const evRows = groups.flatMap(([a, sigs]) => sigs.map(g => `<tr><td>${nb(a)}</td><td title="${esc(g.sig)}">${esc(sigName(g.sig))}</td><td>${esc(g.latest.summary)}</td><td>${g.count}</td>
+  const evRows = groups.flatMap(([a, sigs]) => sigs.map(g => `<tr><td>${nb(a)}</td><td title="${esc(g.sig)}">${esc(sigName(g.sig))}</td><td>${esc(readingText(g.sig, g.latest.summary))}<div class="mut adv">raw: ${esc(g.latest.summary)}</div></td><td>${g.count}</td>
     <td>${dd(`ev-${i.id}-${a}-${g.sig}`, `all ${g.all.length} different reading${g.all.length === 1 ? "" : "s"}`, g.all.map(x => `<div class="mut">${t(x.last_timestamp)} · ${tip("confidence", "confidence")} ${esc(x.confidence)} · ${esc(x.summary)}${x.count > 1 ? ` (sent ×${x.count})` : ""}</div>`).join(""))}</td></tr>`)).join("");
   const snapLink = x => `<a class="btn" href="${esc(U(`api/snapshot/${x.agent}/${encodeURIComponent(x.key)}`))}">export ${esc(x.agent)}'s snapshot</a>`;
   return `
   <div class="fl"><button id="incback">← All security alerts</button><h2>${nb(i.target)} ${dn(i.target)} · security alert #${i.epoch}</h2> ${srcTag(i.source)} ${incTag(i.status)}</div>
+  ${alertStory(i, groups)}
   <div class="mut">isolated at ${t(i.window.contained_at)} · events from ${t(w.from)}${w.to ? " to " + t(w.to) : " until now"} · ${esc(i.limits)}</div>
 
   <section class="dsec"><h3>Where it stands now</h3>
@@ -547,7 +581,7 @@ function renderIncident(i) {
       <td>${yn(a.attempted, a.attempted.by)}${a.attempted.tries > 1 ? `<div class="mut">${a.attempted.tries} tries</div>` : ""}</td><td>${yn(a.verified, a.verified.by)}${a.verified.at ? `<div class="mut">${t(a.verified.at)}</div>` : ""}</td></tr>`; }).join("") +
     `</table></section>
 
-  <section class="dsec"><h3>Who agreed</h3>
+  <section class="dsec adv"><h3>Who agreed</h3>
     <div class="mut">Each agent is in exactly one state. <b>A missing vote is never approval:</b> only a signed vote that was counted is "Agrees".</div>
     <table><tr><th>what</th><th>Agreement Reached (3 of 4)?</th><th>each agent</th></tr>` +
     i.proposals.map(p => `<tr><td>${esc(plainProposal(p.proposal))}${dd("vote-" + i.id + "-" + p.proposal, "Technical details", `<div class="mut">${esc(p.proposal)} · signed votes: ${p.votes.map(v => `${esc(v.voter)} (score ${esc(v.score)})`).join(", ") || "none"}</div>`)}</td>
@@ -561,17 +595,17 @@ function renderIncident(i) {
       <div class="mut">Evidence saved before this replacement: ${r.snapshots.length ? r.snapshots.map(x => `${nb(x.agent)} ${x.pods} pod(s), ${x.log_lines} log line(s)${x.not_captured.length ? ", NOT captured: " + x.not_captured.map(m => esc(m.item)).join("; ") : ""} ${snapLink(x)}`).join("<br>") : "none seen"}</div></div>`).join("") : '<div class="mut">No replacement recorded for this alert yet.</div>') +
     `</section>
 
-  <section class="dsec"><h3>Investigate</h3>` + (i.investigations.length ? "<table><tr><th>question</th><th>started</th><th>outcome per agent</th></tr>" + i.investigations.map(v => `<tr><td>${esc(v.question)}<div class="mut">${esc(String(v.trigger).replaceAll("_"," "))} · started by ${nb(v.initiator)}</div></td><td>${t(v.started_at)}</td>
+  <section class="dsec adv"><h3>Investigate</h3>` + (i.investigations.length ? "<table><tr><th>question</th><th>started</th><th>outcome per agent</th></tr>" + i.investigations.map(v => `<tr><td>${esc(v.question)}<div class="mut">${esc(String(v.trigger).replaceAll("_"," "))} · started by ${nb(v.initiator)}</div></td><td>${t(v.started_at)}</td>
       <td>${Object.entries(v.per_agent).map(([a, p]) => `${nb(a)}:${esc(p.outcome ? String(p.outcome).replaceAll("_"," ").toLowerCase() : p.state.toLowerCase())}`).join(" ")}</td></tr>`).join("") + "</table>" : '<div class="mut">No investigation of this workload around this alert (the evidence was clear enough for the agents to decide directly).</div>') +
     `</section>
 
-  <section class="dsec"><h3>Trust changes and why</h3><div class="mut">Changes in how much agents trust each other's evidence, and suspicion flags, while the alert ran. "about this workload" marks the ones whose reason names it.</div>` +
+  <section class="dsec adv"><h3>Trust changes and why</h3><div class="mut">Changes in how much agents trust each other's evidence, and suspicion flags, while the alert ran. "about this workload" marks the ones whose reason names it.</div>` +
     (i.trust_changes.length ? i.trust_changes.slice().reverse().map(e => `<div class="ev cat-${e.category}" style="grid-template-columns:70px 72px 1fr"><span class="mut">${t(e.ts)}</span><span>${nb(e.node)}</span><span>${e.mentions_target ? '<span class="tag warn">about this workload</span> ' : ""}${esc(e.summary)}</span></div>`).join("") : '<div class="mut">No agent-trust changes during this alert.</div>') +
     `<div class="mut" style="margin-top:6px">${tip("Workload trust", "workloadTrust")} now: ${Object.entries(i.current.per_agent || {}).map(([a, v]) => `${nb(a)} ${v.workload_trust ?? "-"}`).join(" ")}</div></section>
 
-  <section class="dsec"><h3>Messages that failed verification</h3>` + evList(i.rejected, "No evidence or message failed verification during this alert.") + `</section>
+  <section class="dsec adv"><h3>Messages that failed verification</h3>` + evList(i.rejected, "No evidence or message failed verification during this alert.") + `</section>
 
-  <section class="dsec"><h3>What each agent observed and exchanged</h3>
+  <section class="dsec adv"><h3>What each agent observed and exchanged</h3>
     <details class="rec"><summary>Observations (${i.observations.length})</summary>${evList(i.observations, "none")}</details>
     <details class="rec"><summary>Evidence Shared (${i.evidence_sent.length})</summary>${evList(i.evidence_sent, "none")}</details>
     <details class="rec"><summary>Evidence Received and checked (${i.evidence_received.length})</summary>${evList(i.evidence_received, "none")}</details></section>`;
@@ -606,6 +640,18 @@ function evBlock(b) {
   return "";
 }
 const evBlocks = bl => (bl || []).map(evBlock).join("");
+// the big cards: each number is taken from the matching line of the results text (docs/RESULTS.md), never typed in here
+function keyCards(ten) {
+  const items = ((ten.blocks[0] || {}).items) || [], pick = (n, re) => { const m = String(items[n] || "").match(re); return m ? m[1] : null; };
+  const cards = [
+    [pick(0, /\((\d+ of \d+)\b/), "attack trials went all the way through detection, isolation, recovery and reintegration"],
+    [pick(0, /isolated in about ([\d.]+ s)/), "to isolate a genuine attack (simulator time)"],
+    [pick(1, /\((\d+\/\d+)\)/), "healthy workloads wrongly isolated because one agent lied"],
+    [pick(4, /(\d of 4) compromised/), "agents must be compromised before a healthy workload is wrongly isolated: the limit of the design"],
+  ];
+  return `<div class="kcards">` + cards.map(([v, l]) => `<div class="kcard"><div class="kv">${esc(v || "see below")}</div><div class="kl">${esc(l)}</div></div>`).join("") +
+    `<div class="kcard sim"><div class="kv">SIMULATOR</div><div class="kl">every number here comes from the simulator; nothing was measured on a real cluster</div></div></div>`;
+}
 function renderEvaluation(v) {
   const box = document.getElementById("evalbox");
   const banner = `<div class="evbanner" role="note">${srcTag("SIMULATOR")} ${esc(v.notice)}</div>`;
@@ -616,7 +662,7 @@ function renderEvaluation(v) {
   const ten = sec("0"), res = sec("4"), lim = sec("5");
   box.innerHTML = banner +
     `<div class="mut">${esc(v.title)} · ${m.trials ? m.trials + " seeded trials" : "trials: unknown"} · ${esc(m.errors_text || "")} · files from ${t(m.generated_at)} · ${(m.figures || []).length} graphs</div>` +
-    (ten ? `<section class="evcard"><h3>${esc(ten.title)}</h3>${evBlocks(ten.blocks.filter(b => b.type !== "code").slice(0, 1))}</section>` : "") +
+    (ten ? `<section class="evcard"><h3>Key results</h3>${keyCards(ten)}${dd("ev-twelve", "Show all twelve lines", evBlocks(ten.blocks.filter(b => b.type !== "code").slice(0, 1)), "evd")}</section>` : "") +
     (res ? res.subsections.map(x => { const bl = x.blocks || [], vis = bl.filter(b => b.type === "image" || b.type === "table"), long = bl.filter(b => !(b.type === "image" || b.type === "table"));
         return `<section class="evcard" id="ev-${esc(x.id.replace(/\./g, "-"))}"><h3>${esc(x.id)} ${esc(x.title)} ${srcTag("SIMULATOR")}</h3>${evBlocks(vis.filter(b => b.type === "image"))}${evBlocks(vis.filter(b => b.type === "table"))}${long.length ? dd("ev-" + x.id, "Explanation: how to read it and what the data shows", evBlocks(long), "evd") : ""}</section>`; }).join("") : "") +
     (lim ? `<section class="evcard"><h3>${esc(lim.title)}</h3>${dd("ev-limits", "Show the limitations", evBlocks(lim.blocks), "evd")}</section>` : "") + about;
@@ -627,6 +673,16 @@ async function loadEvaluation() {
   catch (e) { evalLoaded = false; document.getElementById("evalbox").innerHTML = '<div class="mut">Could not load the evaluation.</div>'; }
 }
 
+// Simple (default) / Detailed view; ?view=detailed overrides, the choice is remembered in this browser only
+let VIEW = "simple";
+try { const q = new URLSearchParams(location.search).get("view"), st = localStorage.getItem("cr-view"); VIEW = q === "detailed" || q === "simple" ? q : st === "detailed" ? "detailed" : "simple"; } catch (e) {}
+function setView(v) {
+  VIEW = v; document.body.dataset.view = v;
+  for (const b of document.querySelectorAll("#modebar .vsw button")) b.setAttribute("aria-pressed", String(b.dataset.view === v));
+  try { localStorage.setItem("cr-view", v); } catch (e) {}
+}
+for (const b of document.querySelectorAll("#modebar .vsw button")) b.onclick = () => setView(b.dataset.view);
+setView(VIEW);
 function renderBanner(s) {
   const b = document.getElementById("srcbanner"), c = s.connection || {}, d = s.data_source || "UNKNOWN";
   const rej = Object.values(c.rejected_sources || {});

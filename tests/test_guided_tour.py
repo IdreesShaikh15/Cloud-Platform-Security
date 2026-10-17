@@ -73,6 +73,7 @@ def test_walkthrough_against_the_real_simulator_end_to_end(demo):
         b = pw.chromium.launch(executable_path=CHROMIUM, args=["--no-sandbox"])
         try:
             pg = b.new_page()
+            pg.add_init_script("try { localStorage.setItem('cr-view', 'detailed') } catch (e) {}")
             pg.goto(demo + "/?mode=demo")
             pg.wait_for_selector("#tour.on", timeout=30000)
             pg.wait_for_function("Object.keys((lastState||{}).nodes||{}).length>0", timeout=30000)

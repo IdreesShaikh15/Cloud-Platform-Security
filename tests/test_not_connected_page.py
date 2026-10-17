@@ -65,6 +65,7 @@ def probe(url):
         b = pw.chromium.launch(executable_path=CHROMIUM, args=["--no-sandbox"])
         try:
             pg = b.new_page()
+            pg.add_init_script("try { localStorage.setItem('cr-view', 'detailed') } catch (e) {}")
             errs, bad = [], []
             pg.on("pageerror", lambda e: errs.append(str(e)))
             pg.on("response", lambda r: bad.append((r.status, r.url)) if r.status >= 400 else None)

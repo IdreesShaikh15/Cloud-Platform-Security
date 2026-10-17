@@ -130,6 +130,7 @@ def test_the_pending_panel_in_a_browser(monkeypatch):
         with pw.sync_playwright() as p:
             b = p.chromium.launch(executable_path="/opt/pw-browsers/chromium")
             pg = b.new_page(viewport={"width": 1300, "height": 900})
+            pg.add_init_script("try { localStorage.setItem('cr-view', 'detailed') } catch (e) {}")
             errs = []
             pg.on("pageerror", lambda e: errs.append(str(e)))
             pg.goto(r.url + "/?mode=demo#incidents")
@@ -204,6 +205,7 @@ def test_incident_view_groups_evidence_hides_technical_details_and_says_skipped_
         with pw.sync_playwright() as p:
             b = p.chromium.launch(executable_path="/opt/pw-browsers/chromium")
             pg = b.new_page(viewport={"width": 1300, "height": 900})
+            pg.add_init_script("try { localStorage.setItem('cr-view', 'detailed') } catch (e) {}")
             errs = []
             pg.on("pageerror", lambda e: errs.append(str(e)))
             pg.goto(r.url + "/?mode=demo")
@@ -247,6 +249,7 @@ def test_outcome_words(monkeypatch):
         with pw.sync_playwright() as p:
             b = p.chromium.launch(executable_path="/opt/pw-browsers/chromium")
             pg = b.new_page()
+            pg.add_init_script("try { localStorage.setItem('cr-view', 'detailed') } catch (e) {}")
             pg.goto(r.url + "/?mode=demo")
             pg.wait_for_selector("#counters")
             assert pg.evaluate("outcomeTxt('refused_stale')") == "skipped: already done by another agent"
@@ -277,6 +280,7 @@ def test_overview_uses_plain_words_with_tooltips_and_keeps_raw_values_in_technic
         with pw.sync_playwright() as p:
             b = p.chromium.launch(executable_path="/opt/pw-browsers/chromium")
             pg = b.new_page(viewport={"width": 1400, "height": 1000})
+            pg.add_init_script("try { localStorage.setItem('cr-view', 'detailed') } catch (e) {}")
             errs = []
             pg.on("pageerror", lambda e: errs.append(str(e)))
             pg.goto(r.url + "/?mode=demo")

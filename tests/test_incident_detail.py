@@ -367,6 +367,7 @@ def test_incident_view_in_a_browser(monkeypatch):
         with pw.sync_playwright() as p:
             b = p.chromium.launch(executable_path="/opt/pw-browsers/chromium")
             pg = b.new_page(viewport={"width": 1300, "height": 900})
+            pg.add_init_script("try { localStorage.setItem('cr-view', 'detailed') } catch (e) {}")
             errs = []
             pg.on("pageerror", lambda e: errs.append(str(e)))
             base = f"http://127.0.0.1:{srv.server_address[1]}/"
