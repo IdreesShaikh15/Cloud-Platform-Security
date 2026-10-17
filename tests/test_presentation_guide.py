@@ -25,11 +25,11 @@ def test_live_verified_table_is_an_empty_placeholder(guide):
     assert "LIVE-VERIFIED results: none yet" in guide and "placeholder for the presenter" in guide
     assert guide.count("not run") >= 8                                                  # every row of the live table is "not run"
     assert "Nothing in it has been verified" in guide
-    assert "SIMULATOR results" in guide and "Nothing has yet been verified on a real cluster" in guide.replace("verified on a real cluster", "verified on a real cluster")
+    assert "SIMULATOR results" in guide and "Nothing has yet been verified by the presenter on their own cluster" in guide
 
 
 def test_the_guide_never_calls_a_simulator_number_a_live_one(guide):
-    assert "Placeholder: Live Monitoring, connected" in guide and "None is included because none has been taken" in guide
+    assert "Placeholder: Live Monitoring, connected, on your own cluster" in guide and "None is included because none has been taken by the presenter" in guide
     assert not re.search(r"measured on (the|a) real cluster", guide) and not re.search(r"verified on the (real|live) cluster: (yes|passed)", guide, re.I)
 
 
@@ -47,5 +47,12 @@ def test_guide_covers_the_required_parts(guide):
                  "Results verified on the real cluster", "Limitations, stated plainly", "Questions the faculty may ask", "Is this HIPAA compliant?",
                  "Has this been tested on a real cluster?", "What if two agents are compromised?", "Agrees, Disagrees, Unavailable"):
         assert part in guide, part
-    for img in ("dashboard-pF-01-demo-mode.png", "dashboard-pF-02-live-not-connected.png"):               # fresh screenshots of both pages exist
+    for img in ("dashboard-pK-01-demo-simple.png", "dashboard-pK-02-live-not-connected.png", "dashboard-pK-08-live-charts-sandbox.png"):               # fresh screenshots of both pages exist
         assert os.path.getsize(os.path.join(ROOT, "docs", "img", img)) > 20000
+
+
+def test_sandbox_section_is_labelled_and_apart_from_the_live_table(guide):
+    assert "SANDBOX-CLUSTER results" in guide and "not the presenter's own live-verified results" in guide
+    assert "Synthea" in guide and "never read patient records" in guide and "Six healthcare workloads" in guide
+    sandbox = guide.split("7. Results from a test cluster")[1].split("8. Results verified on the real cluster")[0]
+    assert "LIVE-VERIFIED" not in sandbox and "SANDBOX-CLUSTER screenshot" in sandbox

@@ -94,21 +94,22 @@ a(Spacer(1, 30 * mm))
 a(P("Protecting hospital cloud systems when the protectors themselves can be attacked", TITLE))
 a(P("A plain-English guide to the Distributed Cyber-Resilience Platform, for a presentation to a non-expert audience", ParagraphStyle("sub", parent=BODY, fontSize=13, leading=17)))
 a(Spacer(1, 8 * mm))
-a(box("<b>What to remember in one minute.</b> A clinic's patient portal, login service, health-record service and database run in the cloud. "
+a(box("<b>What to remember in one minute.</b> A clinic's patient portal, login service, health-record service, database, laboratory-results service and medication service run in the cloud. "
       "If one of them is taken over, someone must cut it off quickly, replace it with a clean copy, check the copy, and bring it back carefully. "
       "Normally one central program decides. If that program is fooled, hacked or stops, the whole clinic is exposed. "
       "This project replaces the single decision-maker with <b>four identical security agents</b> that must <b>agree, three out of four,</b> before anything is cut off. "
       "One liar or one failure cannot cause harm or stop protection."))
 a(Spacer(1, 6 * mm))
-a(box("<b>Honest status.</b> The agents, the signatures, the 3-of-4 agreement and the recovery pipeline are real code and were tested many times against a "
-      "<b>simulator</b>. <b>Nothing has yet been verified on a real cluster</b>; the live-verified table in section 6 is empty on purpose and is for the presenter to fill with "
-      "their own runs. All patient data is <b>synthetic</b> (made up).", bg="#fff6e0", border="#b07800"))
+a(box("<b>Honest status.</b> The agents, the signatures, the 3-of-4 agreement and the recovery pipeline are real code. They were tested many times against a "
+      "<b>simulator</b> (section 6) and then run once on a <b>test Kubernetes cluster that the author built in a cloud sandbox</b> (section 7, labelled SANDBOX-CLUSTER and kept apart from the simulator numbers). "
+      "<b>Nothing has yet been verified by the presenter on their own cluster</b>; the live-verified table in section 8 is empty on purpose and is for the presenter to fill with "
+      "their own runs. All patient data is <b>synthetic</b>: 200 invented patients from the Synthea generator, never real people (section 5).", bg="#fff6e0", border="#b07800"))
 a(PageBreak())
 
 # ------------------------------------------------------------------ 1 problem
 a(P("1. The problem, in plain English", H1))
 a(P("Healthcare organisations run applications in the cloud: a portal where patients and staff look at records, a service that checks who may log in, a service "
-    "that serves the health records, and a database that stores them. Attackers go after exactly these. When one is compromised, three things matter:"))
+    "that serves the health records, a database that stores them, and services for laboratory results and medications. Attackers go after exactly these. When one is compromised, three things matter:"))
 a(P("<b>Speed</b>: cut the compromised system off before it leaks or spreads.", BUL, bulletText="•"))
 a(P("<b>Safety</b>: never cut off a healthy system by mistake, because clinicians then cannot see records.", BUL, bulletText="•"))
 a(P("<b>Care in coming back</b>: replace it with a clean copy, prove the copy is clean, and give access back step by step, not all at once.", BUL, bulletText="•"))
@@ -118,12 +119,14 @@ a(P("The usual design has one central controller making these decisions. That co
 
 # ------------------------------------------------------------------ 2 what
 a(P("2. What I built", H1))
-a(P("Four workloads, each with its own security agent sitting next to it (agents A to D). The agents are <b>identical peers</b>: no agent is the boss."))
-a(table([["Agent", "Protects", "What it does for patients and staff", "If it is isolated"],
+a(P("<b>Six healthcare workloads (A to F)</b> are watched by <b>four identical security agents (A to D)</b>. Every agent watches every workload and votes on every one; the agents are <b>identical peers</b>: no agent is the boss, and the rule stays <b>3 of 4</b>."))
+a(table([["Workload", "Name", "What it does for patients and staff", "If it is isolated"],
          ["A", "Patient Portal", "shows patient records", "no other service depends on it; the portal itself is unavailable"],
          ["B", "Login &amp; Access Service", "signs people in and checks their access", "the Patient Portal and the EHR API cannot work"],
          ["C", "Electronic Health Records (EHR) API", "serves patient records", "the Patient Portal cannot show patient records"],
-         ["D", "Clinical Database", "stores patient records", "the EHR API cannot serve records, so the portal cannot show them"]],
+         ["D", "Clinical Database", "stores patient records", "the EHR API, the laboratory and medication services cannot serve records, so the portal cannot show them"],
+         ["E", "Laboratory Results Service", "serves laboratory results", "the Patient Portal cannot show laboratory results"],
+         ["F", "Medication Service", "serves medication lists", "the Patient Portal cannot show medications"]],
         [14 * mm, 42 * mm, 50 * mm, W - 2 * M - 106 * mm]))
 a(Spacer(1, 4))
 a(P("The dashboard shows this same table, and works out the last column from which service calls which (checked against the application code), so nothing is typed in by hand. "
@@ -144,16 +147,15 @@ a(PageBreak())
 a(P("3. Two pages that are never mixed: Demo Mode and Live Monitoring", H1))
 a(P("The dashboard has a toggle at the top. <b>Demo Mode</b> shows the simulator and has the scenario buttons. <b>Live Monitoring</b> shows only the real cluster and has no buttons at all. "
     "The two pages share no data, and the server (not just the page) refuses to show simulated data on the live page. If the cluster cannot be reached the live page says so instead of showing anything else."))
-a(shot("dashboard-pF-01-demo-mode.png", "<b>Demo Mode</b> (simulator). Amber banner: simulated data, no real healthcare workload is attacked. The toggle, the 'synthetic data only' label, the counters and the four workload cards."))
-a(shot("dashboard-pF-02-live-not-connected.png", "<b>Live Monitoring with no cluster reachable</b> (real behaviour of the current build): it says NOT CONNECTED and shows nothing from the simulator. "
-       "When connected it shows a green banner with the cluster name, how many of the four agents answer and how fresh the data is."))
-a(box("<b>Placeholder: Live Monitoring, connected.</b> A screenshot of the connected live page can only be taken on the real cluster. Presenter: paste your own screenshot here after your run "
-      "(see docs/LIVE_DEMO.md). None is included because none has been taken.", bg="#fff6e0", border="#b07800"))
+a(shot("dashboard-pK-01-demo-simple.png", "<b>Demo Mode</b> (simulator), in the new <b>Simple view</b> (the default). Amber banner: simulated data, no real healthcare workload is attacked. One top bar holds the banner, the Demo/Live toggle, the 'synthetic data only' label and the Simple/Detailed switch; below it the counters and the six workload cards.", width=(W - 2 * M) * 0.95))
+a(shot("dashboard-pK-02-live-not-connected.png", "<b>Live Monitoring with no cluster reachable</b> (real behaviour of the current build): it says NOT CONNECTED once, with the reason, and shows nothing from the simulator. When connected it shows a green banner with the cluster name, how many of the four agents answer and how fresh the data is."))
+a(box("<b>Placeholder: Live Monitoring, connected, on your own cluster.</b> A screenshot of the connected live page from <b>your</b> run can only be taken on your cluster. Presenter: paste your own screenshot here after your run (see docs/LIVE_DEMO.md). None is included because none has been taken by the presenter; the author's sandbox-cluster screenshots are in section 7 and are labelled as such.", bg="#fff6e0", border="#b07800"))
 
 # ------------------------------------------------------------------ 4 what you see
 a(PageBreak())
 a(P("4. Reading the dashboard", H1))
-a(shot("dashboard-pF-05-overview-services.png", "Overview in Demo Mode: counters, the four workload cards, and the Services table (what each service calls and what stops working if it is isolated).", width=(W - 2 * M) * 0.95))
+a(shot("dashboard-pK-03-services-and-impact.png", "The Services table: what each of the six services calls and what stops working if it is isolated, worked out from the application code. In Simple view the technical boxes are hidden; <b>Detailed</b> shows them all.", width=(W - 2 * M) * 0.95))
+a(shot("dashboard-pK-04-detailed-view.png", "The same page in the <b>Detailed</b> view: every explanation box and technical fold is shown.", width=(W - 2 * M) * 0.95))
 a(table([["You see", "It means"],
          ["Workload trust (0-100)", "how much the agents trust this workload right now; falls while something looks wrong, restarts at 0 on isolation, must climb back before each step of access is restored"],
          ["Agent trust (0-100)", "how much the other agents trust this agent's evidence; falls only if its claims are contradicted"],
@@ -161,12 +163,28 @@ a(table([["You see", "It means"],
          ["Recovery Check", "pass or fail, not a score"],
          ["Agreement Reached (3 of 4)", "at least three agents signed; the only way anything is isolated"]], [48 * mm, W - 2 * M - 48 * mm]))
 a(P("These are four separate things on purpose: there is no single combined 'security score'. Each agent is shown in exactly one of five states: <b>Agrees, Disagrees, Unavailable, Not yet responded, Message failed verification</b>. Only a counted, signed vote is 'Agrees'.", SMALL))
-a(shot("dashboard-pF-03-security-alert.png", "A <b>Security Alert</b> (the old 'incident' view): what triggered it, grouped evidence per agent and signal, every action as proposed, agreed, attempted and verified, and who agreed.", crop_h=1700, width=(W - 2 * M) * 0.95))
-a(shot("dashboard-pF-04-performance-results.png", "<b>Performance Results</b>: the graphs and tables stay visible; long explanations are collapsed. Labelled as simulator results.", width=(W - 2 * M) * 0.95))
+a(shot("dashboard-pK-05-security-alert-story.png", "A <b>Security Alert</b> in the Simple view: it starts with a plain-English story (what happened, who agreed, how it ended) and shows each reading as a sentence; votes, trust changes and raw logs are in the Detailed view.", width=(W - 2 * M) * 0.95))
+a(shot("dashboard-pK-06-performance-key-cards.png", "<b>Performance Results</b>: five large key-result cards (the numbers are read out of the results text); the full twelve lines, graphs and tables are one click away. Labelled as simulator results.", width=(W - 2 * M) * 0.95))
+a(shot("dashboard-pK-07-walkthrough.png", "The <b>guided walkthrough</b> (Demo Mode only): eleven steps that run a real simulator scenario; a step that has not been reached yet says so instead of showing results.", width=(W - 2 * M) * 0.95))
+
+# ------------------------------------------------------------------ 5 data
+a(PageBreak())
+a(P("5. Realistic data and live traffic (Synthea)", H1))
+a(box("<b>Every patient is invented.</b> The 200 patients come from <b>Synthea</b>, the open-source synthetic patient generator (Apache-2.0, by MITRE): 491 conditions, 2,359 laboratory results and 494 medications. "
+      "Social security numbers, addresses and other identifiers were left out on purpose. Every service answer says <font face='Courier'>source: Synthea, synthetic: true</font>. No real patient data is used anywhere."))
+a(Spacer(1, 4))
+a(P("How it flows, in real time", H2))
+for t in ["The <b>Clinical Database</b> holds the dataset; the <b>EHR API</b>, <b>Laboratory Results</b> and <b>Medication</b> services read from it over the network, each after a token check with the Login service, and the <b>Patient Portal</b> calls them.",
+          "A <b>client</b> runs three simulated clinicians who log in, look up patients, open records, lab results and medications every one to three seconds (and make a mistyped login now and then). That is continuous, realistic traffic on the real workloads.",
+          "The four agents poll every workload once a second and count what happens: <b>requests per second, outbound connections, data sent, failed logins</b>. The Live Monitoring page draws a small chart for each of these for each service, labelled LIVE_CLUSTER, with the age of the data. Nothing simulated can appear there.",
+          "<b>The agents watch behaviour, never records.</b> The measurements have no field that can hold a patient record, and the agents' Kubernetes permissions cannot read the application's data. The dataset file is also fingerprinted, so a changed file is detected like any tampered program file."]:
+    a(P(t, BUL, bulletText="•"))
+a(shot("dashboard-pK-08-live-charts-sandbox.png", "<b>SANDBOX-CLUSTER screenshot</b> (the author's test cluster, not the presenter's): the Live Monitoring charts, one row per service, four charts each, telemetry age 0 s. The clinicians' traffic is visible as requests per second and data sent; outbound connections and failed logins stay flat.", width=(W - 2 * M) * 0.98))
+a(P("Why not real patient data? Privacy law and ethics approval would be needed, and a platform that demonstrates attacks and isolation must never put a real person's record at risk. Synthea keeps the structure (clinical codes, lab values, medication lists) without a real person. Limits: it is a model, the sample is small and static, and it is not for clinical conclusions (docs/DATASET.md).", SMALL))
 
 # ------------------------------------------------------------------ 5 simulator results
 a(PageBreak())
-a(P("5. Results measured in the simulator", H1))
+a(P("6. Results measured in the simulator", H1))
 a(box("<b>These are SIMULATOR results.</b> The telemetry and the Kubernetes API are simulated; the agents, signatures, 3-of-4 agreement, certificates and the recovery pipeline are the real code. "
       "Times such as '1.2 s' say nothing about real Kubernetes, where a pod takes tens of seconds to start. What carries over is <i>who</i> gets isolated, who does not, and what survives a failure. "
       "20 trials per case unless stated; everything is reproducible with <font face='Courier'>python3 scripts/evaluate.py</font> (docs/RESULTS.md).", bg="#fff6e0", border="#b07800"))
@@ -183,9 +201,30 @@ a(table([["Question", "What the simulator showed"],
          ["Targeted investigation?", "did <b>not</b> reduce false isolations in my mix (4 of 20 both ways); it made slow-burn attacks isolate about 4.2 s sooner and turned silent ambiguity into a human-review flag."]],
         [52 * mm, W - 2 * M - 52 * mm]))
 
+# ------------------------------------------------------------------ 7 sandbox cluster
+a(PageBreak())
+a(P("7. Results from a test cluster in the author's sandbox (SANDBOX-CLUSTER)", H1))
+a(box("<b>SANDBOX-CLUSTER results.</b> These come from a real 4-node Kubernetes cluster (Minikube, Calico network policies) that the author built in a cloud sandbox on 2026-10-16. They are <b>not</b> simulator results "
+      "and they are <b>not</b> the presenter's own live-verified results (section 8 stays empty). The sandbox differs from a laptop in ways listed in docs/SANDBOX-CLUSTER.md section 2 (for example Kubernetes 1.34.12 and no Metrics API).", bg="#e9f3e9", border="#1f6f43"))
+a(Spacer(1, 4))
+a(table([["Check", "Result on the sandbox cluster"],
+         ["Deployment", "six workloads, four agents, dashboard and two admission-webhook replicas all running, using the project's own scripts"],
+         ["Known-good file check (verify-baseline)", "all six workloads match the manifest (five files each, including the dataset), before and after every incident"],
+         ["Agent permissions (verify-rbac)", "27 of 27 checks pass for each of the six workloads"],
+         ["Admission webhook (verify-webhook)", "7 of 7 steps pass, and 8 of 8 with the webhook switched off: an agent's isolation request is still refused when it is not backed by a 3-of-4 certificate"],
+         ["Network isolation (verify-isolation)", "16 of 16 checks pass on two workloads with real Calico enforcement: user traffic blocked, agents still reach the workload"],
+         ["Controlled tripwire test", "the real agents detected a harmless one-line change in the Laboratory Results Service and in the Medication Service, agreed (4 of 4), isolated, replaced and checked the workload, and restored access in four steps: about 82 seconds from the change to normal access, almost all of it Kubernetes' 30-second pod shutdown wait and the four 10-second stages"],
+         ["The Synthea data and clinician traffic", "an 11-minute observation: every workload stayed healthy, nothing was isolated, at most 1 outbound connection (the limit is 8), at most 39 KiB/s sent (the limit is 256), no failed-login alarm"],
+         ["Bugs found and fixed", "four deployment bugs were found only because it ran on a real cluster (two script bugs in the verification scripts, one in the upgrade path, one in the webhook order); each was fixed and has a test"]],
+        [52 * mm, W - 2 * M - 52 * mm]))
+a(Spacer(1, 4))
+a(shot("dashboard-pK-09-live-overview-sandbox.png", "<b>SANDBOX-CLUSTER screenshot</b>: Live Monitoring connected to the author's test cluster: green banner, cluster name and Kubernetes version, 4 of 4 agents reachable, six workload cards.", width=(W - 2 * M) * 0.95))
+a(P("What this does not prove: behaviour on Windows/WSL and Docker Desktop, the presenter's Minikube version, kubectl top figures, and anything about a production hospital cluster (docs/SANDBOX-CLUSTER.md section 6).", SMALL))
+
+
 # ------------------------------------------------------------------ 6 live verified
 a(PageBreak())
-a(P("6. Results verified on the real cluster", H1))
+a(P("8. Results verified on the real cluster", H1))
 a(box("<b>LIVE-VERIFIED results: none yet.</b> This table is a placeholder for the presenter to fill with their own runs (docs/LIVE_DEMO.md, section 9). "
       "Nothing in it has been verified. Do not describe a simulator result as a live result.", bg="#fdeaea", border="#a02020"))
 a(Spacer(1, 4))
@@ -202,7 +241,7 @@ a(table([["Test (runbook step)", "Date", "Result", "Evidence (screenshot or log)
 
 # ------------------------------------------------------------------ 7 demo plan
 a(PageBreak())
-a(P("7. A suggested demonstration (about 10 minutes)", H1))
+a(P("9. A suggested demonstration (about 10 minutes)", H1))
 a(P("<b>In Demo Mode (safe, repeatable):</b>", BODY))
 a(table([["Scenario in the picker", "What to say"],
          ["Patient records being copied out of the EHR API", "three of four agents agree, isolate it, a clean copy is checked, access returns in steps"],
@@ -214,29 +253,29 @@ a(Spacer(1, 4))
 a(P("<b>On the real cluster (only if you have run and verified it first):</b> the healthy state, deleting one agent pod, and the <b>tripwire test</b>: a single harmless line appended to a designated, unused marker file in one workload, "
     "which the real agents detect and handle with the real pipeline. Exact commands, what to point at, and how to reset are in <font face='Courier'>docs/LIVE_DEMO.md</font>."))
 a(box("<b>The one exception to 'attacks only in the simulator'.</b> The tripwire is not an attack: it is a harmless, operator-initiated change to one file that nothing reads, made with <font face='Courier'>python -c</font> "
-      "(not a shell), refused for anything but the four workloads and for any other cluster. It triggers real isolation of a synthetic-data workload by design. It is documented as a controlled validation event with restore steps."))
+      "(not a shell), refused for anything but the six healthcare workloads and for any other cluster. It triggers real isolation of a synthetic-data workload by design. It is documented as a controlled validation event with restore steps."))
 a(P("What the project deliberately does <b>not</b> contain: attack code, real patient data, or any way for the simulator's controls to reach a real cluster (the server refuses it, and tests prove it).", BODY))
 
 # ------------------------------------------------------------------ 8 limits
-a(P("8. Limitations, stated plainly", H1))
+a(P("10. Limitations, stated plainly", H1))
 for t in [
-        "<b>Not verified on a real cluster.</b> Real pod start times, network-policy enforcement (Calico) and the admission webhook against a real API server are untested by the author.",
-        "<b>Simulated telemetry.</b> Thresholds were tuned against invented signals; real traffic will differ, and the false-alarm rates depend on my choice of benign mix.",
+        "<b>Verified only on one test cluster.</b> Real pod start times, Calico enforcement and the admission webhook were exercised on the author\'s sandbox cluster (section 7), not on the presenter\'s laptop, not on Windows/WSL and not on a production hospital system.",
+        "<b>Simulated telemetry in the measured results.</b> The numbers in section 6 come from invented signals; real traffic will differ, and the false-alarm rates depend on my choice of benign mix. On the sandbox cluster, healthy Synthea-based traffic raised no alarm.",
         "<b>Telemetry is reported by the workload itself.</b> A fully compromised workload could lie about itself, and all four agents read the same source.",
         "<b>Three or more compromised agents</b> can isolate a healthy workload; two silent or obstructing agents stop containment. The design tolerates one bad agent, not two.",
         "<b>A sustained harmless spike seen by everyone looks like an attack</b> to a threshold detector; the optional re-check helps with short spikes and can be evaded by short bursts.",
         "<b>A missing vote costs the agent nothing</b> (no trust rule for it).",
         "<b>Agents keep history in temporary storage:</b> a deleted agent pod rejoins with empty history.",
-        "<b>Four workloads only</b>, one per agent. Not a compliance claim: the HIPAA Security Rule categories in docs/HEALTHCARE.md are a mapping for discussion, with gaps listed."]:
+        "<b>Six workloads only</b>, watched by four agents. Not a compliance claim: the HIPAA Security Rule categories in docs/HEALTHCARE.md are a mapping for discussion, with gaps listed."]:
     a(P(t, BUL, bulletText="•"))
 
 # ------------------------------------------------------------------ 9 Q&A
 a(PageBreak())
-a(P("9. Questions the faculty may ask, with honest answers", H1))
+a(P("11. Questions the faculty may ask, with honest answers", H1))
 QA = [
     ("Why four agents and three of four?", "Four agents can tolerate one that is wrong or down and still reach three. One bad agent can neither cause an isolation (it cannot get three votes) nor block one (the other three suffice). It is a deliberate, small choice; docs/RESULTS.md shows exactly where it stops working."),
     ("What if two agents are compromised?", "Then it breaks, and the results say so: two compromised agents plus one honest agent that sees a weak blip can isolate a healthy workload, and two silent agents mean nothing is isolated. The claim is tolerance of one failure, not two."),
-    ("Has this been tested on a real cluster?", "Not yet by me. All numbers are simulator results (real agents and cryptography, simulated telemetry and Kubernetes). A runbook and a harmless live test exist, and the live-verified table in this guide is empty until I run them."),
+    ("Has this been tested on a real cluster?", "On one test cluster, yes: I built a real 4-node Kubernetes cluster in a cloud sandbox and ran the deployment, the verification scripts, the harmless tripwire test and an 11-minute observation with realistic Synthea traffic (section 7, labelled SANDBOX-CLUSTER). The measured numbers in section 6 are simulator results (real agents and cryptography, simulated telemetry and Kubernetes). I have not yet verified anything on my own laptop cluster, so the live-verified table in section 8 is empty until I run it."),
     ("Why not one smart central controller?", "It is a single point of failure and of compromise. In my simulation a lying controller isolated a healthy service 20 of 20 times and a crashed one never contained a real attack; the distributed design did neither. The price is slower containment (about 1.5 s against 0.5 s in the simulator)."),
     ("How does it recognise an attack?", "Four signals measured by every agent independently: unexpected connections or traffic, unexpected programs, files that differ from the known-good copy, and bursts of failed logins. Weak or disputed evidence triggers a short investigation first."),
     ("What about false alarms?", "They exist. In my stress mix 50% of harmless spikes that three or more agents saw were isolated. An optional 6-second re-check lowers that (12 of 20 to 9 of 20) but delays some real attacks by about 6 s and can be evaded by short bursts, so it is off by default."),
@@ -244,15 +283,15 @@ QA = [
     ("How do you know a recovered workload is clean?", "A Recovery Check: healthy, files match the known-good copy, behaves normally, and it is a new instance. If it fails it is retried a limited number of times, then marked 'needs human attention' and stays isolated; it is never shown as healthy."),
     ("Can a compromised agent forge another agent's messages?", "Not undetected: messages are signed and agents use mutual TLS, so forged ones are rejected and the sender loses trust. A compromised agent can still lie with its own genuine identity; that is what the 3-of-4 rule handles."),
     ("Is this HIPAA compliant?", "No claim is made. docs/HEALTHCARE.md maps what the platform does to HIPAA Security Rule categories (access control, audit, integrity, contingency planning, transmission security) and lists the gaps; compliance needs much more than this project."),
-    ("Is any patient data real?", "No. Every record is synthetic and labelled so on every page and in the application's responses."),
+    ("Is any patient data real?", "No. Every patient comes from Synthea, an open-source generator of invented patients, and is labelled synthetic on every page and in every service answer. The security agents watch behaviour (connections, programs, files, logins) and never read patient records."),
     ("Is the 'tripwire' an attack?", "No. It is one harmless line appended to an unused marker file, run by the operator on purpose, so the real agents have something genuine to detect. It is a narrow, documented exception, with restore steps."),
-    ("What would you do next?", "Measure on a real cluster, tune thresholds on real traffic, add more than four workloads, add stronger sensors, and evaluate with realistic (still synthetic) workloads. These are future work, not done."),
+    ("What would you do next?", "Measure on my own laptop cluster and a larger one, tune thresholds on real traffic, add more workloads, add stronger sensors, and evaluate with realistic (still synthetic) workloads. These are future work, not done."),
 ]
 for q, ans in QA:
     a(KeepTogether([P(f"<b>Q. {q}</b>", BODY), P(ans, ParagraphStyle("ans", parent=BODY, leftIndent=10)), Spacer(1, 2)]))
 
 # ------------------------------------------------------------------ glossary
-a(P("10. Glossary", H1))
+a(P("12. Glossary", H1))
 a(table([["Term", "Plain meaning"],
          ["Workload", "one application service running in the cloud (portal, login, records API, database)"],
          ["Agent", "a small security program next to a workload; four identical peers"],
@@ -262,7 +301,8 @@ a(table([["Term", "Plain meaning"],
          ["Recovery Check", "tests that a replacement is healthy, matches the known-good copy and behaves normally"],
          ["Normal Access Restored", "the last step of the staged return, after limited, monitored and peer-confirmed access"],
          ["Simulator", "the test world with simulated telemetry and Kubernetes, used for all measured results"],
-         ["Synthetic data", "made-up patient records; no real person is represented"]], [48 * mm, W - 2 * M - 48 * mm]))
+         ["Synthetic data", "made-up patient records (from the Synthea generator); no real person is represented"],
+         ["SANDBOX-CLUSTER", "results from the author's own test Kubernetes cluster in a cloud sandbox; not simulator results, not the presenter's live results"]], [48 * mm, W - 2 * M - 48 * mm]))
 a(Spacer(1, 6))
 a(P("Where to find things: <font face='Courier'>docs/RESULTS.md</font> (all numbers and graphs), <font face='Courier'>docs/HEALTHCARE.md</font> (requirements and safeguards), "
     "<font face='Courier'>docs/DASHBOARD.md</font>, <font face='Courier'>docs/LIVE_DEMO.md</font> (runbook), <font face='Courier'>docs/PROGRESS.md</font> (what was done, tests, limits).", SMALL))
