@@ -201,6 +201,8 @@ a(table([["Question", "What the simulator showed"],
          ["Targeted investigation?", "did <b>not</b> reduce false isolations in my mix (4 of 20 both ways); it made slow-burn attacks isolate about 4.2 s sooner and turned silent ambiguity into a human-review flag."]],
         [52 * mm, W - 2 * M - 52 * mm]))
 
+a(shot("dashboard-pK-10-baselines.png", "<b>Baselines</b> (simulator): the same attacks run against designs with the gates removed (section 4.11 of the results), so the value of the 3-of-4 agreement and of the Recovery Check is measured, not assumed.", width=(W - 2 * M) * 0.95))
+
 # ------------------------------------------------------------------ 7 sandbox cluster
 a(PageBreak())
 a(P("7. Results from a test cluster in the author's sandbox (SANDBOX-CLUSTER)", H1))

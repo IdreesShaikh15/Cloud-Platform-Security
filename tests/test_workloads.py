@@ -234,8 +234,8 @@ def test_dependencies_in_the_config_match_what_the_apps_actually_call():
     records = block('if ROLE == "records-api" and path == "/records"', 'if ROLE in ("lab-results"')
     labs = block('if ROLE in ("lab-results"', 'if ROLE == "patient-portal":')
     portal = block('if ROLE == "patient-portal":', 'if ROLE == "client" and path')
-    assert "AUTH_URL" in records and "DATABASE_URL" in records and "RECORDS_URL" not in records
-    assert "AUTH_URL" in labs and "DATABASE_URL" in labs
+    assert "self._verify()" in records and "DATABASE_URL" in records and "RECORDS_URL" not in records     # _verify() calls the login service
+    assert "self._verify()" in labs and "DATABASE_URL" in labs and "AUTH_URL" in src
     assert all(u in portal for u in ("RECORDS_URL", "LAB_URL", "MEDICATION_URL")) and "DATABASE_URL" not in portal
     wl = W.load(FOUR)
     assert {w.node: w.name for w in wl.workloads} == HISTORICAL

@@ -55,4 +55,4 @@ def test_sandbox_section_is_labelled_and_apart_from_the_live_table(guide):
     assert "SANDBOX-CLUSTER results" in guide and "not the presenter's own live-verified results" in guide
     assert "Synthea" in guide and "never read patient records" in guide and "Six healthcare workloads" in guide
     sandbox = guide.split("7. Results from a test cluster")[1].split("8. Results verified on the real cluster")[0]
-    assert "LIVE-VERIFIED" not in sandbox and "SANDBOX-CLUSTER screenshot" in sandbox
+    assert "LIVE-VERIFIED results: none yet" not in sandbox and "not run" not in sandbox and "SANDBOX-CLUSTER screenshot" in sandbox
