@@ -220,3 +220,13 @@ def test_the_live_page_draws_charts_labelled_live_cluster_and_the_demo_page_does
             assert pg2.locator("#livecharts").is_hidden()
         finally:
             b.close()
+
+
+def test_no_function_in_the_dashboard_page_is_declared_twice():
+    """Found while charting real data: a second `function spark` silently replaced the agent-trust sparkline helper."""
+    import collections
+    import re
+    s = open(os.path.join(ROOT, "dashboard", "index.html"), encoding="utf-8").read()
+    names = re.findall(r"^(?:async )?function (\w+)\(", s, re.M)
+    assert [n for n, c in collections.Counter(names).items() if c > 1] == []
+    assert "function lcSpark(" in s and "function spark(" in s

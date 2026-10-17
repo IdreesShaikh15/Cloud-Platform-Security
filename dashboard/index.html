@@ -834,10 +834,10 @@ document.getElementById("tourstart").onclick = async () => {
 // ---------------------------------------------------------------- live telemetry charts (Live page only; readings the agents measured on the real cluster)
 const LC = [["rps", "Requests per second", 1, v => v.toFixed(1)], ["conns", "Outbound connections", 10, v => String(Math.round(v))],
             ["tx_Bps", "Data sent", 10000, v => (v / 1024).toFixed(1) + " KiB/s"], ["auth_fail", "Failed logins (10 s)", 5, v => String(Math.round(v))]];
-function spark(vals, floor, color) {
+function lcSpark(vals, floor, color) {
   const pts = vals.filter(v => v != null);
   if (pts.length < 2) return '<div class="mut" style="width:150px;font-size:12px">not reported yet</div>';
-  const W = 150, H = 34, hi = Math.max(floor, ...pts), step = W / Math.max(1, vals.length - 1);
+  const W = 150, H = 34, hi = Math.max(floor, Math.max(...pts) * 1.3), step = W / Math.max(1, vals.length - 1);
   const path = vals.map((v, i) => v == null ? null : `${(i * step).toFixed(1)},${(H - 2 - (H - 4) * v / hi).toFixed(1)}`).filter(Boolean).join(" ");
   return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="chart"><rect width="${W}" height="${H}" fill="none" stroke="var(--line)"/><polyline fill="none" stroke="${color}" stroke-width="1.6" points="${path}"/></svg>`;
 }
@@ -855,7 +855,7 @@ async function refreshSeries() {
     const rows = v.points[id];
     return `<tr><td>${nb(id)} <b>${esc((v.names || {})[id] || id)}</b></td>` + LC.map(([k, , floor, fmt]) => {
       const vals = rows.map(r => r[k]), last = [...vals].reverse().find(x => x != null);
-      return `<td>${spark(vals, floor, `var(--node-${id}, #388bfd)`)}<div class="mut" style="font-size:12px">now: ${last == null ? "not reported" : fmt(last)}</div></td>`;
+      return `<td>${lcSpark(vals, floor, `var(--node-${id}, #388bfd)`)}<div class="mut" style="font-size:12px">now: ${last == null ? "not reported" : fmt(last)}</div></td>`;
     }).join("") + "</tr>";
   }).join("") + "</table>";
 }
