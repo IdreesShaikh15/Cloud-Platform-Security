@@ -51,7 +51,7 @@ def test_tooltips_explain_trust_agreement_evidence_score_and_confidence():
 
 
 def test_four_separate_explanations_and_no_combined_score():
-    box = re.search(r'<details class="evd meaning".*?</details>', HTML, re.S).group(0)
+    box = re.search(r'<details class="evd meaning[^"]*".*?</details>', HTML, re.S).group(0)
     for term in ("Workload trust", "Agent trust", "Evidence confidence", "Recovery Check"):
         assert f"<b>{term}" in box, term
     assert "no single combined" in box

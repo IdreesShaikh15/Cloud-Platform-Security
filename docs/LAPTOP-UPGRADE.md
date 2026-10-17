@@ -8,6 +8,35 @@ rehearsal printed. What I could **not** test: WSL itself, Docker Desktop, your M
 
 Always run the scripts with `bash scripts/...` (not `./scripts/...`): it works even if the Windows drive hides the executable bit.
 
+## FROM 713d0ea: upgrade to the final commit (Synthea data, live charts, Simple view)
+You are on commit `713d0ea` with six workloads running. This is the short path (it is sections A, C, D, E below with the changes that matter for this upgrade).
+What changes: the **application image** now serves a Synthea synthetic patient dataset (`apps/src/data/synthea-sample.json`, 431 KiB) and the client pod generates continuous clinician traffic;
+the **agent image** reports a request counter; the **dashboard image** has the live charts per service and the Simple/Detailed view. The known-good fingerprint now covers **five** files, so the
+manifest must be regenerated (`build-images.sh` does it) and checked (`upgrade-app.sh` refuses to start the agents until it matches; otherwise they would isolate healthy workloads).
+```bash
+cd "/mnt/c/Users/IDREES SHAIKH/resilience-platform" && source .venv/bin/activate
+git checkout -- scripts 2>/dev/null; git fetch origin && git checkout claude/cyber-resilience-platform-xxs3oh && git pull origin claude/cyber-resilience-platform-xxs3oh
+git log --oneline -1                         # expect the final commit named at the end of this file's history (see PROGRESS.md)
+sed -i 's/\r$//' scripts/*.sh && chmod +x scripts/*.sh
+python3 scripts/gen-workloads.py --check     # expect: configuration OK; all 3 generated files are up to date
+bash scripts/build-images.sh                 # expect "5 files hashed"; 1.5-3 minutes
+bash scripts/upgrade-app.sh                  # expect 1/7 ... 7/7, six "ok ... 5 files match", ">> done."; about 1-2 minutes; agents are OFF meanwhile (on purpose)
+kubectl -n healthcare get pods               # expect 7 Running (6 workloads + client)
+python3 scripts/verify-baseline.py           # expect six lines "ok ... 5 files match the known-good manifest"
+```
+Then check the new data and traffic (nothing here changes the cluster):
+```bash
+kubectl -n healthcare exec deploy/client -- python -c "import urllib.request as u,json;d=json.load(u.urlopen('http://patient-portal:8080/api/patients?limit=3'));print(d['source'],d['synthetic'],len(d['patients']))"
+                                                      # expect: Synthea True 3
+kubectl -n healthcare exec deploy/client -- python -c "import urllib.request as u,json,time;g=lambda:json.load(u.urlopen('http://database:8080/_telemetry'))['requests_total'];a=g();time.sleep(5);print(a,g())"
+                                                      # expect two numbers, the second about 15-20 higher (the clinicians' traffic; sandbox: 2130 2148)
+```
+Then the dashboard (second terminal): `bash scripts/laptop-dashboard.sh`, open Live Monitoring: the banner says LIVE MONITORING, "Live telemetry per service" shows six rows of small charts (requests per second,
+outbound connections, data sent, failed logins) labelled `LIVE_CLUSTER`, with "telemetry age 0 s"; the default view is **Simple** (switch to Detailed at the top right).
+**Watch for:** no service should be isolated by the new traffic. If a workload shows "Isolated" within the first minutes with no attack, stop the agents (`kubectl -n resilience scale deploy agent-a agent-b agent-c agent-d --replicas=0`)
+and send me `kubectl -n resilience logs deploy/agent-a | tail -50`. In the sandbox cluster the 11-minute observation showed none (docs/SANDBOX-CLUSTER.md section 8); your laptop is not verified.
+Afterwards run the verify scripts and the tripwire test exactly as in sections F and H below. The rest of this file is the longer, annotated version of the same sequence (written for the older 8d53075 starting point).
+
 ## A. Update the project and fix line endings
 ```bash
 cd "/mnt/c/Users/IDREES SHAIKH/resilience-platform"
@@ -38,8 +67,8 @@ python3 scripts/gen-workloads.py --check
 bash scripts/build-images.sh
 ```
 Expect three docker builds, then `>> loading cr-healthcare-app:1.0 into all nodes of cr-platform` (and `:known-good`, `cr-agent:1.0`, `cr-dashboard:1.0`),
-then `>> generating known-good file hash manifest` and **`4 files hashed`**: `app.py`, `static/TRIPWIRE-TEST.txt`, `static/index.html`, `telemetry.py`
-(your old build hashed 3 files). About 1.5-3 minutes. If Docker Hub answers `429 Too Many Requests`, wait a few minutes and run it again.
+then `>> generating known-good file hash manifest` and **`5 files hashed`**: `app.py`, `data/synthea-sample.json`, `static/TRIPWIRE-TEST.txt`, `static/index.html`, `telemetry.py`
+(a build before commit 713d0ea hashed 3 files, one between 713d0ea and the Synthea data hashed 4). About 1.5-3 minutes. If Docker Hub answers `429 Too Many Requests`, wait a few minutes and run it again.
 
 ## D. Upgrade the cluster (this is the deploy; do NOT run scripts/deploy.sh afterwards)
 ```bash
@@ -47,7 +76,7 @@ bash scripts/upgrade-app.sh
 ```
 Expect, in order: `>> 1/7 regenerating the manifest ...`, `2/7 stopping the deciders ... agent-a agent-b agent-c agent-d`,
 `3/7 applying RBAC + configuration + the manifest, and rolling the workloads onto the new image`, `4/7 checking the running workloads against the manifest`
-followed by **six** lines `ok  <workload>: 4 files match the known-good manifest` (patient-portal, auth-service, records-api, database, **lab-results, medication-service**),
+followed by **six** lines `ok  <workload>: 5 files match the known-good manifest` (patient-portal, auth-service, records-api, database, **lab-results, medication-service**),
 `5/7 restarting the admission webhook ...`, `6/7 starting them again`, `7/7 restarting the in-cluster dashboard`, `>> done.`; exit code 0; about 1-2 minutes
 (sandbox: 67 s). The agents are OFF during this time on purpose: the dashboard will show them down for a minute.
 * If step 4 prints `mismatch` the script stops and keeps the agents OFF (safe): run `bash scripts/build-images.sh` again, then this script again.
@@ -58,7 +87,7 @@ followed by **six** lines `ok  <workload>: 4 files match the known-good manifest
 ```bash
 kubectl -n healthcare get pods -o wide   # expect 7 Running: 6 workloads + client; lab-results on a node labelled zone b, medication-service on zone c
 kubectl -n resilience get pods           # expect agent-a..d, dashboard, two quorum-webhook pods, all Running (old pods may show Terminating for a moment)
-python3 scripts/verify-baseline.py       # expect six lines "ok ... 4 files match the known-good manifest"
+python3 scripts/verify-baseline.py       # expect six lines "ok ... 5 files match the known-good manifest"
 ```
 
 ## F. The verify scripts (run these when no incident is in progress)

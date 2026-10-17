@@ -56,3 +56,17 @@ The security agents monitor **behaviour**, never content:
 * The traffic is a model of staff behaviour (three clinicians, a fixed mix of actions), not a recording of a hospital; rates are a few requests per second.
 * The charts show what the agents measured; with a failed or stale agent they say "not reported" or "STALE" rather than inventing a value.
 * Synthea names, dates and values are invented; any resemblance to a real person is coincidence.
+
+## 6. Measured on the sandbox cluster (SANDBOX-CLUSTER, not simulator, not your own live table)
+With the dataset deployed and the clinicians running, an 11-minute window on the Live channel of the sandbox cluster showed every workload HEALTHY, no isolation, and these largest readings (detection thresholds in brackets: connections 8, data sent 256 KiB/s, failed logins 10 per 10 s):
+
+| workload | outbound conns max (limit 8) | data sent max / mean KiB/s (limit 256) | requests/s max / mean | failed logins max (limit 10) | evidence confidence max |
+|---|---|---|---|---|---|
+| A patient-portal | 1 | 38.6 / 21.7 | 9.0 / 3.63 | 0 | 0.0 |
+| B auth-service | 0 | 18.3 / 12.5 | 17.0 / 7.24 | 0 | 0.0 |
+| C records-api | 1 | 31.4 / 17.7 | 7.0 / 2.73 | 0 | 0.0 |
+| D database | 0 | 24.2 / 15.2 | 8.0 / 3.57 | 0 | 0.0 |
+| E lab-results | 1 | 20.7 / 10.4 | 3.0 / 0.52 | 0 | 0.0 |
+| F medication-service | 1 | 17.6 / 9.3 | 2.0 / 0.33 | 0 | 0.0 |
+
+See docs/SANDBOX-CLUSTER.md section 7. These numbers are from the sandbox cluster only; your laptop has not been measured.

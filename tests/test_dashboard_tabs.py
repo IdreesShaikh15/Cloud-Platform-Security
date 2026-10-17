@@ -249,6 +249,7 @@ def test_tabs_and_counters_in_a_browser(monkeypatch):
                 assert pg.get_attribute(f"#tab-{t}", "aria-selected") == "true" and pg.get_attribute("#tab-overview", "aria-selected") == "false"
                 assert pg.evaluate("location.hash") == "#" + t
             pg.click("#tab-incidents")
+            pg.wait_for_selector("#met", state="visible", timeout=15000)                  # filled by the 5 s metrics cycle
             assert pg.is_visible("#dec") and pg.is_visible("#met")
             pg.click("#tab-audit")
             assert pg.is_visible("#rej") and pg.is_visible("#dlogtab")

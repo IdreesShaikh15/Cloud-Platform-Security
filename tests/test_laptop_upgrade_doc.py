@@ -35,3 +35,10 @@ def test_the_four_workload_fallback_uses_files_that_exist_and_matches_the_script
     assert "cp config/workloads-four.json config/workloads.json" in DOC and "gen-workloads.py --write" in DOC
     up = open(os.path.join(ROOT, "scripts", "upgrade-app.sh"), encoding="utf-8").read()
     assert "it is deployed but not in config/workloads.json" in up and "it is deployed but not in config/workloads.json" in DOC
+
+
+def test_upgrade_from_713d0ea_section_matches_the_build():
+    assert "FROM 713d0ea" in DOC and "5 files match the known-good manifest" in DOC and "5 files hashed" in DOC
+    gen = open(os.path.join(ROOT, "scripts", "gen-baseline-hashes.py"), encoding="utf-8").read()
+    assert "hash_tree" in gen and os.path.isfile(os.path.join(ROOT, "apps", "src", "data", "synthea-sample.json"))
+    assert "4 files hashed" not in DOC and "4 files match" not in DOC

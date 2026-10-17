@@ -76,3 +76,22 @@ Requests/limits from `scripts/minikube-load.sh` (requests 50m/64Mi, limits 500m/
 ## 6. What this does not prove
 
 One cluster, one sandbox, one run of each check; Kubernetes 1.34, not the newest; the sandbox workarounds in section 2; no attack was launched except the harmless tripwire; nothing was run on WSL. Your own live table remains yours to fill.
+
+## 7. Synthea data and clinician traffic on the cluster (SANDBOX-CLUSTER, item 3)
+Same sandbox cluster as above, rebuilt with the Synthea build (`build-images.sh`: **5 files hashed**; `upgrade-app.sh`: agents off, manifest applied, `verify-baseline` OK, webhook restarted, agents on).
+* **The new data does not make the agents isolate healthy services.** An 11-minute window (142 samples, one every ~4.6 s, taken from the dashboard's own Live channel; the client pod running its three clinicians the whole time): every workload stayed `HEALTHY`, telemetry from all 6 workloads was reachable in every sample (oldest reading at most 1.0 s), no agent log line mentions containment or isolation, no NetworkPolicy was created. `verify-baseline.py` afterwards: six `ok ... 5 files match the known-good manifest`.
+* The measured behaviour against the detection thresholds (largest value seen in the window):
+
+| workload | outbound conns max (limit 8) | data sent max / mean KiB/s (limit 256) | requests/s max / mean | failed logins max (limit 10) | evidence confidence max |
+|---|---|---|---|---|---|
+| A patient-portal | 1 | 38.6 / 21.7 | 9.0 / 3.63 | 0 | 0.0 |
+| B auth-service | 0 | 18.3 / 12.5 | 17.0 / 7.24 | 0 | 0.0 |
+| C records-api | 1 | 31.4 / 17.7 | 7.0 / 2.73 | 0 | 0.0 |
+| D database | 0 | 24.2 / 15.2 | 8.0 / 3.57 | 0 | 0.0 |
+| E lab-results | 1 | 20.7 / 10.4 | 3.0 / 0.52 | 0 | 0.0 |
+| F medication-service | 1 | 17.6 / 9.3 | 2.0 / 0.33 | 0 | 0.0 |
+
+* Headroom is large: at most 1 outbound connection (threshold 8), at most 39 KiB/s sent (threshold 256), no failed logins (the 5 % mistyped logins are spread across the three clinicians and never reach 10 in a 10 s window). The request rate (about 3 requests/s on the portal, 7 on the login service) is a chart value only; no rule uses it.
+* The services answer with real Synthea records (`source: Synthea`, `synthetic: true`); the Laboratory Results and Medication services read the dataset from the database over HTTP, behind a token from the Login service.
+* The Live page's chart section (24 small charts, labelled `LIVE_CLUSTER`) was screenshotted from this cluster through the laptop dashboard script, with "telemetry age 0 s". A bug found while doing it: a helper function named `spark` collided with an older one, which flattened the charts; renamed and a test added.
+* Not measured here: kubelet CPU/memory with the new traffic (the Metrics API is not available in the sandbox; the idle numbers in section 5 were taken before the traffic existed), and nothing on WSL.
