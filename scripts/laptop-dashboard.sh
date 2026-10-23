@@ -9,8 +9,10 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PORT="${PORT:-8091}"; BASE="${FORWARD_BASE:-18081}"; NS="${NS:-resilience}"
 PIDS=()
-# each forward loop runs kubectl as a child: stop the child too, or the port stays taken after Ctrl-C
-cleanup() { for p in "${PIDS[@]}"; do pkill -P "$p" 2>/dev/null; kill "$p" 2>/dev/null; done; wait 2>/dev/null; }
+# Stop every process we started AND all their children (each forward loop runs kubectl; the simulator server starts the dashboard):
+# without this, Ctrl-C or a plain `kill` can leave an old dashboard / port-forward holding its port, and the next start then silently shows the OLD page.
+killtree() { local c; for c in $(pgrep -P "$1" 2>/dev/null); do killtree "$c"; done; kill "$1" 2>/dev/null; }
+cleanup() { trap - EXIT INT TERM; for p in "${PIDS[@]}"; do killtree "$p"; done; wait 2>/dev/null; }
 trap cleanup EXIT INT TERM
 
 LIVE=""

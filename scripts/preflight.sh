@@ -41,8 +41,9 @@ CTX="$($KC config current-context 2>/dev/null || true)"
 if [ "$CTX" = "$EXPECT_CONTEXT" ]; then pass "kubectl points at the '$EXPECT_CONTEXT' cluster"
 else fail "kubectl context is '${CTX:-none}', expected '$EXPECT_CONTEXT'" "Run: kubectl config use-context $EXPECT_CONTEXT   (if it does not exist: minikube start -p $EXPECT_CONTEXT)"; fi
 
+API_OK=1
 if kc get --raw /readyz >/dev/null 2>&1; then pass "the cluster API server answers"
-else fail "the cluster does not answer" "Run: minikube start -p $EXPECT_CONTEXT   (wait for 'Done!'), then re-run. If it hangs, 'minikube status -p $EXPECT_CONTEXT' shows which part is down."; fi
+else API_OK=0; fail "the cluster does not answer" "Run: minikube start -p $EXPECT_CONTEXT   (wait for 'Done!'), then re-run. If it hangs, 'minikube status -p $EXPECT_CONTEXT' shows which part is down."; fi
 
 kc get nodes -o json > "$T/nodes.json" 2>/dev/null || echo '{"items":[]}' > "$T/nodes.json"
 py "$T/nodes.json" "$EXPECT_NODES" > "$T/nodes.out" <<'PY'
@@ -69,6 +70,11 @@ PY
 read -r CTOT COK < "$T/calico.out" || true
 if [ "${CTOT:-0}" -ge 1 ] && [ "${COK:-0}" = "${CTOT:-0}" ]; then pass "Calico (network policy engine) is Running on ${COK} node(s)"
 else fail "Calico: ${COK:-0} of ${CTOT:-0} calico-node pods Running" "Isolation needs Calico. Wait a minute; if it stays down: kubectl -n kube-system get pods -l k8s-app=calico-node, or recreate the cluster with scripts/setup-cluster.sh."; fi
+
+if [ "$API_OK" != 1 ]; then
+  printf '\n== Summary: %d PASS, %d WARN, %d FAIL\n' "$NPASS" "$NWARN" "$NFAIL"
+  echo "NOT READY: the cluster does not answer, so the other checks were skipped. Fix the first FAIL above, then re-run: bash scripts/preflight.sh"; exit 1
+fi
 
 # ------------------------------------------------------------------ 2. pods
 section "2. Pods Running, Ready, no recent restarts"
