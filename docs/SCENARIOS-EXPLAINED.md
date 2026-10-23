@@ -442,9 +442,10 @@ If you present the **live cluster** parts from `docs/DEMO-DAY.md`, use Demo Mode
 **Outcome and what it proves.** The system **fails safe**: it never declares a broken service healthy, never loops forever, and never opens the door on a bad copy. The alert is marked **NEEDS HUMAN**. **Press Reset afterwards.**
 
 **What to click.**
-* **Overview**: the EHR API card stays isolated; the counters show an alert that needs attention.
-* **Security Alerts** tab: the alert status "NEEDS HUMAN" (red) and, in the story box, the sentence that a person needs to look at it.
-* **Recovery** tab: Attempts 1, 2, 3 all failed.
+* **Overview**: the EHR API card stays isolated at the Recovery Check step; "Healthy workloads" stays at 5 of 6.
+* **Security Alerts** tab: the alert row says **"NEEDS HUMAN"** (red) with "recovery attempt 3" (seen in my run) and the story box ends "The agents could not finish on their own; a person needs to look at it."
+  (The list may also show alerts from earlier scenarios; the new one is the one with the latest time.)
+* **Recovery** tab: the evidence saved before each replacement, with the reason, for example "recovery attempt 2 failed: validation still failing after 10s: health check failed".
 
 **Say it out loud (about 30 s).** "And if recovery keeps failing? Three attempts, three broken copies. Look at the last line: 'needs human attention, all 3 recovery attempts failed, it stays quarantined and is not shown as healthy'. The platform does not pretend. It keeps the service locked and asks a person. When something cannot be fixed automatically, it says so."
 
@@ -475,7 +476,7 @@ If you present the **live cluster** parts from `docs/DEMO-DAY.md`, use Demo Mode
 **Outcome and what it proves.** The platform handles the **sixth-service profile** the same way: guards are not tied one-to-one to apps; **four guards protect six services**, and only the changed service was isolated.
 
 **What to click.**
-* **Overview**: the **Laboratory Results Service** card (the E card says "Watched by all four agents (no agent of its own)"), the Services table "ISOLATED NOW ... the Patient Portal cannot show laboratory results".
+* **Overview**: the **Laboratory Results Service** card turns **Isolated** with the five-step bar and "Workload trust 0"; it says "Watched by all four agents (no agent of its own)" and "Evidence confidence now: File Changes 0.95" (all seen in my run). The **Services** table row for it should show "ISOLATED NOW" like the Clinical Database row in scenario 12 (I saw that one; I did not re-read this row).
 * **Security Alerts** tab: the alert "E Laboratory Results Service #1" and its story.
 * **Live activity**: Story-only recipe.
 
@@ -539,7 +540,7 @@ If you present the **live cluster** parts from `docs/DEMO-DAY.md`, use Demo Mode
 **Outcome and what it proves.** In the run **the only service isolated was the database**; the three services that depend on it were **not** isolated by mistake, even though they briefly cannot reach their data. The dashboard shows that impact (and the "recover the database first" order) from the real dependency list.
 
 **What to click.**
-* **Overview** -> **Services table** ("Services, what depends on them, and what isolating each one means"): the row for the Clinical Database says which services stop working while it is isolated, and gives the suggested recovery order ("1st").
+* **Overview** -> **Services table** ("Services, what depends on them, and what isolating each one means"): during the run the row for the Clinical Database shows **"ISOLATED NOW"** followed by "the Electronic Health Records (EHR) API cannot serve patient records; the Laboratory Results Service cannot serve laboratory results; the Medication Service cannot serve medication lists; the Patient Portal cannot show ..." (seen in my run) and the suggested recovery order ("1st").
 * The cards: the Clinical Database card isolated, the other five stay Healthy.
 * **Live activity**: Story-only recipe.
 
@@ -591,3 +592,13 @@ If you present the **live cluster** parts from `docs/DEMO-DAY.md`, use Demo Mode
 | "Is any of this real?" | "These are simulator runs: the guards, signatures and agreement rules are the real code, the attacked services and their numbers are simulated. The live cluster test is the one harmless tripwire." |
 
 *Where the data comes from: `docs/scenario-captures/` (one text file per scenario, produced by running every scenario in the Demo Mode picker once on the simulator). Run counts and times can differ slightly from run to run.*
+
+---
+
+## Part 4. How this document was checked (so you can trust the quotes)
+* Each of the 13 scenarios was run once, alone, in Demo Mode of the simulator (press Reset, pick the scenario, press Start), and every event was recorded as it appeared in the dashboard's activity log: `docs/scenario-captures/<id>.txt`.
+* All **91** quoted log lines in Part 2 were checked by a script against those files: every quote exists, and its "+x.x s" time is within one second of the real time of the first matching line.
+* The counters, card states, tab contents and alert wording described under "What to click" were read from the real dashboard page with a headless browser during runs of the scenarios (Simple view for the Overview and Security Alerts; Detailed view for the Investigate, Recovery and Services parts).
+  Where I did not re-read something on screen I say so in the text ("should", "not re-checked").
+* **Nothing was changed in the project to produce this.** While checking I found a wording problem in the Security Alerts story box (it can say "4 of the 4 agents agreed" when only three signed) and the stale-alerts quirk described in 1.3; both are documented there and were deliberately **not** fixed, because you asked for documentation only. They can be fixed after the presentation.
+* Timings and line counts differ a little from run to run; the order of the steps and the wording of the lines do not.
