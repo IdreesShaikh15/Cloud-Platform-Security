@@ -24,6 +24,9 @@ done
 # the centralized baseline controller (only exists after scripts/switch-mode.sh baseline); its forward simply keeps retrying otherwise
 ( while true; do kubectl -n "$NS" port-forward --address 127.0.0.1 "svc/central-controller" "$((BASE+4)):8081" >/dev/null 2>&1; sleep 3; done ) &
 PIDS+=($!)
+# the Synthea patient portal (a read-only web page of invented patients) for the live demo and scripts/preflight.sh: http://127.0.0.1:18090/
+( while true; do kubectl -n healthcare port-forward --address 127.0.0.1 "svc/patient-portal" "${PORTAL_PORT:-18090}:8080" >/dev/null 2>&1; sleep 2; done ) &
+PIDS+=($!)
 export LIVE_STATUS_URLS="$LIVE" LIVE_BASELINE_URL="http://127.0.0.1:$((BASE+4))" PORT BIND=127.0.0.1
 echo ">> Live agents via port-forward: $LIVE_STATUS_URLS"
 
