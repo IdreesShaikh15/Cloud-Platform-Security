@@ -1,0 +1,180 @@
+# Real event log of the Demo Mode scenario 'A compromised security agent pretends to be another agent' (id: forge-evidence)
+# Captured from the simulator (python3 sim/demo_server.py --dashboard), oldest line first. SIMULATOR data only: nothing here comes from a real cluster.
+# 175 lines over 8 seconds. Columns: seconds since the first line | which security agent logged it | the 'Show' filter name | the line.
+# 'Agent X' is a security guard; a bare letter at the end of a sentence (for example 'contain C') is the healthcare app: A Patient Portal, B Login & Access Service, C EHR API, D Clinical Database, E Laboratory Results Service, F Medication Service.
+
++   0.0s  agent A  Evidence Shared             Agent A signed and sent network evidence about D to its peers (confidence 0.95): [fabricated] network anomaly.
++   0.0s  agent A  Evidence Shared             [simulated compromise] Agent A sent evidence pretending to be B about D.
++   0.0s  agent A  Evidence Shared             Agent A signed and sent process evidence about D to its peers (confidence 0.95): [fabricated] process anomaly.
++   0.0s  agent A  Evidence Shared             [simulated compromise] Agent A sent evidence pretending to be B about D.
++   0.0s  agent A  Evidence Shared             Agent A signed and sent file_integrity evidence about D to its peers (confidence 0.95): [fabricated] file_integrity anomaly.
++   0.0s  agent A  Evidence Shared             [simulated compromise] Agent A sent evidence pretending to be B about D.
++   0.0s  agent A  Evidence Shared             Agent A signed and sent auth evidence about D to its peers (confidence 0.95): [fabricated] auth anomaly.
++   0.0s  agent A  Evidence Shared             [simulated compromise] Agent A sent evidence pretending to be B about D.
++   0.0s  agent A  Agent Decision              Agent A cast a signed vote to contain D (epoch 1): [simulated compromise] fabricated accusation, no real observation.
++   0.0s  agent A  Evidence Score              Agent A computes W(D)=0.47 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 1.00, A process 0.95 x trust 1.00, A file_integrity 0.95 x trust 1.00, A auth 0.95 x trust 1.00].
++   0.0s  agent A  Decision Withheld           Agent A is not voting to contain D: own observation of D normal (confidence 0.00 < 0.5).
++   0.0s  agent B  Failed Verification         Agent B rejected an evidence message that claimed to come from B (delivered by A): signer 'B' != mTLS identity 'A'.
++   0.0s  agent B  Trust Change                Agent B lowered its trust in A from 100 to 80 because A sent an invalid or forged message.
++   0.0s  agent B  Evidence Received           Agent B accepted network evidence from A about D (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent B  Trust Change                Agent B's trust in A: 80.0 -> 80.3 (none of its recent claims are contradicted, so trust recovers slowly).
++   0.0s  agent B  Evidence Score              Agent B computes W(D)=0.38 (below the 0.6 needed to vote to contain) from 1 item(s) [A network 0.95 x trust 0.80].
++   0.0s  agent B  Decision Withheld           Agent B is not voting to contain D: own observation of D normal (confidence 0.00 < 0.5).
++   0.0s  agent C  Failed Verification         Agent C rejected an evidence message that claimed to come from B (delivered by A): signer 'B' != mTLS identity 'A'.
++   0.0s  agent C  Trust Change                Agent C lowered its trust in A from 100 to 80 because A sent an invalid or forged message.
++   0.0s  agent D  Failed Verification         Agent D rejected an evidence message that claimed to come from B (delivered by A): signer 'B' != mTLS identity 'A'.
++   0.0s  agent D  Trust Change                Agent D lowered its trust in A from 100 to 80 because A sent an invalid or forged message.
++   0.0s  agent C  Evidence Received           Agent C accepted network evidence from A about D (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent D  Evidence Received           Agent D accepted network evidence from A about D (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent B  Evidence Received           Agent B accepted process evidence from A about D (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent C  Evidence Received           Agent C accepted process evidence from A about D (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent B  Trust Change                Agent B lowered its trust in A from 80 to 60 because A sent an invalid or forged message.
++   0.0s  agent C  Trust Change                Agent C lowered its trust in A from 80 to 60 because A sent an invalid or forged message.
++   0.0s  agent B  Evidence Received           Agent B accepted file_integrity evidence from A about D (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent D  Evidence Received           Agent D accepted process evidence from A about D (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent D  Trust Change                Agent D lowered its trust in A from 80 to 60 because A sent an invalid or forged message.
++   0.0s  agent C  Evidence Received           Agent C accepted file_integrity evidence from A about D (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent D  Evidence Received           Agent D accepted file_integrity evidence from A about D (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent D  Trust Change                Agent D lowered its trust in A from 60 to 40 because A sent an invalid or forged message.
++   0.0s  agent B  Trust Change                Agent B lowered its trust in A from 60 to 40 because A sent an invalid or forged message.
++   0.0s  agent B  Evidence Received           Agent B accepted auth evidence from A about D (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent D  Evidence Received           Agent D accepted auth evidence from A about D (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent C  Trust Change                Agent C lowered its trust in A from 60 to 40 because A sent an invalid or forged message.
++   0.0s  agent B  Trust Change                Agent B lowered its trust in A from 40 to 20 because A sent an invalid or forged message.
++   0.0s  agent C  Evidence Received           Agent C accepted auth evidence from A about D (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent C  Trust Change                Agent C lowered its trust in A from 40 to 20 because A sent an invalid or forged message.
++   0.0s  agent D  Trust Change                Agent D lowered its trust in A from 40 to 20 because A sent an invalid or forged message.
++   0.5s  agent C  Trust Change                Agent C's trust in A: 20.0 -> 20.3 (none of its recent claims are contradicted, so trust recovers slowly).
++   0.5s  agent C  Warning                     Agent C marks A as SUSPECT: trust 20.2 fell below 50.
++   0.5s  agent C  Warning                     Agent C will no longer count A's votes: trust 20.2 is below the vote-exclusion threshold 40.
++   0.5s  agent C  Evidence Score              Agent C computes W(D)=0.10 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 0.20, A process 0.95 x trust 0.20, A file_integrity 0.95 x trust 0.20, A auth 0.95 x trust 0.20].
++   0.5s  agent C  Decision Withheld           Agent C is not voting to contain D: own observation of D normal (confidence 0.00 < 0.5).
++   0.5s  agent C  Decision Withheld           Agent C is not counting A's vote to CONTAIN D (epoch 1): sender A is below the vote-exclusion threshold 40 (trust 20.2).
++   0.5s  agent D  Trust Change                Agent D's trust in A: 20.0 -> 20.3 (none of its recent claims are contradicted, so trust recovers slowly).
++   0.5s  agent D  Warning                     Agent D marks A as SUSPECT: trust 20.2 fell below 50.
++   0.5s  agent D  Warning                     Agent D will no longer count A's votes: trust 20.2 is below the vote-exclusion threshold 40.
++   0.5s  agent D  Evidence Score              Agent D computes W(D)=0.10 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 0.20, A process 0.95 x trust 0.20, A file_integrity 0.95 x trust 0.20, A auth 0.95 x trust 0.20].
++   0.5s  agent D  Decision Withheld           Agent D is not voting to contain D: own observation of D normal (confidence 0.00 < 0.5).
++   0.5s  agent D  Decision Withheld           Agent D is not counting A's vote to CONTAIN D (epoch 1): sender A is below the vote-exclusion threshold 40 (trust 20.2).
++   0.5s  agent C  Warning                     Agent C ignored network evidence from A: A is vote-excluded (trust 20 < 40), so nothing it says counts toward any score or quorum.
++   0.5s  agent B  Trust Change                Agent B lowered its trust in A from 20 to 0 because A sent an invalid or forged message.
++   0.5s  agent B  Trust Change                Agent B's trust in A: 0.3 -> 0.5 (none of its recent claims are contradicted, so trust recovers slowly).
++   0.5s  agent B  Warning                     Agent B marks A as SUSPECT: trust 0.5 fell below 50.
++   0.5s  agent B  Warning                     Agent B will no longer count A's votes: trust 0.5 is below the vote-exclusion threshold 40.
++   0.5s  agent B  Decision Withheld           Agent B is not counting A's vote to CONTAIN D (epoch 1): sender A is below the vote-exclusion threshold 40 (trust 0.5).
++   0.5s  agent D  Trust Change                Agent D lowered its trust in A from 20 to 0 because A sent an invalid or forged message.
++   0.5s  agent C  Trust Change                Agent C lowered its trust in A from 20 to 0 because A sent an invalid or forged message.
++   0.5s  agent D  Warning                     Agent D ignored network evidence from A: A is vote-excluded (trust 0 < 40), so nothing it says counts toward any score or quorum.
++   0.5s  agent B  Warning                     Agent B ignored network evidence from A: A is vote-excluded (trust 1 < 40), so nothing it says counts toward any score or quorum.
++   0.5s  agent D  Trust Change                Agent D lowered its trust in A from 0 to 0 because A sent an invalid or forged message.
++   0.5s  agent B  Trust Change                Agent B lowered its trust in A from 1 to 0 because A sent an invalid or forged message.
++   0.5s  agent C  Trust Change                Agent C lowered its trust in A from 0 to 0 because A sent an invalid or forged message.
++   0.5s  agent B  Trust Change                Agent B keeps its trust in A at 0 because A sent an invalid or forged message.
++   0.5s  agent D  Trust Change                Agent D keeps its trust in A at 0 because A sent an invalid or forged message.
++   0.5s  agent C  Trust Change                Agent C keeps its trust in A at 0 because A sent an invalid or forged message.
++   0.5s  agent B  Trust Change                Agent B keeps its trust in A at 0 because A sent an invalid or forged message.
++   0.5s  agent C  Trust Change                Agent C keeps its trust in A at 0 because A sent an invalid or forged message.
++   0.5s  agent D  Trust Change                Agent D keeps its trust in A at 0 because A sent an invalid or forged message.
++   1.0s  agent B  Trust Change                Agent B keeps its trust in A at 0 because A sent an invalid or forged message.
++   1.0s  agent D  Trust Change                Agent D lowered its trust in A from 0 to 0 because A sent an invalid or forged message.
++   1.0s  agent C  Trust Change                Agent C lowered its trust in A from 0 to 0 because A sent an invalid or forged message.
++   1.0s  agent B  Trust Change                Agent B lowered its trust in A from 0 to 0 because A sent an invalid or forged message.
++   1.0s  agent D  Trust Change                Agent D keeps its trust in A at 0 because A sent an invalid or forged message.
++   1.0s  agent C  Trust Change                Agent C keeps its trust in A at 0 because A sent an invalid or forged message.
++   1.0s  agent B  Trust Change                Agent B keeps its trust in A at 0 because A sent an invalid or forged message.
++   1.0s  agent C  Trust Change                Agent C keeps its trust in A at 0 because A sent an invalid or forged message.
++   1.0s  agent D  Trust Change                Agent D keeps its trust in A at 0 because A sent an invalid or forged message.
++   1.0s  agent C  Trust Change                Agent C keeps its trust in A at 0 because A sent an invalid or forged message.
++   1.0s  agent D  Trust Change                Agent D keeps its trust in A at 0 because A sent an invalid or forged message.
++   1.0s  agent B  Trust Change                Agent B keeps its trust in A at 0 because A sent an invalid or forged message.
++   1.5s  agent A  Investigate                 Agent A opened an investigation of database (D): only agent A reports an anomaly and nobody has corroborated it. Question: is the auth, file_integrity, network, process anomaly still there, and do the other agents see it independently? Time budget 6s.
++   1.5s  agent B  Trust Change                Agent B keeps its trust in A at 0 because A sent an invalid or forged message.
++   1.5s  agent D  Trust Change                Agent D lowered its trust in A from 0 to 0 because A sent an invalid or forged message.
++   1.5s  agent C  Trust Change                Agent C lowered its trust in A from 0 to 0 because A sent an invalid or forged message.
++   1.5s  agent B  Trust Change                Agent B lowered its trust in A from 0 to 0 because A sent an invalid or forged message.
++   1.5s  agent C  Trust Change                Agent C keeps its trust in A at 0 because A sent an invalid or forged message.
++   1.5s  agent D  Trust Change                Agent D keeps its trust in A at 0 because A sent an invalid or forged message.
++   1.5s  agent C  Trust Change                Agent C keeps its trust in A at 0 because A sent an invalid or forged message.
++   1.5s  agent D  Trust Change                Agent D keeps its trust in A at 0 because A sent an invalid or forged message.
++   1.5s  agent B  Trust Change                Agent B keeps its trust in A at 0 because A sent an invalid or forged message.
++   1.5s  agent C  Trust Change                Agent C keeps its trust in A at 0 because A sent an invalid or forged message.
++   1.5s  agent D  Trust Change                Agent D keeps its trust in A at 0 because A sent an invalid or forged message.
++   1.5s  agent B  Trust Change                Agent B keeps its trust in A at 0 because A sent an invalid or forged message.
++   2.0s  agent D  Trust Change                Agent D keeps its trust in A at 0 because A sent an invalid or forged message.
++   2.0s  agent B  Trust Change                Agent B keeps its trust in A at 0 because A sent an invalid or forged message.
++   2.0s  agent B  Evidence Score              Agent B computes W(D)=0.00 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 0.00, A process 0.95 x trust 0.00, A file_integrity 0.95 x trust 0.00, A auth 0.95 x trust 0.00].
++   2.0s  agent C  Failed Verification         Agent C rejected an evidence message that claimed to come from B (delivered by A): signer 'B' != mTLS identity 'A'.
++   2.0s  agent C  Trust Change                Agent C lowered its trust in A from 0 to 0 because A sent an invalid or forged message.
++   2.0s  agent B  Failed Verification         Agent B rejected an evidence message that claimed to come from B (delivered by A): signer 'B' != mTLS identity 'A'.
++   2.0s  agent B  Trust Change                Agent B lowered its trust in A from 0 to 0 because A sent an invalid or forged message.
++   2.0s  agent D  Failed Verification         Agent D rejected an evidence message that claimed to come from B (delivered by A): signer 'B' != mTLS identity 'A'.
++   2.0s  agent D  Trust Change                Agent D lowered its trust in A from 0 to 0 because A sent an invalid or forged message.
++   2.0s  agent C  Trust Change                Agent C keeps its trust in A at 0 because A sent an invalid or forged message.
++   2.0s  agent C  Trust Change                Agent C keeps its trust in A at 0 because A sent an invalid or forged message.
++   2.0s  agent B  Trust Change                Agent B keeps its trust in A at 0 because A sent an invalid or forged message.
++   2.0s  agent D  Trust Change                Agent D keeps its trust in A at 0 because A sent an invalid or forged message.
++   2.0s  agent C  Trust Change                Agent C keeps its trust in A at 0 because A sent an invalid or forged message.
++   2.0s  agent B  Trust Change                Agent B keeps its trust in A at 0 because A sent an invalid or forged message.
++   2.0s  agent D  Trust Change                Agent D keeps its trust in A at 0 because A sent an invalid or forged message.
++   2.5s  agent A  Evidence Score              Agent A computes W(D)=0.47 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 1.00, A process 0.95 x trust 1.00, A file_integrity 0.95 x trust 1.00, A auth 0.95 x trust 1.00].
++   2.5s  agent C  Trust Change                Agent C keeps its trust in A at 0 because A sent an invalid or forged message.
++   2.5s  agent C  Trust Change                Agent C's trust in A: 0.0 -> 0.3 (none of its recent claims are contradicted, so trust recovers slowly).
++   2.5s  agent C  Evidence Score              Agent C computes W(D)=0.00 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 0.00, A process 0.95 x trust 0.00, A file_integrity 0.95 x trust 0.00, A auth 0.95 x trust 0.00].
++   2.5s  agent D  Trust Change                Agent D's trust in A: 0.0 -> 0.3 (none of its recent claims are contradicted, so trust recovers slowly).
++   2.5s  agent D  Evidence Score              Agent D computes W(D)=0.00 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 0.00, A process 0.95 x trust 0.00, A file_integrity 0.95 x trust 0.00, A auth 0.95 x trust 0.00].
++   2.5s  agent D  Trust Change                Agent D keeps its trust in A at 0 because A sent an invalid or forged message.
++   2.5s  agent B  Trust Change                Agent B keeps its trust in A at 0 because A sent an invalid or forged message.
++   2.5s  agent B  Trust Change                Agent B's trust in A: 0.0 -> 0.3 (none of its recent claims are contradicted, so trust recovers slowly).
++   2.5s  agent C  Trust Change                Agent C lowered its trust in A from 0 to 0 because A sent an invalid or forged message.
++   2.5s  agent B  Trust Change                Agent B lowered its trust in A from 0 to 0 because A sent an invalid or forged message.
++   2.5s  agent D  Trust Change                Agent D lowered its trust in A from 0 to 0 because A sent an invalid or forged message.
++   2.5s  agent C  Trust Change                Agent C keeps its trust in A at 0 because A sent an invalid or forged message.
++   2.5s  agent B  Trust Change                Agent B keeps its trust in A at 0 because A sent an invalid or forged message.
++   2.5s  agent D  Trust Change                Agent D keeps its trust in A at 0 because A sent an invalid or forged message.
++   2.5s  agent B  Trust Change                Agent B keeps its trust in A at 0 because A sent an invalid or forged message.
++   2.5s  agent D  Trust Change                Agent D keeps its trust in A at 0 because A sent an invalid or forged message.
++   2.5s  agent C  Trust Change                Agent C keeps its trust in A at 0 because A sent an invalid or forged message.
++   3.0s  agent A  Evidence Shared             Agent A signed and sent process evidence about D to its peers (confidence 0.95): [fabricated] process anomaly.
++   3.0s  agent A  Evidence Shared             [simulated compromise] Agent A sent evidence pretending to be B about D.
++   3.0s  agent B  Trust Change                Agent B keeps its trust in A at 0 because A sent an invalid or forged message.
++   3.0s  agent A  Evidence Shared             Agent A signed and sent file_integrity evidence about D to its peers (confidence 0.95): [fabricated] file_integrity anomaly.
++   3.0s  agent A  Evidence Shared             [simulated compromise] Agent A sent evidence pretending to be B about D.
++   3.0s  agent A  Evidence Shared             Agent A signed and sent auth evidence about D to its peers (confidence 0.95): [fabricated] auth anomaly.
++   3.0s  agent A  Evidence Shared             [simulated compromise] Agent A sent evidence pretending to be B about D.
++   3.0s  agent D  Trust Change                Agent D lowered its trust in A from 0 to 0 because A sent an invalid or forged message.
++   3.0s  agent C  Trust Change                Agent C lowered its trust in A from 0 to 0 because A sent an invalid or forged message.
++   3.0s  agent B  Trust Change                Agent B lowered its trust in A from 0 to 0 because A sent an invalid or forged message.
++   3.0s  agent C  Trust Change                Agent C keeps its trust in A at 0 because A sent an invalid or forged message.
++   3.0s  agent D  Trust Change                Agent D keeps its trust in A at 0 because A sent an invalid or forged message.
++   3.0s  agent B  Trust Change                Agent B keeps its trust in A at 0 because A sent an invalid or forged message.
++   3.0s  agent D  Trust Change                Agent D keeps its trust in A at 0 because A sent an invalid or forged message.
++   3.0s  agent C  Trust Change                Agent C keeps its trust in A at 0 because A sent an invalid or forged message.
++   3.0s  agent B  Trust Change                Agent B keeps its trust in A at 0 because A sent an invalid or forged message.
++   3.0s  agent C  Trust Change                Agent C keeps its trust in A at 0 because A sent an invalid or forged message.
++   3.0s  agent D  Trust Change                Agent D keeps its trust in A at 0 because A sent an invalid or forged message.
++   3.5s  agent A  Evidence Shared             Agent A signed and sent network evidence about D to its peers (confidence 0.95): [fabricated] network anomaly.
++   3.5s  agent A  Evidence Shared             [simulated compromise] Agent A sent evidence pretending to be B about D.
++   3.5s  agent C  Trust Change                Agent C keeps its trust in A at 0 because A sent an invalid or forged message.
++   3.5s  agent B  Trust Change                Agent B keeps its trust in A at 0 because A sent an invalid or forged message.
++   3.5s  agent D  Trust Change                Agent D keeps its trust in A at 0 because A sent an invalid or forged message.
++   3.5s  agent B  Trust Change                Agent B lowered its trust in A from 0 to 0 because A sent an invalid or forged message.
++   3.5s  agent C  Trust Change                Agent C lowered its trust in A from 0 to 0 because A sent an invalid or forged message.
++   3.5s  agent D  Trust Change                Agent D lowered its trust in A from 0 to 0 because A sent an invalid or forged message.
++   3.5s  agent B  Trust Change                Agent B keeps its trust in A at 0 because A sent an invalid or forged message.
++   3.5s  agent C  Trust Change                Agent C keeps its trust in A at 0 because A sent an invalid or forged message.
++   3.5s  agent D  Trust Change                Agent D keeps its trust in A at 0 because A sent an invalid or forged message.
++   3.5s  agent B  Trust Change                Agent B keeps its trust in A at 0 because A sent an invalid or forged message.
++   3.5s  agent D  Trust Change                Agent D keeps its trust in A at 0 because A sent an invalid or forged message.
++   3.5s  agent C  Trust Change                Agent C keeps its trust in A at 0 because A sent an invalid or forged message.
++   4.0s  agent C  Evidence Score              Agent C: no current evidence about D; W(D) back to 0.
++   4.0s  agent D  Evidence Score              Agent D: no current evidence about D; W(D) back to 0.
++   4.0s  agent B  Evidence Score              Agent B: no current evidence about D; W(D) back to 0.
++   5.0s  agent A  Evidence Score              Agent A computes W(D)=0.47 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 1.00, A process 0.95 x trust 1.00, A file_integrity 0.95 x trust 1.00, A auth 0.95 x trust 1.00].
++   5.0s  agent B  Decision Withheld           Agent B is not voting to contain D: own observation of D normal (confidence 0.00 < 0.5).
++   5.5s  agent A  Decision Withheld           Agent A is not voting to contain D: own observation of D normal (confidence 0.00 < 0.5).
++   5.5s  agent C  Decision Withheld           Agent C is not voting to contain D: own observation of D normal (confidence 0.00 < 0.5).
++   5.5s  agent D  Decision Withheld           Agent D is not voting to contain D: own observation of D normal (confidence 0.00 < 0.5).
++   7.0s  agent A  Evidence Score              Agent A computes W(D)=0.47 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 1.00, A process 0.95 x trust 1.00, A file_integrity 0.95 x trust 1.00, A auth 0.95 x trust 1.00].
++   7.5s  agent A  Evidence Score              Agent A: no current evidence about D; W(D) back to 0.
++   7.5s  agent A  Investigate                 Agent A: Investigation of database (D) is UNCERTAIN: only 1 of 4 agents could re-measure (need 3); missing data is neither proof of attack nor of safety. still see it: nobody; see it gone: A; no usable answer: B, C, D. Safe policy: placed under watch and flagged for human review; nothing was isolated.
++   7.5s  agent A  Investigate                 HUMAN REVIEW NEEDED: database (D) is under watch after an uncertain investigation. Nothing was isolated; heightened monitoring is on.

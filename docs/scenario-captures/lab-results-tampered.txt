@@ -1,0 +1,228 @@
+# Real event log of the Demo Mode scenario 'A file in the Laboratory Results Service is changed' (id: lab-results-tampered)
+# Captured from the simulator (python3 sim/demo_server.py --dashboard), oldest line first. SIMULATOR data only: nothing here comes from a real cluster.
+# 223 lines over 23 seconds. Columns: seconds since the first line | which security agent logged it | the 'Show' filter name | the line.
+# 'Agent X' is a security guard; a bare letter at the end of a sentence (for example 'contain C') is the healthcare app: A Patient Portal, B Login & Access Service, C EHR API, D Clinical Database, E Laboratory Results Service, F Medication Service.
+
++   0.0s  agent A  Observation                 Agent A sees lab-results (E): 1 file differing from the known-good hashes -> confidence 0.95.
++   0.0s  agent B  Observation                 Agent B sees lab-results (E): 1 file differing from the known-good hashes -> confidence 0.95.
++   0.0s  agent C  Observation                 Agent C sees lab-results (E): 1 file differing from the known-good hashes -> confidence 0.95.
++   0.0s  agent A  Evidence Shared             Agent A signed and sent file_integrity evidence about E to its peers (confidence 0.95): 1 modified file(s): static/index.html.
++   0.0s  agent A  Evidence Score              Agent A computes W(E)=0.47 (below the 0.6 needed to vote to contain) from 1 item(s) [A file_integrity 0.95 x trust 1.00].
++   0.0s  agent A  Decision Withheld           Agent A is not voting to contain E: W(E)=0.47 below 0.6.
++   0.0s  agent D  Observation                 Agent D sees lab-results (E): 1 file differing from the known-good hashes -> confidence 0.95.
++   0.0s  agent B  Evidence Shared             Agent B signed and sent file_integrity evidence about E to its peers (confidence 0.95): 1 modified file(s): static/index.html.
++   0.0s  agent B  Evidence Score              Agent B computes W(E)=0.47 (below the 0.6 needed to vote to contain) from 1 item(s) [B file_integrity 0.95 x trust 1.00].
++   0.0s  agent B  Decision Withheld           Agent B is not voting to contain E: W(E)=0.47 below 0.6.
++   0.0s  agent C  Evidence Shared             Agent C signed and sent file_integrity evidence about E to its peers (confidence 0.95): 1 modified file(s): static/index.html.
++   0.0s  agent C  Evidence Score              Agent C computes W(E)=0.47 (below the 0.6 needed to vote to contain) from 1 item(s) [C file_integrity 0.95 x trust 1.00].
++   0.0s  agent C  Decision Withheld           Agent C is not voting to contain E: W(E)=0.47 below 0.6.
++   0.0s  agent D  Evidence Shared             Agent D signed and sent file_integrity evidence about E to its peers (confidence 0.95): 1 modified file(s): static/index.html.
++   0.0s  agent D  Evidence Score              Agent D computes W(E)=0.47 (below the 0.6 needed to vote to contain) from 1 item(s) [D file_integrity 0.95 x trust 1.00].
++   0.0s  agent D  Decision Withheld           Agent D is not voting to contain E: W(E)=0.47 below 0.6.
++   0.0s  agent D  Evidence Received           Agent D accepted file_integrity evidence from B about E (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent B  Evidence Received           Agent B accepted file_integrity evidence from C about E (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent B  Evidence Received           Agent B accepted file_integrity evidence from A about E (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent D  Evidence Received           Agent D accepted file_integrity evidence from A about E (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent A  Evidence Received           Agent A accepted file_integrity evidence from D about E (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent A  Evidence Received           Agent A accepted file_integrity evidence from B about E (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent D  Evidence Received           Agent D accepted file_integrity evidence from C about E (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent A  Evidence Received           Agent A accepted file_integrity evidence from C about E (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent C  Evidence Received           Agent C accepted file_integrity evidence from A about E (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent B  Evidence Received           Agent B accepted file_integrity evidence from D about E (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent C  Evidence Received           Agent C accepted file_integrity evidence from B about E (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent C  Evidence Received           Agent C accepted file_integrity evidence from D about E (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.5s  agent A  Evidence Score              Agent A computes W(E)=0.95 (at or above the 0.6 needed to vote to contain) from 4 item(s) [A file_integrity 0.95 x trust 1.00, D file_integrity 0.95 x trust 1.00, B file_integrity 0.95 x trust 1.00, C file_integrity 0.95 x trust 1.00].
++   0.5s  agent A  Agent Decision              Agent A cast a signed vote to contain E (epoch 1): sees the anomaly itself (confidence 0.95) and W(E)=0.95 >= 0.6.
++   0.5s  agent B  Evidence Score              Agent B computes W(E)=0.95 (at or above the 0.6 needed to vote to contain) from 4 item(s) [B file_integrity 0.95 x trust 1.00, C file_integrity 0.95 x trust 1.00, A file_integrity 0.95 x trust 1.00, D file_integrity 0.95 x trust 1.00].
++   0.5s  agent C  Evidence Score              Agent C computes W(E)=0.95 (at or above the 0.6 needed to vote to contain) from 4 item(s) [C file_integrity 0.95 x trust 1.00, A file_integrity 0.95 x trust 1.00, B file_integrity 0.95 x trust 1.00, D file_integrity 0.95 x trust 1.00].
++   0.5s  agent D  Evidence Score              Agent D computes W(E)=0.95 (at or above the 0.6 needed to vote to contain) from 4 item(s) [D file_integrity 0.95 x trust 1.00, B file_integrity 0.95 x trust 1.00, A file_integrity 0.95 x trust 1.00, C file_integrity 0.95 x trust 1.00].
++   0.5s  agent B  Agent Decision              Agent B cast a signed vote to contain E (epoch 1): sees the anomaly itself (confidence 0.95) and W(E)=0.95 >= 0.6.
++   0.5s  agent C  Agent Decision              Agent C cast a signed vote to contain E (epoch 1): sees the anomaly itself (confidence 0.95) and W(E)=0.95 >= 0.6.
++   0.5s  agent D  Agent Decision              Agent D cast a signed vote to contain E (epoch 1): sees the anomaly itself (confidence 0.95) and W(E)=0.95 >= 0.6.
++   1.0s  agent A  Agreement Reached (3 of 4)  Quorum reached: A, B, C, D signed CONTAIN E (epoch 1) -> isolate + recover.
++   1.0s  agent B  Agreement Reached (3 of 4)  Quorum reached: A, B, C, D signed CONTAIN E (epoch 1) -> isolate + recover.
++   1.0s  agent A  Action Taken                Agent A saved an evidence snapshot of lab-results (E) before it is replaced: 1 pod(s), 5 log line(s).
++   1.0s  agent A  Action Taken                Agent A is executor rank 0 for 'isolate lab-results': it acts now.
++   1.0s  agent A  Action Taken                Agent A is executor rank 0 for 'redeploy lab-results from known-good image': it acts now.
++   1.0s  agent C  Agreement Reached (3 of 4)  Quorum reached: A, B, C, D signed CONTAIN E (epoch 1) -> isolate + recover.
++   1.0s  agent D  Agreement Reached (3 of 4)  Quorum reached: A, B, C, D signed CONTAIN E (epoch 1) -> isolate + recover.
++   1.0s  agent B  Action Taken                Agent B saved an evidence snapshot of lab-results (E) before it is replaced: 1 pod(s), 5 log line(s).
++   1.0s  agent B  Action Taken                Agent B is executor rank 1 for 'isolate lab-results': it will act in 2s only if no higher-ranked agent has done it.
++   1.0s  agent B  Action Taken                Agent B is executor rank 1 for 'redeploy lab-results from known-good image': it will act in 2s only if no higher-ranked agent has done it.
++   1.0s  agent D  Action Taken                Agent D saved an evidence snapshot of lab-results (E) before it is replaced: 1 pod(s), 5 log line(s).
++   1.0s  agent D  Action Taken                Agent D is executor rank 3 for 'isolate lab-results': it will act in 4s only if no higher-ranked agent has done it.
++   1.0s  agent D  Action Taken                Agent D is executor rank 3 for 'redeploy lab-results from known-good image': it will act in 4s only if no higher-ranked agent has done it.
++   1.0s  agent C  Action Taken                Agent C saved an evidence snapshot of lab-results (E) before it is replaced: 1 pod(s), 5 log line(s).
++   1.0s  agent C  Action Taken                Agent C is executor rank 2 for 'isolate lab-results': it will act in 3s only if no higher-ranked agent has done it.
++   1.0s  agent C  Action Taken                Agent C is executor rank 2 for 'redeploy lab-results from known-good image': it will act in 3s only if no higher-ranked agent has done it.
++   1.0s  agent D  Agreement Reached (3 of 4)  Agent D holds a quorum certificate for CONTAIN E (epoch 1) signed by A, B, D.
++   1.0s  agent A  Agreement Reached (3 of 4)  Agent A holds a quorum certificate for CONTAIN E (epoch 1) signed by A, B, D.
++   1.0s  agent C  Agreement Reached (3 of 4)  Agent C holds a quorum certificate for CONTAIN E (epoch 1) signed by A, B, C.
++   1.0s  agent B  Agreement Reached (3 of 4)  Agent B holds a quorum certificate for CONTAIN E (epoch 1) signed by A, B, D.
++   1.0s  agent A  Action Taken                Agent A isolated lab-results (E): quarantine NetworkPolicy applied, signed off by A, B, C, D.
++   1.0s  agent A  Action Taken                Agent A started recovery of lab-results (E), attempt 1: redeploying it from the known-good image.
++   1.5s  agent A  Action Taken                Agent A confirms lab-results (E) is isolated; waiting for the clean replacement pod.
++   1.5s  agent B  Action Taken                Agent B confirms lab-results (E) is isolated; waiting for the clean replacement pod.
++   1.5s  agent D  Action Taken                Agent D confirms lab-results (E) is isolated; waiting for the clean replacement pod.
++   1.5s  agent C  Action Taken                Agent C confirms lab-results (E) is isolated; waiting for the clean replacement pod.
++   2.5s  agent B  Action Taken                Agent B skipped 'isolate lab-results': already done (by itself or a higher-ranked agent).
++   2.5s  agent B  Action Taken                Agent B skipped 'redeploy lab-results from known-good image': already done (by itself or a higher-ranked agent).
++   3.5s  agent A  Observation                 Agent A sees lab-results (E) as normal on all 4 signals.
++   3.5s  agent A  Action Taken                Agent A sees lab-results (E) recovered: the new pod from the known-good image is ready; validating it now.
++   3.5s  agent B  Observation                 Agent B sees lab-results (E) as normal on all 4 signals.
++   3.5s  agent B  Action Taken                Agent B sees lab-results (E) recovered: the new pod from the known-good image is ready; validating it now.
++   3.5s  agent D  Observation                 Agent D sees lab-results (E) as normal on all 4 signals.
++   3.5s  agent D  Action Taken                Agent D sees lab-results (E) recovered: the new pod from the known-good image is ready; validating it now.
++   3.5s  agent C  Observation                 Agent C sees lab-results (E) as normal on all 4 signals.
++   3.5s  agent C  Action Taken                Agent C sees lab-results (E) recovered: the new pod from the known-good image is ready; validating it now.
++   4.0s  agent A  Agent Decision              Agent A cast a signed vote to accept E as validated (epoch 1): health, file hashes and behaviour all check out.
++   4.0s  agent B  Agent Decision              Agent B cast a signed vote to accept E as validated (epoch 1): health, file hashes and behaviour all check out.
++   4.0s  agent D  Agent Decision              Agent D cast a signed vote to accept E as validated (epoch 1): health, file hashes and behaviour all check out.
++   4.0s  agent C  Agent Decision              Agent C cast a signed vote to accept E as validated (epoch 1): health, file hashes and behaviour all check out.
++   4.0s  agent C  Action Taken                Agent C skipped 'isolate lab-results': already done (by itself or a higher-ranked agent).
++   4.0s  agent C  Action Taken                Agent C skipped 'redeploy lab-results from known-good image': already done (by itself or a higher-ranked agent).
++   4.5s  agent A  Agreement Reached (3 of 4)  Quorum reached: A, B, C, D signed VALIDATE E (epoch 1) -> validated; start staged reintegration.
++   4.5s  agent A  Action Taken                Agent A is executor rank 0 for 'mark lab-results validated': it acts now.
++   4.5s  agent B  Agreement Reached (3 of 4)  Quorum reached: A, B, C, D signed VALIDATE E (epoch 1) -> validated; start staged reintegration.
++   4.5s  agent B  Action Taken                Agent B is executor rank 1 for 'mark lab-results validated': it will act in 2s only if no higher-ranked agent has done it.
++   4.5s  agent D  Agreement Reached (3 of 4)  Quorum reached: A, B, C, D signed VALIDATE E (epoch 1) -> validated; start staged reintegration.
++   4.5s  agent D  Action Taken                Agent D is executor rank 3 for 'mark lab-results validated': it will act in 4s only if no higher-ranked agent has done it.
++   4.5s  agent C  Agreement Reached (3 of 4)  Quorum reached: A, B, C, D signed VALIDATE E (epoch 1) -> validated; start staged reintegration.
++   4.5s  agent C  Action Taken                Agent C is executor rank 2 for 'mark lab-results validated': it will act in 3s only if no higher-ranked agent has done it.
++   4.5s  agent C  Agreement Reached (3 of 4)  Agent C holds a quorum certificate for VALIDATE E (epoch 1) signed by A, B, C.
++   4.5s  agent D  Agreement Reached (3 of 4)  Agent D holds a quorum certificate for VALIDATE E (epoch 1) signed by A, C, D.
++   4.5s  agent A  Agreement Reached (3 of 4)  Agent A holds a quorum certificate for VALIDATE E (epoch 1) signed by A, C, D.
++   4.5s  agent B  Agreement Reached (3 of 4)  Agent B holds a quorum certificate for VALIDATE E (epoch 1) signed by A, B, C.
++   5.0s  agent A  Evidence Score              Agent A computes W(E)=0.95 (at or above the 0.6 needed to vote to contain) from 3 item(s) [B file_integrity 0.95 x trust 1.00, D file_integrity 0.95 x trust 1.00, C file_integrity 0.95 x trust 1.00].
++   5.0s  agent A  Decision Withheld           Agent A is not voting to contain E: own observation of E normal (confidence 0.00 < 0.5).
++   5.0s  agent A  Decision Withheld           Agent A is not voting to move E to RESTRICTED: must stay in QUARANTINE another 2s (minimum 3s per stage).
++   5.0s  agent B  Evidence Score              Agent B computes W(E)=0.95 (at or above the 0.6 needed to vote to contain) from 2 item(s) [C file_integrity 0.95 x trust 1.00, D file_integrity 0.95 x trust 1.00].
++   5.0s  agent B  Decision Withheld           Agent B is not voting to contain E: own observation of E normal (confidence 0.00 < 0.5).
++   5.0s  agent B  Decision Withheld           Agent B is not voting to move E to RESTRICTED: must stay in QUARANTINE another 2s (minimum 3s per stage).
++   5.0s  agent D  Evidence Score              Agent D: no current evidence about E; W(E) back to 0.
++   5.0s  agent D  Decision Withheld           Agent D is not voting to move E to RESTRICTED: must stay in QUARANTINE another 2s (minimum 3s per stage).
++   5.0s  agent C  Evidence Score              Agent C: no current evidence about E; W(E) back to 0.
++   5.0s  agent C  Decision Withheld           Agent C is not voting to move E to RESTRICTED: must stay in QUARANTINE another 2s (minimum 3s per stage).
++   5.5s  agent A  Evidence Score              Agent A: no current evidence about E; W(E) back to 0.
++   5.5s  agent B  Evidence Score              Agent B: no current evidence about E; W(E) back to 0.
++   5.5s  agent D  Action Taken                Agent D dropped 'isolate lab-results': E is now REINTEGRATING, not ISOLATED/RECOVERING/VALIDATING.
++   5.5s  agent D  Action Taken                Agent D dropped 'redeploy lab-results from known-good image': E is now REINTEGRATING, not ISOLATED/RECOVERING/VALIDATING.
++   6.0s  agent B  Action Taken                Agent B skipped 'mark lab-results validated': already done (by itself or a higher-ranked agent).
++   7.5s  agent A  Agent Decision              Agent A cast a signed vote to move E to RESTRICTED (epoch 1): 3s in QUARANTINE, workload trust 24 >= 20, no anomaly.
++   7.5s  agent B  Agent Decision              Agent B cast a signed vote to move E to RESTRICTED (epoch 1): 3s in QUARANTINE, workload trust 24 >= 20, no anomaly.
++   7.5s  agent D  Agent Decision              Agent D cast a signed vote to move E to RESTRICTED (epoch 1): 3s in QUARANTINE, workload trust 24 >= 20, no anomaly.
++   7.5s  agent D  Agreement Reached (3 of 4)  Quorum reached: A, B, D signed move E to RESTRICTED (epoch 1) -> advance to RESTRICTED.
++   7.5s  agent D  Action Taken                Agent D is executor rank 3 for 'move lab-results to RESTRICTED': it will act in 4s only if no higher-ranked agent has done it.
++   7.5s  agent C  Agent Decision              Agent C cast a signed vote to move E to RESTRICTED (epoch 1): 3s in QUARANTINE, workload trust 24 >= 20, no anomaly.
++   7.5s  agent C  Agreement Reached (3 of 4)  Quorum reached: A, B, C signed move E to RESTRICTED (epoch 1) -> advance to RESTRICTED.
++   7.5s  agent C  Action Taken                Agent C is executor rank 2 for 'move lab-results to RESTRICTED': it will act in 3s only if no higher-ranked agent has done it.
++   7.5s  agent C  Action Taken                Agent C skipped 'mark lab-results validated': already done (by itself or a higher-ranked agent).
++   7.5s  agent A  Agreement Reached (3 of 4)  Agent A holds a quorum certificate for ADVANCE_STAGE E (epoch 1, RESTRICTED) signed by A, C, D.
++   7.5s  agent B  Agreement Reached (3 of 4)  Agent B holds a quorum certificate for ADVANCE_STAGE E (epoch 1, RESTRICTED) signed by B, C, D.
++   7.5s  agent C  Agreement Reached (3 of 4)  Agent C holds a quorum certificate for ADVANCE_STAGE E (epoch 1, RESTRICTED) signed by B, C, D.
++   7.5s  agent D  Agreement Reached (3 of 4)  Agent D holds a quorum certificate for ADVANCE_STAGE E (epoch 1, RESTRICTED) signed by B, C, D.
++   8.0s  agent A  Agreement Reached (3 of 4)  Quorum reached: A, B, C, D signed move E to RESTRICTED (epoch 1) -> advance to RESTRICTED.
++   8.0s  agent A  Action Taken                Agent A is executor rank 0 for 'move lab-results to RESTRICTED': it acts now.
++   8.0s  agent A  Action Taken                Agent A moved lab-results (E) to stage RESTRICTED.
++   8.0s  agent B  Agreement Reached (3 of 4)  Quorum reached: A, B, C, D signed move E to RESTRICTED (epoch 1) -> advance to RESTRICTED.
++   8.0s  agent B  Action Taken                Agent B is executor rank 1 for 'move lab-results to RESTRICTED': it will act in 2s only if no higher-ranked agent has done it.
++   9.0s  agent D  Action Taken                Agent D skipped 'mark lab-results validated': already done (by itself or a higher-ranked agent).
++   9.5s  agent B  Action Taken                Agent B skipped 'move lab-results to RESTRICTED': already done (by itself or a higher-ranked agent).
++  10.0s  agent C  Decision Withheld           Agent C is not voting to move E to MONITORED: must stay in RESTRICTED another 0s (minimum 3s per stage).
++  10.0s  agent B  Decision Withheld           Agent B is not voting to move E to MONITORED: must stay in RESTRICTED another 1s (minimum 3s per stage).
++  10.0s  agent D  Decision Withheld           Agent D is not voting to move E to MONITORED: must stay in RESTRICTED another 0s (minimum 3s per stage).
++  10.0s  agent A  Decision Withheld           Agent A is not voting to move E to MONITORED: must stay in RESTRICTED another 1s (minimum 3s per stage).
++  10.5s  agent B  Observation                 Agent B sees patient-portal (A) as normal on all 4 signals.
++  10.5s  agent B  Observation                 Agent B sees auth-service (B) as normal on all 4 signals.
++  10.5s  agent B  Observation                 Agent B sees records-api (C) as normal on all 4 signals.
++  10.5s  agent B  Observation                 Agent B sees database (D) as normal on all 4 signals.
++  10.5s  agent B  Observation                 Agent B sees medication-service (F) as normal on all 4 signals.
++  10.5s  agent D  Observation                 Agent D sees patient-portal (A) as normal on all 4 signals.
++  10.5s  agent D  Observation                 Agent D sees auth-service (B) as normal on all 4 signals.
++  10.5s  agent D  Observation                 Agent D sees records-api (C) as normal on all 4 signals.
++  10.5s  agent D  Observation                 Agent D sees database (D) as normal on all 4 signals.
++  10.5s  agent D  Observation                 Agent D sees medication-service (F) as normal on all 4 signals.
++  10.5s  agent C  Observation                 Agent C sees patient-portal (A) as normal on all 4 signals.
++  10.5s  agent C  Observation                 Agent C sees auth-service (B) as normal on all 4 signals.
++  10.5s  agent C  Observation                 Agent C sees records-api (C) as normal on all 4 signals.
++  10.5s  agent C  Observation                 Agent C sees database (D) as normal on all 4 signals.
++  10.5s  agent C  Observation                 Agent C sees medication-service (F) as normal on all 4 signals.
++  10.5s  agent C  Agent Decision              Agent C cast a signed vote to move E to MONITORED (epoch 1): 3s in RESTRICTED, workload trust 48 >= 40, no anomaly.
++  10.5s  agent C  Action Taken                Agent C skipped 'move lab-results to RESTRICTED': already done (by itself or a higher-ranked agent).
++  10.5s  agent D  Agent Decision              Agent D cast a signed vote to move E to MONITORED (epoch 1): 3s in RESTRICTED, workload trust 48 >= 40, no anomaly.
++  10.5s  agent A  Observation                 Agent A sees patient-portal (A) as normal on all 4 signals.
++  10.5s  agent A  Observation                 Agent A sees auth-service (B) as normal on all 4 signals.
++  10.5s  agent A  Observation                 Agent A sees records-api (C) as normal on all 4 signals.
++  10.5s  agent A  Observation                 Agent A sees database (D) as normal on all 4 signals.
++  10.5s  agent A  Observation                 Agent A sees medication-service (F) as normal on all 4 signals.
++  11.0s  agent B  Agent Decision              Agent B cast a signed vote to move E to MONITORED (epoch 1): 3s in RESTRICTED, workload trust 52 >= 40, no anomaly.
++  11.0s  agent B  Agreement Reached (3 of 4)  Quorum reached: B, C, D signed move E to MONITORED (epoch 1) -> advance to MONITORED.
++  11.0s  agent B  Action Taken                Agent B is executor rank 1 for 'move lab-results to MONITORED': it will act in 2s only if no higher-ranked agent has done it.
++  11.0s  agent A  Agent Decision              Agent A cast a signed vote to move E to MONITORED (epoch 1): 3s in RESTRICTED, workload trust 52 >= 40, no anomaly.
++  11.0s  agent A  Agreement Reached (3 of 4)  Quorum reached: A, C, D signed move E to MONITORED (epoch 1) -> advance to MONITORED.
++  11.0s  agent A  Action Taken                Agent A is executor rank 0 for 'move lab-results to MONITORED': it acts now.
++  11.0s  agent C  Agreement Reached (3 of 4)  Agent C holds a quorum certificate for ADVANCE_STAGE E (epoch 1, MONITORED) signed by B, C, D.
++  11.1s  agent A  Agreement Reached (3 of 4)  Agent A holds a quorum certificate for ADVANCE_STAGE E (epoch 1, MONITORED) signed by A, B, C.
++  11.1s  agent A  Action Taken                Agent A moved lab-results (E) to stage MONITORED.
++  11.1s  agent D  Agreement Reached (3 of 4)  Agent D holds a quorum certificate for ADVANCE_STAGE E (epoch 1, MONITORED) signed by B, C, D.
++  11.1s  agent B  Agreement Reached (3 of 4)  Agent B holds a quorum certificate for ADVANCE_STAGE E (epoch 1, MONITORED) signed by B, C, D.
++  11.5s  agent D  Agreement Reached (3 of 4)  Quorum reached: A, B, C, D signed move E to MONITORED (epoch 1) -> advance to MONITORED.
++  11.5s  agent D  Action Taken                Agent D is executor rank 3 for 'move lab-results to MONITORED': it will act in 4s only if no higher-ranked agent has done it.
++  11.5s  agent C  Agreement Reached (3 of 4)  Quorum reached: A, B, C, D signed move E to MONITORED (epoch 1) -> advance to MONITORED.
++  11.5s  agent C  Action Taken                Agent C is executor rank 2 for 'move lab-results to MONITORED': it will act in 3s only if no higher-ranked agent has done it.
++  12.0s  agent D  Action Taken                Agent D skipped 'move lab-results to RESTRICTED': already done (by itself or a higher-ranked agent).
++  12.5s  agent B  Action Taken                Agent B skipped 'move lab-results to MONITORED': already done (by itself or a higher-ranked agent).
++  14.0s  agent B  Agent Decision              Agent B cast a signed vote to move E to PEER_VALIDATED (epoch 1): 3s in MONITORED, workload trust 76 >= 60, no anomaly.
++  14.0s  agent A  Agent Decision              Agent A cast a signed vote to move E to PEER_VALIDATED (epoch 1): 3s in MONITORED, workload trust 76 >= 60, no anomaly.
++  14.5s  agent D  Agent Decision              Agent D cast a signed vote to move E to PEER_VALIDATED (epoch 1): 3s in MONITORED, workload trust 80 >= 60, no anomaly.
++  14.5s  agent D  Agreement Reached (3 of 4)  Quorum reached: A, B, D signed move E to PEER_VALIDATED (epoch 1) -> advance to PEER_VALIDATED.
++  14.5s  agent D  Action Taken                Agent D is executor rank 3 for 'move lab-results to PEER_VALIDATED': it will act in 4s only if no higher-ranked agent has done it.
++  14.5s  agent C  Agent Decision              Agent C cast a signed vote to move E to PEER_VALIDATED (epoch 1): 3s in MONITORED, workload trust 80 >= 60, no anomaly.
++  14.5s  agent C  Agreement Reached (3 of 4)  Quorum reached: A, B, C signed move E to PEER_VALIDATED (epoch 1) -> advance to PEER_VALIDATED.
++  14.5s  agent C  Action Taken                Agent C is executor rank 2 for 'move lab-results to PEER_VALIDATED': it will act in 3s only if no higher-ranked agent has done it.
++  14.5s  agent C  Action Taken                Agent C skipped 'move lab-results to MONITORED': already done (by itself or a higher-ranked agent).
++  14.6s  agent A  Agreement Reached (3 of 4)  Agent A holds a quorum certificate for ADVANCE_STAGE E (epoch 1, PEER_VALIDATED) signed by A, B, D.
++  14.6s  agent C  Agreement Reached (3 of 4)  Agent C holds a quorum certificate for ADVANCE_STAGE E (epoch 1, PEER_VALIDATED) signed by B, C, D.
++  14.6s  agent B  Agreement Reached (3 of 4)  Agent B holds a quorum certificate for ADVANCE_STAGE E (epoch 1, PEER_VALIDATED) signed by B, C, D.
++  14.6s  agent D  Agreement Reached (3 of 4)  Agent D holds a quorum certificate for ADVANCE_STAGE E (epoch 1, PEER_VALIDATED) signed by B, C, D.
++  15.0s  agent D  Decision Withheld           Agent D is not voting to move E to FULL: must stay in PEER_VALIDATED another 2s (minimum 3s per stage).
++  15.0s  agent C  Decision Withheld           Agent C is not voting to move E to FULL: must stay in PEER_VALIDATED another 2s (minimum 3s per stage).
++  15.0s  agent B  Agreement Reached (3 of 4)  Quorum reached: A, B, C, D signed move E to PEER_VALIDATED (epoch 1) -> advance to PEER_VALIDATED.
++  15.0s  agent B  Action Taken                Agent B is executor rank 1 for 'move lab-results to PEER_VALIDATED': it will act in 2s only if no higher-ranked agent has done it.
++  15.0s  agent A  Agreement Reached (3 of 4)  Quorum reached: A, B, C, D signed move E to PEER_VALIDATED (epoch 1) -> advance to PEER_VALIDATED.
++  15.0s  agent A  Action Taken                Agent A is executor rank 0 for 'move lab-results to PEER_VALIDATED': it acts now.
++  15.0s  agent A  Action Taken                Agent A moved lab-results (E) to stage PEER_VALIDATED.
++  15.5s  agent B  Decision Withheld           Agent B is not voting to move E to FULL: must stay in PEER_VALIDATED another 2s (minimum 3s per stage).
++  15.5s  agent A  Decision Withheld           Agent A is not voting to move E to FULL: must stay in PEER_VALIDATED another 2s (minimum 3s per stage).
++  16.0s  agent D  Action Taken                Agent D skipped 'move lab-results to MONITORED': already done (by itself or a higher-ranked agent).
++  16.5s  agent B  Action Taken                Agent B skipped 'move lab-results to PEER_VALIDATED': already done (by itself or a higher-ranked agent).
++  17.5s  agent D  Agent Decision              Agent D cast a signed vote to move E to FULL (epoch 1): 3s in PEER_VALIDATED, workload trust 100 >= 80, no anomaly.
++  17.5s  agent C  Agent Decision              Agent C cast a signed vote to move E to FULL (epoch 1): 3s in PEER_VALIDATED, workload trust 100 >= 80, no anomaly.
++  17.5s  agent C  Action Taken                Agent C skipped 'move lab-results to PEER_VALIDATED': already done (by itself or a higher-ranked agent).
++  18.0s  agent B  Agent Decision              Agent B cast a signed vote to move E to FULL (epoch 1): 3s in PEER_VALIDATED, workload trust 100 >= 80, no anomaly.
++  18.0s  agent B  Agreement Reached (3 of 4)  Quorum reached: B, C, D signed move E to FULL (epoch 1) -> advance to FULL.
++  18.0s  agent B  Action Taken                Agent B is executor rank 1 for 'move lab-results to FULL': it will act in 2s only if no higher-ranked agent has done it.
++  18.0s  agent A  Agent Decision              Agent A cast a signed vote to move E to FULL (epoch 1): 3s in PEER_VALIDATED, workload trust 100 >= 80, no anomaly.
++  18.0s  agent A  Agreement Reached (3 of 4)  Quorum reached: A, C, D signed move E to FULL (epoch 1) -> advance to FULL.
++  18.0s  agent A  Action Taken                Agent A is executor rank 0 for 'move lab-results to FULL': it acts now.
++  18.1s  agent A  Agreement Reached (3 of 4)  Agent A holds a quorum certificate for ADVANCE_STAGE E (epoch 1, FULL) signed by A, B, C.
++  18.1s  agent D  Agreement Reached (3 of 4)  Agent D holds a quorum certificate for ADVANCE_STAGE E (epoch 1, FULL) signed by B, C, D.
++  18.1s  agent C  Agreement Reached (3 of 4)  Agent C holds a quorum certificate for ADVANCE_STAGE E (epoch 1, FULL) signed by B, C, D.
++  18.1s  agent B  Agreement Reached (3 of 4)  Agent B holds a quorum certificate for ADVANCE_STAGE E (epoch 1, FULL) signed by B, C, D.
++  18.1s  agent A  Action Taken                Agent A moved lab-results (E) to stage FULL: isolation removed, full access restored.
++  18.5s  agent D  Observation                 Agent D sees lab-results (E) as normal on all 4 signals.
++  18.5s  agent D  Agreement Reached (3 of 4)  Quorum reached: A, B, C, D signed move E to FULL (epoch 1) -> advance to FULL.
++  18.5s  agent D  Action Taken                Agent D is executor rank 3 for 'move lab-results to FULL': it will act in 4s only if no higher-ranked agent has done it.
++  18.5s  agent D  Action Taken                Agent D confirms lab-results (E) is HEALTHY: validated, and the cluster shows the isolation policy is gone.
++  18.5s  agent C  Observation                 Agent C sees lab-results (E) as normal on all 4 signals.
++  18.5s  agent C  Agreement Reached (3 of 4)  Quorum reached: A, B, C, D signed move E to FULL (epoch 1) -> advance to FULL.
++  18.5s  agent C  Action Taken                Agent C is executor rank 2 for 'move lab-results to FULL': it will act in 3s only if no higher-ranked agent has done it.
++  18.5s  agent C  Action Taken                Agent C confirms lab-results (E) is HEALTHY: validated, and the cluster shows the isolation policy is gone.
++  18.5s  agent B  Observation                 Agent B sees lab-results (E) as normal on all 4 signals.
++  18.5s  agent B  Action Taken                Agent B confirms lab-results (E) is HEALTHY: validated, and the cluster shows the isolation policy is gone.
++  18.5s  agent A  Observation                 Agent A sees lab-results (E) as normal on all 4 signals.
++  18.5s  agent A  Action Taken                Agent A confirms lab-results (E) is HEALTHY: validated, and the cluster shows the isolation policy is gone.
++  19.0s  agent D  Action Taken                Agent D skipped 'move lab-results to PEER_VALIDATED': already done (by itself or a higher-ranked agent).
++  19.5s  agent B  Action Taken                Agent B skipped 'move lab-results to FULL': already done (by itself or a higher-ranked agent).
++  21.5s  agent C  Action Taken                Agent C skipped 'move lab-results to FULL': already done (by itself or a higher-ranked agent).
++  23.0s  agent D  Action Taken                Agent D skipped 'move lab-results to FULL': already done (by itself or a higher-ranked agent).

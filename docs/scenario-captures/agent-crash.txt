@@ -1,0 +1,214 @@
+# Real event log of the Demo Mode scenario 'A security agent goes offline, then the Electronic Health Records (EHR) API is attacked' (id: agent-crash)
+# Captured from the simulator (python3 sim/demo_server.py --dashboard), oldest line first. SIMULATOR data only: nothing here comes from a real cluster.
+# 209 lines over 21 seconds. Columns: seconds since the first line | which security agent logged it | the 'Show' filter name | the line.
+# 'Agent X' is a security guard; a bare letter at the end of a sentence (for example 'contain C') is the healthcare app: A Patient Portal, B Login & Access Service, C EHR API, D Clinical Database, E Laboratory Results Service, F Medication Service.
+
++   0.0s  agent A  Observation                 Agent A sees records-api (C): 40 outbound connections (limit 8); unexpected process xmrig; 1 file differing from the known-good hashes -> confidence 1.00.
++   0.0s  agent B  Observation                 Agent B sees records-api (C): 40 outbound connections (limit 8); unexpected process xmrig; 1 file differing from the known-good hashes -> confidence 1.00.
++   0.0s  agent A  Evidence Shared             Agent A signed and sent network evidence about C to its peers (confidence 1.00): 40 outbound conns, tx 89 KiB/s.
++   0.0s  agent A  Evidence Shared             Agent A signed and sent process evidence about C to its peers (confidence 0.95): unexpected processes: xmrig.
++   0.0s  agent A  Evidence Shared             Agent A signed and sent file_integrity evidence about C to its peers (confidence 0.95): 1 modified file(s): static/index.html.
++   0.0s  agent A  Evidence Score              Agent A computes W(C)=0.50 (below the 0.6 needed to vote to contain) from 3 item(s) [A network 1.00 x trust 1.00, A process 0.95 x trust 1.00, A file_integrity 0.95 x trust 1.00].
++   0.0s  agent A  Decision Withheld           Agent A is not voting to contain C: W(C)=0.50 below 0.6.
++   0.0s  agent C  Observation                 Agent C sees records-api (C): 40 outbound connections (limit 8); unexpected process xmrig; 1 file differing from the known-good hashes -> confidence 1.00.
++   0.0s  agent C  Evidence Shared             Agent C signed and sent network evidence about C to its peers (confidence 1.00): 40 outbound conns, tx 104 KiB/s.
++   0.0s  agent A  Agent Connection            Agent A lost its link to agent D; messages to D are not being delivered.
++   0.0s  agent C  Evidence Shared             Agent C signed and sent process evidence about C to its peers (confidence 0.95): unexpected processes: xmrig.
++   0.0s  agent B  Evidence Shared             Agent B signed and sent network evidence about C to its peers (confidence 1.00): 40 outbound conns, tx 94 KiB/s.
++   0.0s  agent C  Evidence Shared             Agent C signed and sent file_integrity evidence about C to its peers (confidence 0.95): 1 modified file(s): static/index.html.
++   0.0s  agent C  Evidence Score              Agent C computes W(C)=0.50 (below the 0.6 needed to vote to contain) from 3 item(s) [C network 1.00 x trust 1.00, C process 0.95 x trust 1.00, C file_integrity 0.95 x trust 1.00].
++   0.0s  agent C  Decision Withheld           Agent C is not voting to contain C: W(C)=0.50 below 0.6.
++   0.0s  agent B  Agent Connection            Agent B lost its link to agent D; messages to D are not being delivered.
++   0.0s  agent B  Evidence Shared             Agent B signed and sent process evidence about C to its peers (confidence 0.95): unexpected processes: xmrig.
++   0.0s  agent B  Evidence Shared             Agent B signed and sent file_integrity evidence about C to its peers (confidence 0.95): 1 modified file(s): static/index.html.
++   0.0s  agent B  Evidence Score              Agent B computes W(C)=0.50 (below the 0.6 needed to vote to contain) from 3 item(s) [B network 1.00 x trust 1.00, B process 0.95 x trust 1.00, B file_integrity 0.95 x trust 1.00].
++   0.0s  agent B  Decision Withheld           Agent B is not voting to contain C: W(C)=0.50 below 0.6.
++   0.0s  agent C  Agent Connection            Agent C lost its link to agent D; messages to D are not being delivered.
++   0.0s  agent A  Evidence Received           Agent A accepted network evidence from C about C (confidence 1.00); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent B  Evidence Received           Agent B accepted process evidence from A about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent A  Evidence Received           Agent A accepted process evidence from C about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent C  Evidence Received           Agent C accepted network evidence from A about C (confidence 1.00); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent B  Evidence Received           Agent B accepted file_integrity evidence from A about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent A  Evidence Received           Agent A accepted file_integrity evidence from C about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent B  Evidence Received           Agent B accepted network evidence from A about C (confidence 1.00); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent A  Evidence Received           Agent A accepted file_integrity evidence from B about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent A  Evidence Received           Agent A accepted network evidence from B about C (confidence 1.00); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent A  Evidence Received           Agent A accepted process evidence from B about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent C  Evidence Received           Agent C accepted file_integrity evidence from A about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent C  Evidence Received           Agent C accepted process evidence from A about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent C  Evidence Received           Agent C accepted network evidence from B about C (confidence 1.00); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent B  Evidence Received           Agent B accepted process evidence from C about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent B  Evidence Received           Agent B accepted network evidence from C about C (confidence 1.00); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent B  Evidence Received           Agent B accepted file_integrity evidence from C about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent C  Evidence Received           Agent C accepted file_integrity evidence from B about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent C  Evidence Received           Agent C accepted process evidence from B about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.5s  agent A  Evidence Score              Agent A computes W(C)=1.30 (at or above the 0.6 needed to vote to contain) from 9 item(s) [A network 1.00 x trust 1.00, C network 1.00 x trust 1.00, B network 1.00 x trust 1.00, A process 0.95 x trust 1.00, C process 0.95 x trust 1.00, B process 0.95 x trust 1.00], diversity bonus +0.30.
++   0.5s  agent A  Agent Decision              Agent A cast a signed vote to contain C (epoch 1): sees the anomaly itself (confidence 1.00) and W(C)=1.30 >= 0.6.
++   0.5s  agent B  Evidence Score              Agent B computes W(C)=1.30 (at or above the 0.6 needed to vote to contain) from 9 item(s) [B network 1.00 x trust 1.00, A network 1.00 x trust 1.00, C network 1.00 x trust 1.00, B process 0.95 x trust 1.00, A process 0.95 x trust 1.00, C process 0.95 x trust 1.00], diversity bonus +0.30.
++   0.5s  agent B  Agent Decision              Agent B cast a signed vote to contain C (epoch 1): sees the anomaly itself (confidence 1.00) and W(C)=1.30 >= 0.6.
++   0.5s  agent C  Evidence Score              Agent C computes W(C)=1.30 (at or above the 0.6 needed to vote to contain) from 9 item(s) [C network 1.00 x trust 1.00, A network 1.00 x trust 1.00, B network 1.00 x trust 1.00, C process 0.95 x trust 1.00, A process 0.95 x trust 1.00, B process 0.95 x trust 1.00], diversity bonus +0.30.
++   0.5s  agent C  Agent Decision              Agent C cast a signed vote to contain C (epoch 1): sees the anomaly itself (confidence 1.00) and W(C)=1.30 >= 0.6.
++   1.0s  agent A  Observation                 Agent A sees records-api (C): 40 outbound connections (limit 8) and sending 1954 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes; 20 failed logins in 10s (limit 10) -> confidence 1.00.
++   1.0s  agent A  Evidence Shared             Agent A signed and sent auth evidence about C to its peers (confidence 0.62): 20 failed auths from 10.244.0.12 in 10s.
++   1.0s  agent A  Agreement Reached (3 of 4)  Quorum reached: A, B, C signed CONTAIN C (epoch 1) -> isolate + recover.
++   1.0s  agent B  Observation                 Agent B sees records-api (C): 40 outbound connections (limit 8) and sending 1954 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes; 20 failed logins in 10s (limit 10) -> confidence 1.00.
++   1.0s  agent C  Observation                 Agent C sees records-api (C): 40 outbound connections (limit 8) and sending 1954 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes; 20 failed logins in 10s (limit 10) -> confidence 1.00.
++   1.0s  agent A  Action Taken                Agent A saved an evidence snapshot of records-api (C) before it is replaced: 1 pod(s), 5 log line(s).
++   1.0s  agent A  Action Taken                Agent A is executor rank 0 for 'isolate records-api': it acts now.
++   1.0s  agent A  Action Taken                Agent A is executor rank 0 for 'redeploy records-api from known-good image': it acts now.
++   1.0s  agent C  Evidence Shared             Agent C signed and sent auth evidence about C to its peers (confidence 0.62): 20 failed auths from 10.244.0.12 in 10s.
++   1.0s  agent C  Agreement Reached (3 of 4)  Quorum reached: A, B, C signed CONTAIN C (epoch 1) -> isolate + recover.
++   1.0s  agent B  Evidence Shared             Agent B signed and sent auth evidence about C to its peers (confidence 0.62): 20 failed auths from 10.244.0.12 in 10s.
++   1.0s  agent B  Agreement Reached (3 of 4)  Quorum reached: A, B, C signed CONTAIN C (epoch 1) -> isolate + recover.
++   1.0s  agent B  Action Taken                Agent B saved an evidence snapshot of records-api (C) before it is replaced: 1 pod(s), 5 log line(s).
++   1.0s  agent B  Action Taken                Agent B is executor rank 1 for 'isolate records-api': it will act in 2s only if no higher-ranked agent has done it.
++   1.0s  agent B  Action Taken                Agent B is executor rank 1 for 'redeploy records-api from known-good image': it will act in 2s only if no higher-ranked agent has done it.
++   1.0s  agent C  Action Taken                Agent C saved an evidence snapshot of records-api (C) before it is replaced: 1 pod(s), 5 log line(s).
++   1.0s  agent C  Action Taken                Agent C is executor rank 2 for 'isolate records-api': it will act in 3s only if no higher-ranked agent has done it.
++   1.0s  agent C  Action Taken                Agent C is executor rank 2 for 'redeploy records-api from known-good image': it will act in 3s only if no higher-ranked agent has done it.
++   1.0s  agent C  Evidence Received           Agent C accepted auth evidence from A about C (confidence 0.62); signature valid and sender identity matches its mTLS certificate.
++   1.0s  agent C  Evidence Received           Agent C accepted auth evidence from B about C (confidence 0.62); signature valid and sender identity matches its mTLS certificate.
++   1.0s  agent B  Evidence Received           Agent B accepted auth evidence from A about C (confidence 0.62); signature valid and sender identity matches its mTLS certificate.
++   1.0s  agent C  Agreement Reached (3 of 4)  Agent C holds a quorum certificate for CONTAIN C (epoch 1) signed by A, B, C.
++   1.0s  agent A  Evidence Received           Agent A accepted auth evidence from B about C (confidence 0.62); signature valid and sender identity matches its mTLS certificate.
++   1.1s  agent A  Evidence Received           Agent A accepted auth evidence from C about C (confidence 0.62); signature valid and sender identity matches its mTLS certificate.
++   1.1s  agent B  Evidence Received           Agent B accepted auth evidence from C about C (confidence 0.62); signature valid and sender identity matches its mTLS certificate.
++   1.1s  agent A  Agreement Reached (3 of 4)  Agent A holds a quorum certificate for CONTAIN C (epoch 1) signed by A, B, C.
++   1.1s  agent B  Agreement Reached (3 of 4)  Agent B holds a quorum certificate for CONTAIN C (epoch 1) signed by A, B, C.
++   1.1s  agent A  Action Taken                Agent A isolated records-api (C): quarantine NetworkPolicy applied, signed off by A, B, C.
++   1.1s  agent A  Action Taken                Agent A started recovery of records-api (C), attempt 1: redeploying it from the known-good image.
++   1.5s  agent A  Observation                 Agent A sees records-api (C): 40 outbound connections (limit 8) and sending 1954 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes; 30 failed logins in 10s (limit 10) -> confidence 1.00.
++   1.5s  agent A  Action Taken                Agent A confirms records-api (C) is isolated; waiting for the clean replacement pod.
++   1.5s  agent B  Observation                 Agent B sees records-api (C): 40 outbound connections (limit 8) and sending 1954 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes; 30 failed logins in 10s (limit 10) -> confidence 1.00.
++   1.5s  agent B  Action Taken                Agent B confirms records-api (C) is isolated; waiting for the clean replacement pod.
++   1.5s  agent C  Observation                 Agent C sees records-api (C): 40 outbound connections (limit 8) and sending 1954 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes; 30 failed logins in 10s (limit 10) -> confidence 1.00.
++   1.5s  agent C  Action Taken                Agent C confirms records-api (C) is isolated; waiting for the clean replacement pod.
++   2.0s  agent A  Observation                 Agent A sees records-api (C): 40 outbound connections (limit 8) and sending 1954 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes; 40 failed logins in 10s (limit 10) -> confidence 1.00.
++   2.0s  agent B  Observation                 Agent B sees records-api (C): 40 outbound connections (limit 8) and sending 1954 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes; 40 failed logins in 10s (limit 10) -> confidence 1.00.
++   2.0s  agent C  Observation                 Agent C sees records-api (C): 40 outbound connections (limit 8) and sending 1954 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes; 40 failed logins in 10s (limit 10) -> confidence 1.00.
++   2.5s  agent A  Observation                 Agent A sees records-api (C): 40 outbound connections (limit 8) and sending 1954 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes; 50 failed logins in 10s (limit 10) -> confidence 1.00.
++   2.5s  agent B  Observation                 Agent B sees records-api (C): 40 outbound connections (limit 8) and sending 1954 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes; 50 failed logins in 10s (limit 10) -> confidence 1.00.
++   2.5s  agent B  Action Taken                Agent B skipped 'isolate records-api': already done (by itself or a higher-ranked agent).
++   2.5s  agent B  Action Taken                Agent B skipped 'redeploy records-api from known-good image': already done (by itself or a higher-ranked agent).
++   2.5s  agent C  Observation                 Agent C sees records-api (C): 40 outbound connections (limit 8) and sending 1954 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes; 50 failed logins in 10s (limit 10) -> confidence 1.00.
++   3.5s  agent A  Observation                 Agent A sees records-api (C) as normal on all 4 signals.
++   3.5s  agent A  Action Taken                Agent A sees records-api (C) recovered: the new pod from the known-good image is ready; validating it now.
++   3.5s  agent B  Observation                 Agent B sees records-api (C) as normal on all 4 signals.
++   3.5s  agent B  Action Taken                Agent B sees records-api (C) recovered: the new pod from the known-good image is ready; validating it now.
++   3.5s  agent C  Observation                 Agent C sees records-api (C) as normal on all 4 signals.
++   3.5s  agent C  Action Taken                Agent C sees records-api (C) recovered: the new pod from the known-good image is ready; validating it now.
++   4.0s  agent A  Agent Decision              Agent A cast a signed vote to accept C as validated (epoch 1): health, file hashes and behaviour all check out.
++   4.0s  agent B  Agent Decision              Agent B cast a signed vote to accept C as validated (epoch 1): health, file hashes and behaviour all check out.
++   4.0s  agent C  Agent Decision              Agent C cast a signed vote to accept C as validated (epoch 1): health, file hashes and behaviour all check out.
++   4.0s  agent C  Agreement Reached (3 of 4)  Quorum reached: A, B, C signed VALIDATE C (epoch 1) -> validated; start staged reintegration.
++   4.0s  agent C  Action Taken                Agent C is executor rank 2 for 'mark records-api validated': it will act in 3s only if no higher-ranked agent has done it.
++   4.0s  agent C  Action Taken                Agent C dropped 'isolate records-api': C is now REINTEGRATING, not ISOLATED/RECOVERING/VALIDATING.
++   4.0s  agent C  Action Taken                Agent C dropped 'redeploy records-api from known-good image': C is now REINTEGRATING, not ISOLATED/RECOVERING/VALIDATING.
++   4.0s  agent B  Agreement Reached (3 of 4)  Agent B holds a quorum certificate for VALIDATE C (epoch 1) signed by A, B, C.
++   4.0s  agent C  Agreement Reached (3 of 4)  Agent C holds a quorum certificate for VALIDATE C (epoch 1) signed by A, B, C.
++   4.0s  agent A  Agreement Reached (3 of 4)  Agent A holds a quorum certificate for VALIDATE C (epoch 1) signed by A, B, C.
++   4.5s  agent A  Agreement Reached (3 of 4)  Quorum reached: A, B, C signed VALIDATE C (epoch 1) -> validated; start staged reintegration.
++   4.5s  agent A  Action Taken                Agent A is executor rank 0 for 'mark records-api validated': it acts now.
++   4.5s  agent B  Agreement Reached (3 of 4)  Quorum reached: A, B, C signed VALIDATE C (epoch 1) -> validated; start staged reintegration.
++   4.5s  agent B  Action Taken                Agent B is executor rank 1 for 'mark records-api validated': it will act in 2s only if no higher-ranked agent has done it.
++   4.5s  agent C  Evidence Score              Agent C computes W(C)=1.25 (at or above the 0.6 needed to vote to contain) from 7 item(s) [B network 1.00 x trust 1.00, A process 0.95 x trust 1.00, B process 0.95 x trust 1.00, A file_integrity 0.95 x trust 1.00, B file_integrity 0.95 x trust 1.00, A auth 0.62 x trust 1.00], diversity bonus +0.30.
++   4.5s  agent C  Decision Withheld           Agent C is not voting to contain C: own observation of C normal (confidence 0.00 < 0.5).
++   4.5s  agent C  Decision Withheld           Agent C is not voting to move C to RESTRICTED: must stay in QUARANTINE another 2s (minimum 3s per stage).
++   5.0s  agent A  Evidence Score              Agent A computes W(C)=1.45 (at or above the 0.6 needed to vote to contain) from 8 item(s) [C network 1.00 x trust 1.00, B network 1.00 x trust 1.00, B process 0.95 x trust 1.00, C process 0.95 x trust 1.00, C file_integrity 0.95 x trust 1.00, B file_integrity 0.95 x trust 1.00], diversity bonus +0.45.
++   5.0s  agent A  Decision Withheld           Agent A is not voting to contain C: own observation of C normal (confidence 0.00 < 0.5).
++   5.0s  agent A  Decision Withheld           Agent A is not voting to move C to RESTRICTED: must stay in QUARANTINE another 2s (minimum 3s per stage).
++   5.0s  agent B  Evidence Score              Agent B computes W(C)=0.50 (below the 0.6 needed to vote to contain) from 4 item(s) [C network 1.00 x trust 1.00, C process 0.95 x trust 1.00, C file_integrity 0.95 x trust 1.00, C auth 0.62 x trust 1.00].
++   5.0s  agent B  Decision Withheld           Agent B is not voting to contain C: own observation of C normal (confidence 0.00 < 0.5).
++   5.0s  agent B  Decision Withheld           Agent B is not voting to move C to RESTRICTED: must stay in QUARANTINE another 2s (minimum 3s per stage).
++   5.0s  agent C  Evidence Score              Agent C: no current evidence about C; W(C) back to 0.
++   5.5s  agent A  Evidence Score              Agent A: no current evidence about C; W(C) back to 0.
++   5.5s  agent B  Evidence Score              Agent B: no current evidence about C; W(C) back to 0.
++   6.0s  agent B  Action Taken                Agent B skipped 'mark records-api validated': already done (by itself or a higher-ranked agent).
++   7.0s  agent C  Agent Decision              Agent C cast a signed vote to move C to RESTRICTED (epoch 1): 3s in QUARANTINE, workload trust 24 >= 20, no anomaly.
++   7.0s  agent C  Action Taken                Agent C skipped 'mark records-api validated': already done (by itself or a higher-ranked agent).
++   7.5s  agent A  Agent Decision              Agent A cast a signed vote to move C to RESTRICTED (epoch 1): 3s in QUARANTINE, workload trust 24 >= 20, no anomaly.
++   7.5s  agent B  Agent Decision              Agent B cast a signed vote to move C to RESTRICTED (epoch 1): 3s in QUARANTINE, workload trust 24 >= 20, no anomaly.
++   8.0s  agent A  Agreement Reached (3 of 4)  Quorum reached: A, B, C signed move C to RESTRICTED (epoch 1) -> advance to RESTRICTED.
++   8.0s  agent A  Action Taken                Agent A is executor rank 0 for 'move records-api to RESTRICTED': it acts now.
++   8.0s  agent B  Agreement Reached (3 of 4)  Quorum reached: A, B, C signed move C to RESTRICTED (epoch 1) -> advance to RESTRICTED.
++   8.0s  agent B  Action Taken                Agent B is executor rank 1 for 'move records-api to RESTRICTED': it will act in 2s only if no higher-ranked agent has done it.
++   8.0s  agent C  Agreement Reached (3 of 4)  Quorum reached: A, B, C signed move C to RESTRICTED (epoch 1) -> advance to RESTRICTED.
++   8.0s  agent C  Action Taken                Agent C is executor rank 2 for 'move records-api to RESTRICTED': it will act in 3s only if no higher-ranked agent has done it.
++   8.0s  agent B  Agreement Reached (3 of 4)  Agent B holds a quorum certificate for ADVANCE_STAGE C (epoch 1, RESTRICTED) signed by A, B, C.
++   8.0s  agent A  Agreement Reached (3 of 4)  Agent A holds a quorum certificate for ADVANCE_STAGE C (epoch 1, RESTRICTED) signed by A, B, C.
++   8.0s  agent C  Agreement Reached (3 of 4)  Agent C holds a quorum certificate for ADVANCE_STAGE C (epoch 1, RESTRICTED) signed by A, B, C.
++   8.0s  agent A  Action Taken                Agent A moved records-api (C) to stage RESTRICTED.
++   9.5s  agent B  Action Taken                Agent B skipped 'move records-api to RESTRICTED': already done (by itself or a higher-ranked agent).
++   9.5s  agent C  Decision Withheld           Agent C is not voting to move C to MONITORED: must stay in RESTRICTED another 1s (minimum 3s per stage).
++  10.0s  agent A  Decision Withheld           Agent A is not voting to move C to MONITORED: must stay in RESTRICTED another 1s (minimum 3s per stage).
++  10.0s  agent B  Decision Withheld           Agent B is not voting to move C to MONITORED: must stay in RESTRICTED another 1s (minimum 3s per stage).
++  10.5s  agent A  Observation                 Agent A sees patient-portal (A) as normal on all 4 signals.
++  10.5s  agent A  Observation                 Agent A sees auth-service (B) as normal on all 4 signals.
++  10.5s  agent A  Observation                 Agent A sees database (D) as normal on all 4 signals.
++  10.5s  agent A  Observation                 Agent A sees lab-results (E) as normal on all 4 signals.
++  10.5s  agent A  Observation                 Agent A sees medication-service (F) as normal on all 4 signals.
++  10.5s  agent B  Observation                 Agent B sees patient-portal (A) as normal on all 4 signals.
++  10.5s  agent B  Observation                 Agent B sees auth-service (B) as normal on all 4 signals.
++  10.5s  agent B  Observation                 Agent B sees database (D) as normal on all 4 signals.
++  10.5s  agent B  Observation                 Agent B sees lab-results (E) as normal on all 4 signals.
++  10.5s  agent B  Observation                 Agent B sees medication-service (F) as normal on all 4 signals.
++  10.5s  agent C  Observation                 Agent C sees patient-portal (A) as normal on all 4 signals.
++  10.5s  agent C  Observation                 Agent C sees auth-service (B) as normal on all 4 signals.
++  10.5s  agent C  Observation                 Agent C sees database (D) as normal on all 4 signals.
++  10.5s  agent C  Observation                 Agent C sees lab-results (E) as normal on all 4 signals.
++  10.5s  agent C  Observation                 Agent C sees medication-service (F) as normal on all 4 signals.
++  11.0s  agent A  Agent Decision              Agent A cast a signed vote to move C to MONITORED (epoch 1): 3s in RESTRICTED, workload trust 52 >= 40, no anomaly.
++  11.0s  agent B  Agent Decision              Agent B cast a signed vote to move C to MONITORED (epoch 1): 3s in RESTRICTED, workload trust 52 >= 40, no anomaly.
++  11.0s  agent C  Agent Decision              Agent C cast a signed vote to move C to MONITORED (epoch 1): 3s in RESTRICTED, workload trust 56 >= 40, no anomaly.
++  11.0s  agent C  Agreement Reached (3 of 4)  Quorum reached: A, B, C signed move C to MONITORED (epoch 1) -> advance to MONITORED.
++  11.0s  agent C  Action Taken                Agent C is executor rank 2 for 'move records-api to MONITORED': it will act in 3s only if no higher-ranked agent has done it.
++  11.0s  agent C  Action Taken                Agent C skipped 'move records-api to RESTRICTED': already done (by itself or a higher-ranked agent).
++  11.0s  agent A  Agreement Reached (3 of 4)  Agent A holds a quorum certificate for ADVANCE_STAGE C (epoch 1, MONITORED) signed by A, B, C.
++  11.0s  agent C  Agreement Reached (3 of 4)  Agent C holds a quorum certificate for ADVANCE_STAGE C (epoch 1, MONITORED) signed by A, B, C.
++  11.0s  agent B  Agreement Reached (3 of 4)  Agent B holds a quorum certificate for ADVANCE_STAGE C (epoch 1, MONITORED) signed by A, B, C.
++  11.5s  agent A  Agreement Reached (3 of 4)  Quorum reached: A, B, C signed move C to MONITORED (epoch 1) -> advance to MONITORED.
++  11.5s  agent A  Action Taken                Agent A is executor rank 0 for 'move records-api to MONITORED': it acts now.
++  11.5s  agent A  Action Taken                Agent A moved records-api (C) to stage MONITORED.
++  11.5s  agent B  Agreement Reached (3 of 4)  Quorum reached: A, B, C signed move C to MONITORED (epoch 1) -> advance to MONITORED.
++  11.5s  agent B  Action Taken                Agent B is executor rank 1 for 'move records-api to MONITORED': it will act in 2s only if no higher-ranked agent has done it.
++  13.0s  agent B  Action Taken                Agent B skipped 'move records-api to MONITORED': already done (by itself or a higher-ranked agent).
++  14.0s  agent C  Agent Decision              Agent C cast a signed vote to move C to PEER_VALIDATED (epoch 1): 3s in MONITORED, workload trust 80 >= 60, no anomaly.
++  14.0s  agent C  Action Taken                Agent C skipped 'move records-api to MONITORED': already done (by itself or a higher-ranked agent).
++  14.5s  agent A  Agent Decision              Agent A cast a signed vote to move C to PEER_VALIDATED (epoch 1): 3s in MONITORED, workload trust 80 >= 60, no anomaly.
++  14.5s  agent B  Agent Decision              Agent B cast a signed vote to move C to PEER_VALIDATED (epoch 1): 3s in MONITORED, workload trust 80 >= 60, no anomaly.
++  14.5s  agent B  Agreement Reached (3 of 4)  Quorum reached: A, B, C signed move C to PEER_VALIDATED (epoch 1) -> advance to PEER_VALIDATED.
++  14.5s  agent B  Action Taken                Agent B is executor rank 1 for 'move records-api to PEER_VALIDATED': it will act in 2s only if no higher-ranked agent has done it.
++  14.5s  agent C  Agreement Reached (3 of 4)  Quorum reached: A, B, C signed move C to PEER_VALIDATED (epoch 1) -> advance to PEER_VALIDATED.
++  14.5s  agent C  Action Taken                Agent C is executor rank 2 for 'move records-api to PEER_VALIDATED': it will act in 3s only if no higher-ranked agent has done it.
++  14.5s  agent C  Agreement Reached (3 of 4)  Agent C holds a quorum certificate for ADVANCE_STAGE C (epoch 1, PEER_VALIDATED) signed by A, B, C.
++  14.5s  agent A  Agreement Reached (3 of 4)  Agent A holds a quorum certificate for ADVANCE_STAGE C (epoch 1, PEER_VALIDATED) signed by A, B, C.
++  14.5s  agent B  Agreement Reached (3 of 4)  Agent B holds a quorum certificate for ADVANCE_STAGE C (epoch 1, PEER_VALIDATED) signed by A, B, C.
++  15.0s  agent A  Agreement Reached (3 of 4)  Quorum reached: A, B, C signed move C to PEER_VALIDATED (epoch 1) -> advance to PEER_VALIDATED.
++  15.0s  agent A  Action Taken                Agent A is executor rank 0 for 'move records-api to PEER_VALIDATED': it acts now.
++  15.0s  agent A  Action Taken                Agent A moved records-api (C) to stage PEER_VALIDATED.
++  15.0s  agent B  Decision Withheld           Agent B is not voting to move C to FULL: must stay in PEER_VALIDATED another 2s (minimum 3s per stage).
++  15.0s  agent C  Decision Withheld           Agent C is not voting to move C to FULL: must stay in PEER_VALIDATED another 2s (minimum 3s per stage).
++  15.5s  agent A  Decision Withheld           Agent A is not voting to move C to FULL: must stay in PEER_VALIDATED another 2s (minimum 3s per stage).
++  16.0s  agent B  Action Taken                Agent B skipped 'move records-api to PEER_VALIDATED': already done (by itself or a higher-ranked agent).
++  17.5s  agent B  Agent Decision              Agent B cast a signed vote to move C to FULL (epoch 1): 3s in PEER_VALIDATED, workload trust 100 >= 80, no anomaly.
++  17.5s  agent C  Agent Decision              Agent C cast a signed vote to move C to FULL (epoch 1): 3s in PEER_VALIDATED, workload trust 100 >= 80, no anomaly.
++  17.5s  agent C  Action Taken                Agent C skipped 'move records-api to PEER_VALIDATED': already done (by itself or a higher-ranked agent).
++  18.0s  agent A  Agent Decision              Agent A cast a signed vote to move C to FULL (epoch 1): 3s in PEER_VALIDATED, workload trust 100 >= 80, no anomaly.
++  18.0s  agent A  Agreement Reached (3 of 4)  Quorum reached: A, B, C signed move C to FULL (epoch 1) -> advance to FULL.
++  18.0s  agent A  Action Taken                Agent A is executor rank 0 for 'move records-api to FULL': it acts now.
++  18.0s  agent C  Agreement Reached (3 of 4)  Agent C holds a quorum certificate for ADVANCE_STAGE C (epoch 1, FULL) signed by A, B, C.
++  18.0s  agent C  Agreement Reached (3 of 4)  Quorum reached: A, B, C signed move C to FULL (epoch 1) -> advance to FULL.
++  18.0s  agent C  Action Taken                Agent C is executor rank 2 for 'move records-api to FULL': it will act in 3s only if no higher-ranked agent has done it.
++  18.0s  agent B  Agreement Reached (3 of 4)  Agent B holds a quorum certificate for ADVANCE_STAGE C (epoch 1, FULL) signed by A, B, C.
++  18.0s  agent A  Agreement Reached (3 of 4)  Agent A holds a quorum certificate for ADVANCE_STAGE C (epoch 1, FULL) signed by A, B, C.
++  18.0s  agent A  Action Taken                Agent A moved records-api (C) to stage FULL: isolation removed, full access restored.
++  18.5s  agent A  Observation                 Agent A sees records-api (C) as normal on all 4 signals.
++  18.5s  agent A  Action Taken                Agent A confirms records-api (C) is HEALTHY: validated, and the cluster shows the isolation policy is gone.
++  18.5s  agent B  Observation                 Agent B sees records-api (C) as normal on all 4 signals.
++  18.5s  agent B  Agreement Reached (3 of 4)  Quorum reached: A, B, C signed move C to FULL (epoch 1) -> advance to FULL.
++  18.5s  agent B  Action Taken                Agent B is executor rank 1 for 'move records-api to FULL': it will act in 2s only if no higher-ranked agent has done it.
++  18.5s  agent B  Action Taken                Agent B confirms records-api (C) is HEALTHY: validated, and the cluster shows the isolation policy is gone.
++  18.5s  agent C  Observation                 Agent C sees records-api (C) as normal on all 4 signals.
++  18.5s  agent C  Action Taken                Agent C confirms records-api (C) is HEALTHY: validated, and the cluster shows the isolation policy is gone.
++  20.0s  agent B  Action Taken                Agent B skipped 'move records-api to FULL': already done (by itself or a higher-ranked agent).
++  21.0s  agent C  Action Taken                Agent C skipped 'move records-api to FULL': already done (by itself or a higher-ranked agent).

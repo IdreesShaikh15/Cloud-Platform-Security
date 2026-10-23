@@ -1,0 +1,303 @@
+# Real event log of the Demo Mode scenario 'Every replacement Electronic Health Records (EHR) API fails its health check' (id: failed-validation)
+# Captured from the simulator (python3 sim/demo_server.py --dashboard), oldest line first. SIMULATOR data only: nothing here comes from a real cluster.
+# 298 lines over 50 seconds. Columns: seconds since the first line | which security agent logged it | the 'Show' filter name | the line.
+# 'Agent X' is a security guard; a bare letter at the end of a sentence (for example 'contain C') is the healthcare app: A Patient Portal, B Login & Access Service, C EHR API, D Clinical Database, E Laboratory Results Service, F Medication Service.
+
++   0.0s  agent A  Observation                 Agent A sees records-api (C): 40 outbound connections (limit 8) and sending 1899 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes -> confidence 1.00.
++   0.0s  agent C  Observation                 Agent C sees records-api (C): 40 outbound connections (limit 8) and sending 1907 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes -> confidence 1.00.
++   0.0s  agent D  Observation                 Agent D sees records-api (C): 40 outbound connections (limit 8) and sending 1912 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes -> confidence 1.00.
++   0.0s  agent B  Observation                 Agent B sees records-api (C): 40 outbound connections (limit 8) and sending 1902 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes -> confidence 1.00.
++   0.0s  agent A  Evidence Shared             Agent A signed and sent network evidence about C to its peers (confidence 1.00): 40 outbound conns, tx 1899 KiB/s.
++   0.0s  agent C  Evidence Shared             Agent C signed and sent network evidence about C to its peers (confidence 1.00): 40 outbound conns, tx 1907 KiB/s.
++   0.0s  agent D  Evidence Shared             Agent D signed and sent network evidence about C to its peers (confidence 1.00): 40 outbound conns, tx 1912 KiB/s.
++   0.0s  agent B  Evidence Received           Agent B accepted network evidence from A about C (confidence 1.00); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent B  Evidence Shared             Agent B signed and sent network evidence about C to its peers (confidence 1.00): 40 outbound conns, tx 1902 KiB/s.
++   0.0s  agent C  Evidence Received           Agent C accepted network evidence from A about C (confidence 1.00); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent A  Evidence Received           Agent A accepted network evidence from B about C (confidence 1.00); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent B  Evidence Received           Agent B accepted network evidence from C about C (confidence 1.00); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent C  Evidence Received           Agent C accepted network evidence from B about C (confidence 1.00); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent A  Evidence Shared             Agent A signed and sent process evidence about C to its peers (confidence 0.95): unexpected processes: xmrig.
++   0.0s  agent A  Evidence Received           Agent A accepted network evidence from C about C (confidence 1.00); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent C  Evidence Shared             Agent C signed and sent process evidence about C to its peers (confidence 0.95): unexpected processes: xmrig.
++   0.0s  agent B  Evidence Received           Agent B accepted network evidence from D about C (confidence 1.00); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent D  Evidence Received           Agent D accepted network evidence from A about C (confidence 1.00); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent D  Evidence Shared             Agent D signed and sent process evidence about C to its peers (confidence 0.95): unexpected processes: xmrig.
++   0.0s  agent C  Evidence Received           Agent C accepted network evidence from D about C (confidence 1.00); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent B  Evidence Shared             Agent B signed and sent process evidence about C to its peers (confidence 0.95): unexpected processes: xmrig.
++   0.0s  agent A  Evidence Received           Agent A accepted network evidence from D about C (confidence 1.00); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent B  Evidence Received           Agent B accepted process evidence from A about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent C  Evidence Received           Agent C accepted process evidence from A about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent A  Evidence Shared             Agent A signed and sent file_integrity evidence about C to its peers (confidence 0.95): 1 modified file(s): static/index.html.
++   0.0s  agent A  Evidence Score              Agent A computes W(C)=1.00 (at or above the 0.6 needed to vote to contain) from 6 item(s) [A network 1.00 x trust 1.00, B network 1.00 x trust 1.00, C network 1.00 x trust 1.00, D network 1.00 x trust 1.00, A process 0.95 x trust 1.00, A file_integrity 0.95 x trust 1.00].
++   0.0s  agent D  Evidence Received           Agent D accepted network evidence from C about C (confidence 1.00); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent C  Evidence Shared             Agent C signed and sent file_integrity evidence about C to its peers (confidence 0.95): 1 modified file(s): static/index.html.
++   0.0s  agent C  Evidence Score              Agent C computes W(C)=1.15 (at or above the 0.6 needed to vote to contain) from 7 item(s) [C network 1.00 x trust 1.00, A network 1.00 x trust 1.00, B network 1.00 x trust 1.00, D network 1.00 x trust 1.00, C process 0.95 x trust 1.00, A process 0.95 x trust 1.00], diversity bonus +0.15.
++   0.0s  agent A  Evidence Received           Agent A accepted process evidence from D about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent B  Evidence Received           Agent B accepted process evidence from C about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent C  Evidence Received           Agent C accepted process evidence from B about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent D  Evidence Shared             Agent D signed and sent file_integrity evidence about C to its peers (confidence 0.95): 1 modified file(s): static/index.html.
++   0.0s  agent D  Evidence Score              Agent D computes W(C)=1.00 (at or above the 0.6 needed to vote to contain) from 5 item(s) [D network 1.00 x trust 1.00, A network 1.00 x trust 1.00, C network 1.00 x trust 1.00, D process 0.95 x trust 1.00, D file_integrity 0.95 x trust 1.00].
++   0.0s  agent A  Evidence Received           Agent A accepted process evidence from C about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent D  Evidence Received           Agent D accepted network evidence from B about C (confidence 1.00); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent B  Evidence Received           Agent B accepted process evidence from D about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent B  Evidence Shared             Agent B signed and sent file_integrity evidence about C to its peers (confidence 0.95): 1 modified file(s): static/index.html.
++   0.0s  agent B  Evidence Score              Agent B computes W(C)=1.15 (at or above the 0.6 needed to vote to contain) from 9 item(s) [B network 1.00 x trust 1.00, A network 1.00 x trust 1.00, C network 1.00 x trust 1.00, D network 1.00 x trust 1.00, B process 0.95 x trust 1.00, A process 0.95 x trust 1.00], diversity bonus +0.15.
++   0.1s  agent C  Evidence Received           Agent C accepted process evidence from D about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.1s  agent A  Agent Decision              Agent A cast a signed vote to contain C (epoch 1): sees the anomaly itself (confidence 1.00) and W(C)=1.00 >= 0.6.
++   0.1s  agent C  Agent Decision              Agent C cast a signed vote to contain C (epoch 1): sees the anomaly itself (confidence 1.00) and W(C)=1.15 >= 0.6.
++   0.1s  agent D  Evidence Received           Agent D accepted process evidence from A about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.1s  agent C  Evidence Received           Agent C accepted file_integrity evidence from A about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.1s  agent A  Evidence Received           Agent A accepted process evidence from B about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.1s  agent D  Agent Decision              Agent D cast a signed vote to contain C (epoch 1): sees the anomaly itself (confidence 1.00) and W(C)=1.00 >= 0.6.
++   0.1s  agent D  Evidence Received           Agent D accepted process evidence from C about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.1s  agent B  Evidence Received           Agent B accepted file_integrity evidence from A about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.1s  agent B  Agent Decision              Agent B cast a signed vote to contain C (epoch 1): sees the anomaly itself (confidence 1.00) and W(C)=1.15 >= 0.6.
++   0.1s  agent D  Evidence Received           Agent D accepted process evidence from B about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.1s  agent A  Evidence Received           Agent A accepted file_integrity evidence from C about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.1s  agent C  Evidence Received           Agent C accepted file_integrity evidence from B about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.1s  agent C  Evidence Received           Agent C accepted file_integrity evidence from D about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.1s  agent B  Evidence Received           Agent B accepted file_integrity evidence from C about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.1s  agent D  Evidence Received           Agent D accepted file_integrity evidence from A about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.1s  agent A  Evidence Received           Agent A accepted file_integrity evidence from D about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.1s  agent B  Evidence Received           Agent B accepted file_integrity evidence from D about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.1s  agent A  Evidence Received           Agent A accepted file_integrity evidence from B about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.1s  agent D  Evidence Received           Agent D accepted file_integrity evidence from C about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.1s  agent D  Evidence Received           Agent D accepted file_integrity evidence from B about C (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.5s  agent A  Observation                 Agent A sees records-api (C): 40 outbound connections (limit 8) and sending 1954 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes; 20 failed logins in 10s (limit 10) -> confidence 1.00.
++   0.5s  agent C  Observation                 Agent C sees records-api (C): 40 outbound connections (limit 8) and sending 1954 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes; 20 failed logins in 10s (limit 10) -> confidence 1.00.
++   0.5s  agent A  Evidence Shared             Agent A signed and sent auth evidence about C to its peers (confidence 0.62): 20 failed auths from 10.244.0.12 in 10s.
++   0.5s  agent A  Agreement Reached (3 of 4)  Quorum reached: A, B, C, D signed CONTAIN C (epoch 1) -> isolate + recover.
++   0.5s  agent D  Observation                 Agent D sees records-api (C): 40 outbound connections (limit 8) and sending 1954 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes; 20 failed logins in 10s (limit 10) -> confidence 1.00.
++   0.5s  agent A  Action Taken                Agent A saved an evidence snapshot of records-api (C) before it is replaced: 1 pod(s), 5 log line(s).
++   0.5s  agent B  Observation                 Agent B sees records-api (C): 40 outbound connections (limit 8) and sending 1954 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes; 20 failed logins in 10s (limit 10) -> confidence 1.00.
++   0.5s  agent A  Action Taken                Agent A is executor rank 0 for 'isolate records-api': it acts now.
++   0.5s  agent A  Action Taken                Agent A is executor rank 0 for 'redeploy records-api from known-good image': it acts now.
++   0.5s  agent D  Evidence Shared             Agent D signed and sent auth evidence about C to its peers (confidence 0.62): 20 failed auths from 10.244.0.12 in 10s.
++   0.5s  agent D  Agreement Reached (3 of 4)  Quorum reached: A, B, C, D signed CONTAIN C (epoch 1) -> isolate + recover.
++   0.5s  agent B  Evidence Shared             Agent B signed and sent auth evidence about C to its peers (confidence 0.62): 20 failed auths from 10.244.0.12 in 10s.
++   0.5s  agent B  Agreement Reached (3 of 4)  Quorum reached: A, B, C, D signed CONTAIN C (epoch 1) -> isolate + recover.
++   0.5s  agent C  Evidence Shared             Agent C signed and sent auth evidence about C to its peers (confidence 0.62): 20 failed auths from 10.244.0.12 in 10s.
++   0.5s  agent C  Agreement Reached (3 of 4)  Quorum reached: A, B, C, D signed CONTAIN C (epoch 1) -> isolate + recover.
++   0.5s  agent C  Action Taken                Agent C saved an evidence snapshot of records-api (C) before it is replaced: 1 pod(s), 5 log line(s).
++   0.5s  agent D  Action Taken                Agent D saved an evidence snapshot of records-api (C) before it is replaced: 1 pod(s), 5 log line(s).
++   0.5s  agent D  Action Taken                Agent D is executor rank 3 for 'isolate records-api': it will act in 4s only if no higher-ranked agent has done it.
++   0.5s  agent D  Action Taken                Agent D is executor rank 3 for 'redeploy records-api from known-good image': it will act in 4s only if no higher-ranked agent has done it.
++   0.5s  agent B  Action Taken                Agent B saved an evidence snapshot of records-api (C) before it is replaced: 1 pod(s), 5 log line(s).
++   0.5s  agent C  Action Taken                Agent C is executor rank 2 for 'isolate records-api': it will act in 3s only if no higher-ranked agent has done it.
++   0.5s  agent C  Action Taken                Agent C is executor rank 2 for 'redeploy records-api from known-good image': it will act in 3s only if no higher-ranked agent has done it.
++   0.5s  agent B  Action Taken                Agent B is executor rank 1 for 'isolate records-api': it will act in 2s only if no higher-ranked agent has done it.
++   0.5s  agent B  Action Taken                Agent B is executor rank 1 for 'redeploy records-api from known-good image': it will act in 2s only if no higher-ranked agent has done it.
++   0.5s  agent B  Evidence Received           Agent B accepted auth evidence from A about C (confidence 0.62); signature valid and sender identity matches its mTLS certificate.
++   0.6s  agent C  Evidence Received           Agent C accepted auth evidence from A about C (confidence 0.62); signature valid and sender identity matches its mTLS certificate.
++   0.6s  agent B  Evidence Received           Agent B accepted auth evidence from C about C (confidence 0.62); signature valid and sender identity matches its mTLS certificate.
++   0.6s  agent D  Evidence Received           Agent D accepted auth evidence from A about C (confidence 0.62); signature valid and sender identity matches its mTLS certificate.
++   0.6s  agent B  Evidence Received           Agent B accepted auth evidence from D about C (confidence 0.62); signature valid and sender identity matches its mTLS certificate.
++   0.6s  agent D  Evidence Received           Agent D accepted auth evidence from C about C (confidence 0.62); signature valid and sender identity matches its mTLS certificate.
++   0.6s  agent A  Evidence Received           Agent A accepted auth evidence from C about C (confidence 0.62); signature valid and sender identity matches its mTLS certificate.
++   0.6s  agent D  Evidence Received           Agent D accepted auth evidence from B about C (confidence 0.62); signature valid and sender identity matches its mTLS certificate.
++   0.6s  agent C  Evidence Received           Agent C accepted auth evidence from D about C (confidence 0.62); signature valid and sender identity matches its mTLS certificate.
++   0.6s  agent B  Agreement Reached (3 of 4)  Agent B holds a quorum certificate for CONTAIN C (epoch 1) signed by A, B, C.
++   0.6s  agent A  Agreement Reached (3 of 4)  Agent A holds a quorum certificate for CONTAIN C (epoch 1) signed by A, C, D.
++   0.6s  agent A  Evidence Received           Agent A accepted auth evidence from D about C (confidence 0.62); signature valid and sender identity matches its mTLS certificate.
++   0.6s  agent D  Agreement Reached (3 of 4)  Agent D holds a quorum certificate for CONTAIN C (epoch 1) signed by A, C, D.
++   0.6s  agent C  Agreement Reached (3 of 4)  Agent C holds a quorum certificate for CONTAIN C (epoch 1) signed by A, C, D.
++   0.6s  agent C  Evidence Received           Agent C accepted auth evidence from B about C (confidence 0.62); signature valid and sender identity matches its mTLS certificate.
++   0.6s  agent A  Evidence Received           Agent A accepted auth evidence from B about C (confidence 0.62); signature valid and sender identity matches its mTLS certificate.
++   0.6s  agent A  Action Taken                Agent A isolated records-api (C): quarantine NetworkPolicy applied, signed off by A, B, C, D.
++   0.6s  agent A  Action Taken                Agent A started recovery of records-api (C), attempt 1: redeploying it from the known-good image.
++   1.0s  agent A  Observation                 Agent A sees records-api (C): 40 outbound connections (limit 8) and sending 1954 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes; 30 failed logins in 10s (limit 10) -> confidence 1.00.
++   1.0s  agent A  Action Taken                Agent A confirms records-api (C) is isolated; waiting for the clean replacement pod.
++   1.0s  agent D  Observation                 Agent D sees records-api (C): 40 outbound connections (limit 8) and sending 1954 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes; 30 failed logins in 10s (limit 10) -> confidence 1.00.
++   1.0s  agent D  Action Taken                Agent D confirms records-api (C) is isolated; waiting for the clean replacement pod.
++   1.0s  agent B  Observation                 Agent B sees records-api (C): 40 outbound connections (limit 8) and sending 1954 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes; 30 failed logins in 10s (limit 10) -> confidence 1.00.
++   1.0s  agent B  Action Taken                Agent B confirms records-api (C) is isolated; waiting for the clean replacement pod.
++   1.0s  agent C  Observation                 Agent C sees records-api (C): 40 outbound connections (limit 8) and sending 1954 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes; 30 failed logins in 10s (limit 10) -> confidence 1.00.
++   1.0s  agent C  Action Taken                Agent C confirms records-api (C) is isolated; waiting for the clean replacement pod.
++   1.5s  agent A  Observation                 Agent A sees records-api (C): 40 outbound connections (limit 8) and sending 1954 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes; 40 failed logins in 10s (limit 10) -> confidence 1.00.
++   1.5s  agent D  Observation                 Agent D sees records-api (C): 40 outbound connections (limit 8) and sending 1954 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes; 40 failed logins in 10s (limit 10) -> confidence 1.00.
++   1.5s  agent C  Observation                 Agent C sees records-api (C): 40 outbound connections (limit 8) and sending 1954 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes; 40 failed logins in 10s (limit 10) -> confidence 1.00.
++   1.5s  agent B  Observation                 Agent B sees records-api (C): 40 outbound connections (limit 8) and sending 1954 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes; 40 failed logins in 10s (limit 10) -> confidence 1.00.
++   2.0s  agent A  Observation                 Agent A sees records-api (C): 40 outbound connections (limit 8) and sending 1954 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes; 50 failed logins in 10s (limit 10) -> confidence 1.00.
++   2.0s  agent D  Observation                 Agent D sees records-api (C): 40 outbound connections (limit 8) and sending 1954 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes; 50 failed logins in 10s (limit 10) -> confidence 1.00.
++   2.0s  agent C  Observation                 Agent C sees records-api (C): 40 outbound connections (limit 8) and sending 1954 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes; 50 failed logins in 10s (limit 10) -> confidence 1.00.
++   2.0s  agent B  Observation                 Agent B sees records-api (C): 40 outbound connections (limit 8) and sending 1954 KiB/s (limit 250 KiB/s); unexpected process xmrig; 1 file differing from the known-good hashes; 50 failed logins in 10s (limit 10) -> confidence 1.00.
++   2.0s  agent B  Action Taken                Agent B skipped 'isolate records-api': already done (by itself or a higher-ranked agent).
++   2.0s  agent B  Action Taken                Agent B skipped 'redeploy records-api from known-good image': already done (by itself or a higher-ranked agent).
++   3.0s  agent A  Observation                 Agent A sees records-api (C) as normal on all 4 signals (but its health check is failing).
++   3.0s  agent A  Action Taken                Agent A sees records-api (C) recovered: the new pod from the known-good image is ready; validating it now.
++   3.0s  agent D  Observation                 Agent D sees records-api (C) as normal on all 4 signals (but its health check is failing).
++   3.0s  agent D  Action Taken                Agent D sees records-api (C) recovered: the new pod from the known-good image is ready; validating it now.
++   3.0s  agent C  Observation                 Agent C sees records-api (C) as normal on all 4 signals (but its health check is failing).
++   3.0s  agent C  Action Taken                Agent C sees records-api (C) recovered: the new pod from the known-good image is ready; validating it now.
++   3.0s  agent B  Observation                 Agent B sees records-api (C) as normal on all 4 signals (but its health check is failing).
++   3.0s  agent B  Action Taken                Agent B sees records-api (C) recovered: the new pod from the known-good image is ready; validating it now.
++   3.5s  agent A  Decision Withheld           Agent A is not voting to validate C: health check failed.
++   3.5s  agent D  Decision Withheld           Agent D is not voting to validate C: health check failed.
++   3.5s  agent C  Decision Withheld           Agent C is not voting to validate C: health check failed.
++   3.5s  agent C  Action Taken                Agent C skipped 'isolate records-api': already done (by itself or a higher-ranked agent).
++   3.5s  agent C  Action Taken                Agent C skipped 'redeploy records-api from known-good image': already done (by itself or a higher-ranked agent).
++   3.5s  agent B  Decision Withheld           Agent B is not voting to validate C: health check failed.
++   5.0s  agent D  Action Taken                Agent D skipped 'isolate records-api': already done (by itself or a higher-ranked agent).
++   5.0s  agent D  Action Taken                Agent D skipped 'redeploy records-api from known-good image': already done (by itself or a higher-ranked agent).
++   8.5s  agent A  Decision Withheld           Agent A is not voting to validate C: health check failed.
++   8.5s  agent D  Decision Withheld           Agent D is not voting to validate C: health check failed.
++   8.5s  agent B  Decision Withheld           Agent B is not voting to validate C: health check failed.
++   8.5s  agent C  Decision Withheld           Agent C is not voting to validate C: health check failed.
++  10.5s  agent A  Observation                 Agent A sees patient-portal (A) as normal on all 4 signals.
++  10.5s  agent A  Observation                 Agent A sees auth-service (B) as normal on all 4 signals.
++  10.5s  agent A  Observation                 Agent A sees database (D) as normal on all 4 signals.
++  10.5s  agent A  Observation                 Agent A sees lab-results (E) as normal on all 4 signals.
++  10.5s  agent A  Observation                 Agent A sees medication-service (F) as normal on all 4 signals.
++  10.5s  agent D  Observation                 Agent D sees patient-portal (A) as normal on all 4 signals.
++  10.5s  agent D  Observation                 Agent D sees auth-service (B) as normal on all 4 signals.
++  10.5s  agent D  Observation                 Agent D sees database (D) as normal on all 4 signals.
++  10.5s  agent D  Observation                 Agent D sees lab-results (E) as normal on all 4 signals.
++  10.5s  agent D  Observation                 Agent D sees medication-service (F) as normal on all 4 signals.
++  10.5s  agent B  Observation                 Agent B sees patient-portal (A) as normal on all 4 signals.
++  10.5s  agent B  Observation                 Agent B sees auth-service (B) as normal on all 4 signals.
++  10.5s  agent B  Observation                 Agent B sees database (D) as normal on all 4 signals.
++  10.5s  agent B  Observation                 Agent B sees lab-results (E) as normal on all 4 signals.
++  10.5s  agent B  Observation                 Agent B sees medication-service (F) as normal on all 4 signals.
++  10.5s  agent C  Observation                 Agent C sees patient-portal (A) as normal on all 4 signals.
++  10.5s  agent C  Observation                 Agent C sees auth-service (B) as normal on all 4 signals.
++  10.5s  agent C  Observation                 Agent C sees database (D) as normal on all 4 signals.
++  10.5s  agent C  Observation                 Agent C sees lab-results (E) as normal on all 4 signals.
++  10.5s  agent C  Observation                 Agent C sees medication-service (F) as normal on all 4 signals.
++  13.0s  agent A  Agent Decision              Agent A cast a signed vote to redeploy C again (attempt 2) (epoch 1): validation still failing after 10s: health check failed.
++  13.0s  agent B  Agent Decision              Agent B cast a signed vote to redeploy C again (attempt 2) (epoch 1): validation still failing after 10s: health check failed.
++  13.0s  agent C  Agent Decision              Agent C cast a signed vote to redeploy C again (attempt 2) (epoch 1): validation still failing after 10s: health check failed.
++  13.0s  agent D  Agent Decision              Agent D cast a signed vote to redeploy C again (attempt 2) (epoch 1): validation still failing after 10s: health check failed.
++  13.5s  agent A  Decision Withheld           Agent A is not voting to validate C: health check failed.
++  13.5s  agent A  Agreement Reached (3 of 4)  Quorum reached: A, B, C, D signed redeploy C again (attempt 2) (epoch 1) -> recovery attempt 1 failed validation; redeploy again.
++  13.5s  agent A  Action Taken                Agent A saved an evidence snapshot of records-api (C) before it is replaced: 1 pod(s), 3 log line(s).
++  13.5s  agent D  Decision Withheld           Agent D is not voting to validate C: health check failed.
++  13.5s  agent D  Agreement Reached (3 of 4)  Quorum reached: A, B, C, D signed redeploy C again (attempt 2) (epoch 1) -> recovery attempt 1 failed validation; redeploy again.
++  13.5s  agent B  Decision Withheld           Agent B is not voting to validate C: health check failed.
++  13.5s  agent B  Agreement Reached (3 of 4)  Quorum reached: A, B, C, D signed redeploy C again (attempt 2) (epoch 1) -> recovery attempt 1 failed validation; redeploy again.
++  13.5s  agent B  Action Taken                Agent B saved an evidence snapshot of records-api (C) before it is replaced: 1 pod(s), 3 log line(s).
++  13.5s  agent A  Action Taken                Agent A is executor rank 0 for 'redeploy records-api again (attempt 2)': it will act in 2s only if no higher-ranked agent has done it.
++  13.5s  agent C  Decision Withheld           Agent C is not voting to validate C: health check failed.
++  13.5s  agent C  Agreement Reached (3 of 4)  Quorum reached: A, B, C, D signed redeploy C again (attempt 2) (epoch 1) -> recovery attempt 1 failed validation; redeploy again.
++  13.5s  agent B  Action Taken                Agent B is executor rank 1 for 'redeploy records-api again (attempt 2)': it will act in 4s only if no higher-ranked agent has done it.
++  13.5s  agent D  Action Taken                Agent D saved an evidence snapshot of records-api (C) before it is replaced: 1 pod(s), 3 log line(s).
++  13.5s  agent C  Action Taken                Agent C saved an evidence snapshot of records-api (C) before it is replaced: 1 pod(s), 3 log line(s).
++  13.5s  agent D  Action Taken                Agent D is executor rank 3 for 'redeploy records-api again (attempt 2)': it will act in 6s only if no higher-ranked agent has done it.
++  13.5s  agent C  Action Taken                Agent C is executor rank 2 for 'redeploy records-api again (attempt 2)': it will act in 5s only if no higher-ranked agent has done it.
++  13.5s  agent C  Agreement Reached (3 of 4)  Agent C holds a quorum certificate for RETRY_RECOVERY C (epoch 1, 2) signed by A, B, C.
++  13.5s  agent B  Agreement Reached (3 of 4)  Agent B holds a quorum certificate for RETRY_RECOVERY C (epoch 1, 2) signed by A, B, D.
++  13.5s  agent D  Agreement Reached (3 of 4)  Agent D holds a quorum certificate for RETRY_RECOVERY C (epoch 1, 2) signed by A, B, D.
++  13.5s  agent A  Agreement Reached (3 of 4)  Agent A holds a quorum certificate for RETRY_RECOVERY C (epoch 1, 2) signed by A, B, D.
++  15.5s  agent A  Action Taken                Agent A started recovery of records-api (C), attempt 2: redeploying it from the known-good image.
++  17.0s  agent B  Action Taken                Agent B skipped 'redeploy records-api again (attempt 2)': already done (by itself or a higher-ranked agent).
++  17.5s  agent D  Action Taken                Agent D sees records-api (C) recovered: the new pod from the known-good image is ready; validating it now.
++  17.5s  agent B  Action Taken                Agent B sees records-api (C) recovered: the new pod from the known-good image is ready; validating it now.
++  17.5s  agent C  Action Taken                Agent C sees records-api (C) recovered: the new pod from the known-good image is ready; validating it now.
++  18.0s  agent A  Observation                 Agent A sees records-api (C) as normal on all 4 signals (but its health check is failing).
++  18.0s  agent A  Action Taken                Agent A sees records-api (C) recovered: the new pod from the known-good image is ready; validating it now.
++  18.0s  agent D  Observation                 Agent D sees records-api (C) as normal on all 4 signals (but its health check is failing).
++  18.0s  agent B  Observation                 Agent B sees records-api (C) as normal on all 4 signals (but its health check is failing).
++  18.0s  agent C  Observation                 Agent C sees records-api (C) as normal on all 4 signals (but its health check is failing).
++  18.5s  agent A  Decision Withheld           Agent A is not voting to validate C: health check failed.
++  18.5s  agent D  Decision Withheld           Agent D is not voting to validate C: health check failed.
++  18.5s  agent B  Decision Withheld           Agent B is not voting to validate C: health check failed.
++  18.5s  agent C  Decision Withheld           Agent C is not voting to validate C: health check failed.
++  18.5s  agent C  Action Taken                Agent C skipped 'redeploy records-api again (attempt 2)': already done (by itself or a higher-ranked agent).
++  20.0s  agent D  Action Taken                Agent D skipped 'redeploy records-api again (attempt 2)': already done (by itself or a higher-ranked agent).
++  23.5s  agent A  Decision Withheld           Agent A is not voting to validate C: health check failed.
++  23.5s  agent D  Decision Withheld           Agent D is not voting to validate C: health check failed.
++  23.5s  agent B  Decision Withheld           Agent B is not voting to validate C: health check failed.
++  23.5s  agent C  Decision Withheld           Agent C is not voting to validate C: health check failed.
++  25.5s  agent A  Observation                 Agent A sees patient-portal (A) as normal on all 4 signals.
++  25.5s  agent A  Observation                 Agent A sees auth-service (B) as normal on all 4 signals.
++  25.5s  agent A  Observation                 Agent A sees database (D) as normal on all 4 signals.
++  25.5s  agent A  Observation                 Agent A sees lab-results (E) as normal on all 4 signals.
++  25.5s  agent A  Observation                 Agent A sees medication-service (F) as normal on all 4 signals.
++  25.5s  agent D  Observation                 Agent D sees patient-portal (A) as normal on all 4 signals.
++  25.5s  agent D  Observation                 Agent D sees auth-service (B) as normal on all 4 signals.
++  25.5s  agent D  Observation                 Agent D sees database (D) as normal on all 4 signals.
++  25.5s  agent D  Observation                 Agent D sees lab-results (E) as normal on all 4 signals.
++  25.5s  agent D  Observation                 Agent D sees medication-service (F) as normal on all 4 signals.
++  25.5s  agent B  Observation                 Agent B sees patient-portal (A) as normal on all 4 signals.
++  25.5s  agent B  Observation                 Agent B sees auth-service (B) as normal on all 4 signals.
++  25.5s  agent B  Observation                 Agent B sees database (D) as normal on all 4 signals.
++  25.5s  agent B  Observation                 Agent B sees lab-results (E) as normal on all 4 signals.
++  25.5s  agent B  Observation                 Agent B sees medication-service (F) as normal on all 4 signals.
++  25.5s  agent C  Observation                 Agent C sees patient-portal (A) as normal on all 4 signals.
++  25.5s  agent C  Observation                 Agent C sees auth-service (B) as normal on all 4 signals.
++  25.5s  agent C  Observation                 Agent C sees database (D) as normal on all 4 signals.
++  25.5s  agent C  Observation                 Agent C sees lab-results (E) as normal on all 4 signals.
++  25.5s  agent C  Observation                 Agent C sees medication-service (F) as normal on all 4 signals.
++  27.5s  agent D  Agent Decision              Agent D cast a signed vote to redeploy C again (attempt 3) (epoch 1): validation still failing after 10s: health check failed.
++  27.5s  agent B  Agent Decision              Agent B cast a signed vote to redeploy C again (attempt 3) (epoch 1): validation still failing after 10s: health check failed.
++  27.5s  agent C  Agent Decision              Agent C cast a signed vote to redeploy C again (attempt 3) (epoch 1): validation still failing after 10s: health check failed.
++  28.0s  agent D  Agreement Reached (3 of 4)  Quorum reached: B, C, D signed redeploy C again (attempt 3) (epoch 1) -> recovery attempt 2 failed validation; redeploy again.
++  28.0s  agent D  Action Taken                Agent D saved an evidence snapshot of records-api (C) before it is replaced: 1 pod(s), 3 log line(s).
++  28.0s  agent B  Agreement Reached (3 of 4)  Quorum reached: B, C, D signed redeploy C again (attempt 3) (epoch 1) -> recovery attempt 2 failed validation; redeploy again.
++  28.0s  agent D  Action Taken                Agent D is executor rank 3 for 'redeploy records-api again (attempt 3)': it will act in 8s only if no higher-ranked agent has done it.
++  28.0s  agent B  Action Taken                Agent B saved an evidence snapshot of records-api (C) before it is replaced: 1 pod(s), 3 log line(s).
++  28.0s  agent A  Agent Decision              Agent A cast a signed vote to redeploy C again (attempt 3) (epoch 1): validation still failing after 10s: health check failed.
++  28.0s  agent A  Agreement Reached (3 of 4)  Quorum reached: A, B, C, D signed redeploy C again (attempt 3) (epoch 1) -> recovery attempt 2 failed validation; redeploy again.
++  28.0s  agent C  Agreement Reached (3 of 4)  Quorum reached: B, C, D signed redeploy C again (attempt 3) (epoch 1) -> recovery attempt 2 failed validation; redeploy again.
++  28.0s  agent B  Action Taken                Agent B is executor rank 1 for 'redeploy records-api again (attempt 3)': it will act in 6s only if no higher-ranked agent has done it.
++  28.0s  agent A  Action Taken                Agent A saved an evidence snapshot of records-api (C) before it is replaced: 1 pod(s), 3 log line(s).
++  28.0s  agent C  Action Taken                Agent C saved an evidence snapshot of records-api (C) before it is replaced: 1 pod(s), 3 log line(s).
++  28.0s  agent A  Action Taken                Agent A is executor rank 0 for 'redeploy records-api again (attempt 3)': it will act in 4s only if no higher-ranked agent has done it.
++  28.0s  agent C  Action Taken                Agent C is executor rank 2 for 'redeploy records-api again (attempt 3)': it will act in 7s only if no higher-ranked agent has done it.
++  28.0s  agent A  Agreement Reached (3 of 4)  Agent A holds a quorum certificate for RETRY_RECOVERY C (epoch 1, 3) signed by A, B, D.
++  28.0s  agent C  Agreement Reached (3 of 4)  Agent C holds a quorum certificate for RETRY_RECOVERY C (epoch 1, 3) signed by B, C, D.
++  28.1s  agent B  Agreement Reached (3 of 4)  Agent B holds a quorum certificate for RETRY_RECOVERY C (epoch 1, 3) signed by B, C, D.
++  28.1s  agent D  Agreement Reached (3 of 4)  Agent D holds a quorum certificate for RETRY_RECOVERY C (epoch 1, 3) signed by B, C, D.
++  32.0s  agent A  Action Taken                Agent A started recovery of records-api (C), attempt 3: redeploying it from the known-good image.
++  33.0s  agent D  Observation                 Agent D sees records-api (C) as normal on all 4 signals (but its health check is failing).
++  33.0s  agent A  Observation                 Agent A sees records-api (C) as normal on all 4 signals (but its health check is failing).
++  33.0s  agent B  Observation                 Agent B sees records-api (C) as normal on all 4 signals (but its health check is failing).
++  33.0s  agent C  Observation                 Agent C sees records-api (C) as normal on all 4 signals (but its health check is failing).
++  33.5s  agent B  Action Taken                Agent B skipped 'redeploy records-api again (attempt 3)': already done (by itself or a higher-ranked agent).
++  34.0s  agent B  Action Taken                Agent B sees records-api (C) recovered: the new pod from the known-good image is ready; validating it now.
++  34.0s  agent C  Action Taken                Agent C sees records-api (C) recovered: the new pod from the known-good image is ready; validating it now.
++  34.5s  agent D  Action Taken                Agent D sees records-api (C) recovered: the new pod from the known-good image is ready; validating it now.
++  34.5s  agent A  Action Taken                Agent A sees records-api (C) recovered: the new pod from the known-good image is ready; validating it now.
++  34.5s  agent B  Decision Withheld           Agent B is not voting to validate C: health check failed.
++  34.5s  agent C  Decision Withheld           Agent C is not voting to validate C: health check failed.
++  35.0s  agent D  Decision Withheld           Agent D is not voting to validate C: health check failed.
++  35.0s  agent A  Decision Withheld           Agent A is not voting to validate C: health check failed.
++  35.0s  agent C  Action Taken                Agent C skipped 'redeploy records-api again (attempt 3)': already done (by itself or a higher-ranked agent).
++  36.5s  agent D  Action Taken                Agent D skipped 'redeploy records-api again (attempt 3)': already done (by itself or a higher-ranked agent).
++  39.5s  agent B  Decision Withheld           Agent B is not voting to validate C: health check failed.
++  39.5s  agent C  Decision Withheld           Agent C is not voting to validate C: health check failed.
++  40.0s  agent D  Decision Withheld           Agent D is not voting to validate C: health check failed.
++  40.0s  agent A  Decision Withheld           Agent A is not voting to validate C: health check failed.
++  40.5s  agent D  Observation                 Agent D sees patient-portal (A) as normal on all 4 signals.
++  40.5s  agent D  Observation                 Agent D sees auth-service (B) as normal on all 4 signals.
++  40.5s  agent D  Observation                 Agent D sees database (D) as normal on all 4 signals.
++  40.5s  agent D  Observation                 Agent D sees lab-results (E) as normal on all 4 signals.
++  40.5s  agent D  Observation                 Agent D sees medication-service (F) as normal on all 4 signals.
++  40.5s  agent A  Observation                 Agent A sees patient-portal (A) as normal on all 4 signals.
++  40.5s  agent A  Observation                 Agent A sees auth-service (B) as normal on all 4 signals.
++  40.5s  agent A  Observation                 Agent A sees database (D) as normal on all 4 signals.
++  40.5s  agent A  Observation                 Agent A sees lab-results (E) as normal on all 4 signals.
++  40.5s  agent A  Observation                 Agent A sees medication-service (F) as normal on all 4 signals.
++  40.5s  agent B  Observation                 Agent B sees patient-portal (A) as normal on all 4 signals.
++  40.5s  agent B  Observation                 Agent B sees auth-service (B) as normal on all 4 signals.
++  40.5s  agent B  Observation                 Agent B sees database (D) as normal on all 4 signals.
++  40.5s  agent B  Observation                 Agent B sees lab-results (E) as normal on all 4 signals.
++  40.5s  agent B  Observation                 Agent B sees medication-service (F) as normal on all 4 signals.
++  40.5s  agent C  Observation                 Agent C sees patient-portal (A) as normal on all 4 signals.
++  40.5s  agent C  Observation                 Agent C sees auth-service (B) as normal on all 4 signals.
++  40.5s  agent C  Observation                 Agent C sees database (D) as normal on all 4 signals.
++  40.5s  agent C  Observation                 Agent C sees lab-results (E) as normal on all 4 signals.
++  40.5s  agent C  Observation                 Agent C sees medication-service (F) as normal on all 4 signals.
++  44.0s  agent B  Action Taken                Agent B: records-api (C) NEEDS HUMAN ATTENTION - all 3 recovery attempts failed; last: validation still failing after 10s: health check failed. It stays quarantined and is NOT shown as healthy.
++  44.0s  agent C  Action Taken                Agent C: records-api (C) NEEDS HUMAN ATTENTION - all 3 recovery attempts failed; last: validation still failing after 10s: health check failed. It stays quarantined and is NOT shown as healthy.
++  44.5s  agent D  Action Taken                Agent D: records-api (C) NEEDS HUMAN ATTENTION - all 3 recovery attempts failed; last: validation still failing after 10s: health check failed. It stays quarantined and is NOT shown as healthy.
++  44.5s  agent A  Action Taken                Agent A: records-api (C) NEEDS HUMAN ATTENTION - all 3 recovery attempts failed; last: validation still failing after 10s: health check failed. It stays quarantined and is NOT shown as healthy.
++  44.5s  agent B  Decision Withheld           Agent B is not voting to validate C: health check failed.
++  44.5s  agent C  Decision Withheld           Agent C is not voting to validate C: health check failed.
++  45.0s  agent D  Decision Withheld           Agent D is not voting to validate C: health check failed.
++  45.0s  agent A  Decision Withheld           Agent A is not voting to validate C: health check failed.
++  48.0s  agent D  Observation                 Agent D sees records-api (C) as normal on all 4 signals (but its health check is failing).
++  48.0s  agent A  Observation                 Agent A sees records-api (C) as normal on all 4 signals (but its health check is failing).
++  48.0s  agent B  Observation                 Agent B sees records-api (C) as normal on all 4 signals (but its health check is failing).
++  48.0s  agent C  Observation                 Agent C sees records-api (C) as normal on all 4 signals (but its health check is failing).
++  49.5s  agent B  Decision Withheld           Agent B is not voting to validate C: health check failed.
++  49.5s  agent C  Decision Withheld           Agent C is not voting to validate C: health check failed.

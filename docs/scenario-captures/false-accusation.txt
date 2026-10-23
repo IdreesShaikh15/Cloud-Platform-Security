@@ -1,0 +1,364 @@
+# Real event log of the Demo Mode scenario 'A security agent falsely accuses the Login & Access Service' (id: false-accusation)
+# Captured from the simulator (python3 sim/demo_server.py --dashboard), oldest line first. SIMULATOR data only: nothing here comes from a real cluster.
+# 359 lines over 30 seconds. Columns: seconds since the first line | which security agent logged it | the 'Show' filter name | the line.
+# 'Agent X' is a security guard; a bare letter at the end of a sentence (for example 'contain C') is the healthcare app: A Patient Portal, B Login & Access Service, C EHR API, D Clinical Database, E Laboratory Results Service, F Medication Service.
+
++   0.0s  agent A  Evidence Shared             Agent A signed and sent network evidence about B to its peers (confidence 0.95): [fabricated] network anomaly.
++   0.0s  agent A  Evidence Shared             Agent A signed and sent process evidence about B to its peers (confidence 0.95): [fabricated] process anomaly.
++   0.0s  agent A  Evidence Shared             Agent A signed and sent file_integrity evidence about B to its peers (confidence 0.95): [fabricated] file_integrity anomaly.
++   0.0s  agent A  Evidence Shared             Agent A signed and sent auth evidence about B to its peers (confidence 0.95): [fabricated] auth anomaly.
++   0.0s  agent A  Agent Decision              Agent A cast a signed vote to contain B (epoch 1): [simulated compromise] fabricated accusation, no real observation.
++   0.0s  agent A  Evidence Score              Agent A computes W(B)=0.47 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 1.00, A process 0.95 x trust 1.00, A file_integrity 0.95 x trust 1.00, A auth 0.95 x trust 1.00].
++   0.0s  agent A  Decision Withheld           Agent A is not voting to contain B: own observation of B normal (confidence 0.00 < 0.5).
++   0.0s  agent D  Evidence Received           Agent D accepted network evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent D  Evidence Received           Agent D accepted process evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent B  Evidence Received           Agent B accepted network evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent B  Evidence Received           Agent B accepted process evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent C  Evidence Received           Agent C accepted network evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent C  Evidence Received           Agent C accepted process evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent C  Evidence Received           Agent C accepted file_integrity evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent B  Evidence Received           Agent B accepted file_integrity evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent B  Evidence Received           Agent B accepted auth evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent C  Evidence Received           Agent C accepted auth evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent D  Evidence Received           Agent D accepted file_integrity evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent D  Evidence Received           Agent D accepted auth evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   0.5s  agent D  Evidence Score              Agent D computes W(B)=0.47 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 1.00, A process 0.95 x trust 1.00, A file_integrity 0.95 x trust 1.00, A auth 0.95 x trust 1.00].
++   0.5s  agent D  Decision Withheld           Agent D is not voting to contain B: own observation of B normal (confidence 0.00 < 0.5).
++   0.5s  agent C  Evidence Score              Agent C computes W(B)=0.47 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 1.00, A process 0.95 x trust 1.00, A file_integrity 0.95 x trust 1.00, A auth 0.95 x trust 1.00].
++   0.5s  agent C  Decision Withheld           Agent C is not voting to contain B: own observation of B normal (confidence 0.00 < 0.5).
++   0.5s  agent B  Evidence Score              Agent B computes W(B)=0.47 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 1.00, A process 0.95 x trust 1.00, A file_integrity 0.95 x trust 1.00, A auth 0.95 x trust 1.00].
++   0.5s  agent B  Decision Withheld           Agent B is not voting to contain B: own observation of B normal (confidence 0.00 < 0.5).
++   1.5s  agent A  Investigate                 Agent A opened an investigation of auth-service (B): only agent A reports an anomaly and nobody has corroborated it. Question: is the auth, file_integrity, network, process anomaly still there, and do the other agents see it independently? Time budget 6s.
++   1.5s  agent C  Investigate                 Agent C joined agent A's investigation of auth-service (B): re-measuring auth, file_integrity, network, process at a higher rate.
++   1.5s  agent B  Investigate                 Agent B joined agent A's investigation of auth-service (B): re-measuring auth, file_integrity, network, process at a higher rate.
++   1.5s  agent A  Investigate                 Agent A received agent C's signed re-measurement for the investigation of auth-service: auth: anomaly in 0 of its last 2 samples; file_integrity: anomaly in 0 of its last 2 samples; network: anomaly in 0 of its last 2 samples; process: anomaly in 0 of its last 2 samples.
++   1.5s  agent D  Investigate                 Agent D joined agent A's investigation of auth-service (B): re-measuring auth, file_integrity, network, process at a higher rate.
++   1.5s  agent A  Investigate                 Agent A received agent B's signed re-measurement for the investigation of auth-service: auth: anomaly in 0 of its last 2 samples; file_integrity: anomaly in 0 of its last 2 samples; network: anomaly in 0 of its last 2 samples; process: anomaly in 0 of its last 2 samples.
++   1.6s  agent C  Investigate                 Agent C received agent B's signed re-measurement for the investigation of auth-service: auth: anomaly in 0 of its last 2 samples; file_integrity: anomaly in 0 of its last 2 samples; network: anomaly in 0 of its last 2 samples; process: anomaly in 0 of its last 2 samples.
++   1.6s  agent A  Investigate                 Agent A received agent D's signed re-measurement for the investigation of auth-service: auth: anomaly in 0 of its last 2 samples; file_integrity: anomaly in 0 of its last 2 samples; network: anomaly in 0 of its last 2 samples; process: anomaly in 0 of its last 2 samples.
++   1.6s  agent B  Investigate                 Agent B received agent A's signed re-measurement for the investigation of auth-service: auth: anomaly in 1 of its last 1 samples; file_integrity: anomaly in 1 of its last 1 samples; network: anomaly in 1 of its last 1 samples; process: anomaly in 1 of its last 1 samples.
++   1.6s  agent C  Investigate                 Agent C received agent D's signed re-measurement for the investigation of auth-service: auth: anomaly in 0 of its last 2 samples; file_integrity: anomaly in 0 of its last 2 samples; network: anomaly in 0 of its last 2 samples; process: anomaly in 0 of its last 2 samples.
++   1.6s  agent C  Investigate                 Agent C received agent A's signed re-measurement for the investigation of auth-service: auth: anomaly in 1 of its last 1 samples; file_integrity: anomaly in 1 of its last 1 samples; network: anomaly in 1 of its last 1 samples; process: anomaly in 1 of its last 1 samples.
++   1.6s  agent B  Investigate                 Agent B received agent C's signed re-measurement for the investigation of auth-service: auth: anomaly in 0 of its last 2 samples; file_integrity: anomaly in 0 of its last 2 samples; network: anomaly in 0 of its last 2 samples; process: anomaly in 0 of its last 2 samples.
++   1.6s  agent D  Investigate                 Agent D received agent A's signed re-measurement for the investigation of auth-service: auth: anomaly in 1 of its last 1 samples; file_integrity: anomaly in 1 of its last 1 samples; network: anomaly in 1 of its last 1 samples; process: anomaly in 1 of its last 1 samples.
++   1.6s  agent D  Investigate                 Agent D received agent C's signed re-measurement for the investigation of auth-service: auth: anomaly in 0 of its last 2 samples; file_integrity: anomaly in 0 of its last 2 samples; network: anomaly in 0 of its last 2 samples; process: anomaly in 0 of its last 2 samples.
++   1.6s  agent D  Investigate                 Agent D received agent B's signed re-measurement for the investigation of auth-service: auth: anomaly in 0 of its last 2 samples; file_integrity: anomaly in 0 of its last 2 samples; network: anomaly in 0 of its last 2 samples; process: anomaly in 0 of its last 2 samples.
++   1.6s  agent B  Investigate                 Agent B received agent D's signed re-measurement for the investigation of auth-service: auth: anomaly in 0 of its last 2 samples; file_integrity: anomaly in 0 of its last 2 samples; network: anomaly in 0 of its last 2 samples; process: anomaly in 0 of its last 2 samples.
++   2.5s  agent A  Evidence Score              Agent A computes W(B)=0.47 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 1.00, A process 0.95 x trust 1.00, A file_integrity 0.95 x trust 1.00, A auth 0.95 x trust 1.00].
++   2.5s  agent D  Evidence Score              Agent D computes W(B)=0.47 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 1.00, A process 0.95 x trust 1.00, A file_integrity 0.95 x trust 1.00, A auth 0.95 x trust 1.00].
++   2.5s  agent C  Evidence Score              Agent C computes W(B)=0.47 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 1.00, A process 0.95 x trust 1.00, A file_integrity 0.95 x trust 1.00, A auth 0.95 x trust 1.00].
++   2.5s  agent B  Evidence Score              Agent B computes W(B)=0.47 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 1.00, A process 0.95 x trust 1.00, A file_integrity 0.95 x trust 1.00, A auth 0.95 x trust 1.00].
++   3.0s  agent D  Evidence Received           Agent D accepted process evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   3.0s  agent C  Evidence Received           Agent C accepted network evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   3.0s  agent C  Evidence Received           Agent C accepted process evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   3.0s  agent C  Evidence Received           Agent C accepted file_integrity evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   3.0s  agent B  Evidence Received           Agent B accepted file_integrity evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   3.0s  agent D  Evidence Received           Agent D accepted file_integrity evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   3.0s  agent D  Evidence Received           Agent D accepted auth evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   3.1s  agent B  Evidence Received           Agent B accepted auth evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   3.1s  agent C  Evidence Received           Agent C accepted auth evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   3.5s  agent A  Evidence Shared             Agent A signed and sent network evidence about B to its peers (confidence 0.95): [fabricated] network anomaly.
++   3.5s  agent A  Evidence Shared             Agent A signed and sent process evidence about B to its peers (confidence 0.95): [fabricated] process anomaly.
++   3.5s  agent A  Evidence Shared             Agent A signed and sent file_integrity evidence about B to its peers (confidence 0.95): [fabricated] file_integrity anomaly.
++   3.5s  agent A  Evidence Shared             Agent A signed and sent auth evidence about B to its peers (confidence 0.95): [fabricated] auth anomaly.
++   3.5s  agent B  Evidence Received           Agent B accepted network evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   3.5s  agent D  Evidence Received           Agent D accepted network evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   3.5s  agent B  Evidence Received           Agent B accepted process evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   4.0s  agent A  Agent Decision              Agent A re-sent its signed vote to contain B (epoch 1): [simulated compromise] fabricated accusation, no real observation.
++   4.0s  agent D  Trust Change                Agent D's trust in A: 100.0 -> 97.5 (A reported network trouble on B (confidence 0.95) that D does not see itself).
++   4.0s  agent C  Trust Change                Agent C's trust in A: 100.0 -> 97.5 (A reported network trouble on B (confidence 0.95) that C does not see itself).
++   4.0s  agent A  Investigate                 Agent A: Investigation of auth-service (B) closed as a FALSE POSITIVE, no action taken: the anomaly is gone for 3 agents. still see it: A; see it gone: B, C, D; no usable answer: nobody.
++   4.0s  agent B  Trust Change                Agent B's trust in A: 100.0 -> 97.5 (A reported network trouble on B (confidence 0.95) that B does not see itself).
++   4.5s  agent A  Evidence Score              Agent A computes W(B)=0.47 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 1.00, A process 0.95 x trust 1.00, A file_integrity 0.95 x trust 1.00, A auth 0.95 x trust 1.00].
++   4.5s  agent D  Evidence Score              Agent D computes W(B)=0.45 (below the 0.6 needed to vote to contain) from 4 item(s) [A process 0.95 x trust 0.95, A network 0.95 x trust 0.95, A file_integrity 0.95 x trust 0.95, A auth 0.95 x trust 0.95].
++   4.5s  agent D  Investigate                 Agent D: Investigation of auth-service (B) closed as a FALSE POSITIVE, no action taken: the anomaly is gone for 3 agents. still see it: A; see it gone: B, C, D; no usable answer: nobody.
++   4.5s  agent C  Evidence Score              Agent C computes W(B)=0.45 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 0.95, A process 0.95 x trust 0.95, A auth 0.95 x trust 0.95, A file_integrity 0.95 x trust 0.95].
++   4.5s  agent C  Investigate                 Agent C: Investigation of auth-service (B) closed as a FALSE POSITIVE, no action taken: the anomaly is gone for 3 agents. still see it: A; see it gone: B, C, D; no usable answer: nobody.
++   4.5s  agent B  Evidence Score              Agent B computes W(B)=0.45 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 0.95, A process 0.95 x trust 0.95, A file_integrity 0.95 x trust 0.95, A auth 0.95 x trust 0.95].
++   4.5s  agent B  Investigate                 Agent B: Investigation of auth-service (B) closed as a FALSE POSITIVE, no action taken: the anomaly is gone for 3 agents. still see it: A; see it gone: B, C, D; no usable answer: nobody.
++   5.5s  agent A  Decision Withheld           Agent A is not voting to contain B: own observation of B normal (confidence 0.00 < 0.5).
++   5.5s  agent D  Decision Withheld           Agent D is not voting to contain B: own observation of B normal (confidence 0.00 < 0.5).
++   5.5s  agent C  Decision Withheld           Agent C is not voting to contain B: own observation of B normal (confidence 0.00 < 0.5).
++   5.5s  agent B  Decision Withheld           Agent B is not voting to contain B: own observation of B normal (confidence 0.00 < 0.5).
++   6.0s  agent D  Trust Change                Agent D's trust in A: 95.5 -> 95.7 (none of its recent claims are contradicted, so trust recovers slowly).
++   6.0s  agent D  Evidence Received           Agent D accepted process evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   6.0s  agent C  Trust Change                Agent C's trust in A: 95.5 -> 95.7 (none of its recent claims are contradicted, so trust recovers slowly).
++   6.0s  agent B  Trust Change                Agent B's trust in A: 95.5 -> 95.7 (none of its recent claims are contradicted, so trust recovers slowly).
++   6.5s  agent A  Evidence Shared             Agent A signed and sent network evidence about B to its peers (confidence 0.95): [fabricated] network anomaly.
++   6.5s  agent A  Evidence Shared             Agent A signed and sent process evidence about B to its peers (confidence 0.95): [fabricated] process anomaly.
++   6.5s  agent A  Evidence Shared             Agent A signed and sent file_integrity evidence about B to its peers (confidence 0.95): [fabricated] file_integrity anomaly.
++   6.5s  agent A  Evidence Shared             Agent A signed and sent auth evidence about B to its peers (confidence 0.95): [fabricated] auth anomaly.
++   6.5s  agent A  Evidence Score              Agent A computes W(B)=0.47 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 1.00, A process 0.95 x trust 1.00, A file_integrity 0.95 x trust 1.00, A auth 0.95 x trust 1.00].
++   6.5s  agent B  Evidence Received           Agent B accepted network evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   6.5s  agent D  Evidence Score              Agent D computes W(B)=0.46 (below the 0.6 needed to vote to contain) from 4 item(s) [A process 0.95 x trust 0.96, A file_integrity 0.95 x trust 0.96, A auth 0.95 x trust 0.96, A network 0.95 x trust 0.96].
++   6.5s  agent C  Evidence Received           Agent C accepted network evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   6.5s  agent C  Evidence Received           Agent C accepted process evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   6.5s  agent C  Evidence Score              Agent C computes W(B)=0.46 (below the 0.6 needed to vote to contain) from 4 item(s) [A file_integrity 0.95 x trust 0.96, A auth 0.95 x trust 0.96, A process 0.95 x trust 0.96, A network 0.95 x trust 0.96].
++   6.5s  agent B  Evidence Received           Agent B accepted auth evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   6.5s  agent B  Evidence Received           Agent B accepted file_integrity evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   6.5s  agent D  Evidence Received           Agent D accepted file_integrity evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   6.5s  agent C  Evidence Received           Agent C accepted file_integrity evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   6.5s  agent C  Evidence Received           Agent C accepted auth evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   6.5s  agent B  Evidence Score              Agent B computes W(B)=0.46 (below the 0.6 needed to vote to contain) from 4 item(s) [A file_integrity 0.95 x trust 0.96, A network 0.95 x trust 0.96, A process 0.95 x trust 0.96, A auth 0.95 x trust 0.96].
++   6.5s  agent D  Evidence Received           Agent D accepted auth evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   7.0s  agent D  Evidence Received           Agent D accepted network evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   7.0s  agent B  Evidence Received           Agent B accepted process evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   8.0s  agent A  Agent Decision              Agent A re-sent its signed vote to contain B (epoch 1): [simulated compromise] fabricated accusation, no real observation.
++   8.0s  agent D  Trust Change                Agent D's trust in A: 96.5 -> 96.7 (none of its recent claims are contradicted, so trust recovers slowly).
++   8.0s  agent C  Trust Change                Agent C's trust in A: 96.5 -> 96.7 (none of its recent claims are contradicted, so trust recovers slowly).
++   8.0s  agent B  Trust Change                Agent B's trust in A: 96.5 -> 96.7 (none of its recent claims are contradicted, so trust recovers slowly).
++   8.5s  agent A  Evidence Score              Agent A computes W(B)=0.47 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 1.00, A process 0.95 x trust 1.00, A file_integrity 0.95 x trust 1.00, A auth 0.95 x trust 1.00].
++   8.5s  agent D  Evidence Score              Agent D computes W(B)=0.45 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 0.94, A process 0.95 x trust 0.94, A file_integrity 0.95 x trust 0.94, A auth 0.95 x trust 0.94].
++   8.5s  agent C  Evidence Score              Agent C computes W(B)=0.45 (below the 0.6 needed to vote to contain) from 4 item(s) [A process 0.95 x trust 0.94, A network 0.95 x trust 0.94, A file_integrity 0.95 x trust 0.94, A auth 0.95 x trust 0.94].
++   8.5s  agent B  Evidence Score              Agent B computes W(B)=0.45 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 0.94, A process 0.95 x trust 0.94, A file_integrity 0.95 x trust 0.94, A auth 0.95 x trust 0.94].
++   9.0s  agent D  Evidence Received           Agent D accepted process evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   9.5s  agent A  Evidence Shared             Agent A signed and sent network evidence about B to its peers (confidence 0.95): [fabricated] network anomaly.
++   9.5s  agent A  Evidence Shared             Agent A signed and sent process evidence about B to its peers (confidence 0.95): [fabricated] process anomaly.
++   9.5s  agent A  Evidence Shared             Agent A signed and sent file_integrity evidence about B to its peers (confidence 0.95): [fabricated] file_integrity anomaly.
++   9.5s  agent B  Evidence Received           Agent B accepted network evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++   9.5s  agent A  Evidence Shared             Agent A signed and sent auth evidence about B to its peers (confidence 0.95): [fabricated] auth anomaly.
++   9.5s  agent B  Evidence Received           Agent B accepted auth evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  10.0s  agent C  Evidence Received           Agent C accepted network evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  10.0s  agent D  Evidence Received           Agent D accepted network evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  10.0s  agent C  Evidence Received           Agent C accepted process evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  10.0s  agent D  Trust Change                Agent D's trust in A: 89.2 -> 86.7 (A reported network trouble on B (confidence 0.95) that D does not see itself).
++  10.0s  agent B  Evidence Received           Agent B accepted process evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  10.0s  agent C  Trust Change                Agent C's trust in A: 89.2 -> 86.7 (A reported network trouble on B (confidence 0.95) that C does not see itself).
++  10.0s  agent B  Evidence Received           Agent B accepted file_integrity evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  10.0s  agent C  Evidence Received           Agent C accepted file_integrity evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  10.0s  agent C  Evidence Received           Agent C accepted auth evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  10.0s  agent D  Evidence Received           Agent D accepted file_integrity evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  10.0s  agent D  Evidence Received           Agent D accepted auth evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  10.0s  agent B  Trust Change                Agent B's trust in A: 89.2 -> 86.7 (A reported network trouble on B (confidence 0.95) that B does not see itself).
++  10.5s  agent A  Observation                 Agent A sees patient-portal (A) as normal on all 4 signals.
++  10.5s  agent A  Observation                 Agent A sees auth-service (B) as normal on all 4 signals.
++  10.5s  agent A  Observation                 Agent A sees records-api (C) as normal on all 4 signals.
++  10.5s  agent A  Observation                 Agent A sees database (D) as normal on all 4 signals.
++  10.5s  agent A  Observation                 Agent A sees lab-results (E) as normal on all 4 signals.
++  10.5s  agent A  Observation                 Agent A sees medication-service (F) as normal on all 4 signals.
++  10.5s  agent A  Evidence Score              Agent A computes W(B)=0.47 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 1.00, A process 0.95 x trust 1.00, A file_integrity 0.95 x trust 1.00, A auth 0.95 x trust 1.00].
++  10.5s  agent A  Decision Withheld           Agent A is not voting to contain B: own observation of B normal (confidence 0.00 < 0.5).
++  10.5s  agent D  Observation                 Agent D sees patient-portal (A) as normal on all 4 signals.
++  10.5s  agent D  Observation                 Agent D sees auth-service (B) as normal on all 4 signals.
++  10.5s  agent D  Observation                 Agent D sees records-api (C) as normal on all 4 signals.
++  10.5s  agent D  Observation                 Agent D sees database (D) as normal on all 4 signals.
++  10.5s  agent D  Observation                 Agent D sees lab-results (E) as normal on all 4 signals.
++  10.5s  agent D  Observation                 Agent D sees medication-service (F) as normal on all 4 signals.
++  10.5s  agent D  Evidence Score              Agent D computes W(B)=0.40 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 0.84, A process 0.95 x trust 0.84, A file_integrity 0.95 x trust 0.84, A auth 0.95 x trust 0.84].
++  10.5s  agent D  Decision Withheld           Agent D is not voting to contain B: own observation of B normal (confidence 0.00 < 0.5).
++  10.5s  agent C  Observation                 Agent C sees patient-portal (A) as normal on all 4 signals.
++  10.5s  agent C  Observation                 Agent C sees auth-service (B) as normal on all 4 signals.
++  10.5s  agent C  Observation                 Agent C sees records-api (C) as normal on all 4 signals.
++  10.5s  agent C  Observation                 Agent C sees database (D) as normal on all 4 signals.
++  10.5s  agent C  Observation                 Agent C sees lab-results (E) as normal on all 4 signals.
++  10.5s  agent C  Observation                 Agent C sees medication-service (F) as normal on all 4 signals.
++  10.5s  agent C  Evidence Score              Agent C computes W(B)=0.40 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 0.84, A process 0.95 x trust 0.84, A file_integrity 0.95 x trust 0.84, A auth 0.95 x trust 0.84].
++  10.5s  agent C  Decision Withheld           Agent C is not voting to contain B: own observation of B normal (confidence 0.00 < 0.5).
++  10.5s  agent B  Observation                 Agent B sees patient-portal (A) as normal on all 4 signals.
++  10.5s  agent B  Observation                 Agent B sees auth-service (B) as normal on all 4 signals.
++  10.5s  agent B  Observation                 Agent B sees records-api (C) as normal on all 4 signals.
++  10.5s  agent B  Observation                 Agent B sees database (D) as normal on all 4 signals.
++  10.5s  agent B  Observation                 Agent B sees lab-results (E) as normal on all 4 signals.
++  10.5s  agent B  Observation                 Agent B sees medication-service (F) as normal on all 4 signals.
++  10.5s  agent B  Evidence Score              Agent B computes W(B)=0.40 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 0.84, A process 0.95 x trust 0.84, A file_integrity 0.95 x trust 0.84, A auth 0.95 x trust 0.84].
++  10.5s  agent B  Decision Withheld           Agent B is not voting to contain B: own observation of B normal (confidence 0.00 < 0.5).
++  12.0s  agent A  Agent Decision              Agent A re-sent its signed vote to contain B (epoch 1): [simulated compromise] fabricated accusation, no real observation.
++  12.0s  agent D  Trust Change                Agent D's trust in A: 79.2 -> 76.7 (A reported network trouble on B (confidence 0.95) that D does not see itself).
++  12.0s  agent C  Trust Change                Agent C's trust in A: 79.2 -> 76.7 (A reported network trouble on B (confidence 0.95) that C does not see itself).
++  12.0s  agent B  Trust Change                Agent B's trust in A: 79.2 -> 76.7 (A reported network trouble on B (confidence 0.95) that B does not see itself).
++  12.5s  agent A  Evidence Shared             Agent A signed and sent network evidence about B to its peers (confidence 0.95): [fabricated] network anomaly.
++  12.5s  agent B  Evidence Received           Agent B accepted network evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  12.5s  agent D  Evidence Received           Agent D accepted process evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  12.5s  agent D  Evidence Score              Agent D computes W(B)=0.35 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 0.74, A process 0.95 x trust 0.74, A file_integrity 0.95 x trust 0.74, A auth 0.95 x trust 0.74].
++  12.5s  agent C  Evidence Score              Agent C computes W(B)=0.35 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 0.74, A process 0.95 x trust 0.74, A file_integrity 0.95 x trust 0.74, A auth 0.95 x trust 0.74].
++  12.5s  agent B  Evidence Received           Agent B accepted auth evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  12.5s  agent B  Evidence Score              Agent B computes W(B)=0.35 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 0.74, A process 0.95 x trust 0.74, A file_integrity 0.95 x trust 0.74, A auth 0.95 x trust 0.74].
++  13.0s  agent A  Evidence Shared             Agent A signed and sent process evidence about B to its peers (confidence 0.95): [fabricated] process anomaly.
++  13.0s  agent A  Evidence Shared             Agent A signed and sent file_integrity evidence about B to its peers (confidence 0.95): [fabricated] file_integrity anomaly.
++  13.0s  agent A  Evidence Shared             Agent A signed and sent auth evidence about B to its peers (confidence 0.95): [fabricated] auth anomaly.
++  13.0s  agent A  Evidence Score              Agent A computes W(B)=0.47 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 1.00, A process 0.95 x trust 1.00, A file_integrity 0.95 x trust 1.00, A auth 0.95 x trust 1.00].
++  13.0s  agent C  Evidence Received           Agent C accepted process evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  13.5s  agent A  Investigate                 Agent A opened an investigation of auth-service (B): only agent A reports an anomaly and nobody has corroborated it. Question: is the auth, file_integrity, network, process anomaly still there, and do the other agents see it independently? Time budget 6s.
++  13.5s  agent D  Evidence Received           Agent D accepted network evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  13.5s  agent B  Evidence Received           Agent B accepted process evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  13.5s  agent C  Evidence Received           Agent C accepted network evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  13.5s  agent C  Evidence Received           Agent C accepted file_integrity evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  13.5s  agent B  Evidence Received           Agent B accepted file_integrity evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  13.5s  agent D  Evidence Received           Agent D accepted file_integrity evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  13.5s  agent C  Evidence Received           Agent C accepted auth evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  13.5s  agent D  Evidence Received           Agent D accepted auth evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  13.5s  agent B  Investigate                 Agent B joined agent A's investigation of auth-service (B): re-measuring auth, file_integrity, network, process at a higher rate.
++  13.5s  agent A  Investigate                 Agent A received agent B's signed re-measurement for the investigation of auth-service: auth: anomaly in 0 of its last 2 samples; file_integrity: anomaly in 0 of its last 2 samples; network: anomaly in 0 of its last 2 samples; process: anomaly in 0 of its last 2 samples.
++  13.5s  agent D  Investigate                 Agent D joined agent A's investigation of auth-service (B): re-measuring auth, file_integrity, network, process at a higher rate.
++  13.5s  agent C  Investigate                 Agent C joined agent A's investigation of auth-service (B): re-measuring auth, file_integrity, network, process at a higher rate.
++  13.5s  agent A  Investigate                 Agent A received agent D's signed re-measurement for the investigation of auth-service: auth: anomaly in 0 of its last 2 samples; file_integrity: anomaly in 0 of its last 2 samples; network: anomaly in 0 of its last 2 samples; process: anomaly in 0 of its last 2 samples.
++  13.5s  agent A  Investigate                 Agent A received agent C's signed re-measurement for the investigation of auth-service: auth: anomaly in 0 of its last 2 samples; file_integrity: anomaly in 0 of its last 2 samples; network: anomaly in 0 of its last 2 samples; process: anomaly in 0 of its last 2 samples.
++  13.5s  agent B  Investigate                 Agent B received agent D's signed re-measurement for the investigation of auth-service: auth: anomaly in 0 of its last 2 samples; file_integrity: anomaly in 0 of its last 2 samples; network: anomaly in 0 of its last 2 samples; process: anomaly in 0 of its last 2 samples.
++  13.5s  agent B  Investigate                 Agent B received agent A's signed re-measurement for the investigation of auth-service: auth: anomaly in 1 of its last 1 samples; file_integrity: anomaly in 1 of its last 1 samples; network: anomaly in 1 of its last 1 samples; process: anomaly in 1 of its last 1 samples.
++  13.5s  agent D  Investigate                 Agent D received agent B's signed re-measurement for the investigation of auth-service: auth: anomaly in 0 of its last 2 samples; file_integrity: anomaly in 0 of its last 2 samples; network: anomaly in 0 of its last 2 samples; process: anomaly in 0 of its last 2 samples.
++  13.5s  agent C  Investigate                 Agent C received agent B's signed re-measurement for the investigation of auth-service: auth: anomaly in 0 of its last 2 samples; file_integrity: anomaly in 0 of its last 2 samples; network: anomaly in 0 of its last 2 samples; process: anomaly in 0 of its last 2 samples.
++  13.5s  agent C  Investigate                 Agent C received agent D's signed re-measurement for the investigation of auth-service: auth: anomaly in 0 of its last 2 samples; file_integrity: anomaly in 0 of its last 2 samples; network: anomaly in 0 of its last 2 samples; process: anomaly in 0 of its last 2 samples.
++  13.5s  agent D  Investigate                 Agent D received agent A's signed re-measurement for the investigation of auth-service: auth: anomaly in 1 of its last 1 samples; file_integrity: anomaly in 1 of its last 1 samples; network: anomaly in 1 of its last 1 samples; process: anomaly in 1 of its last 1 samples.
++  13.5s  agent C  Investigate                 Agent C received agent A's signed re-measurement for the investigation of auth-service: auth: anomaly in 1 of its last 1 samples; file_integrity: anomaly in 1 of its last 1 samples; network: anomaly in 1 of its last 1 samples; process: anomaly in 1 of its last 1 samples.
++  13.6s  agent D  Investigate                 Agent D received agent C's signed re-measurement for the investigation of auth-service: auth: anomaly in 0 of its last 2 samples; file_integrity: anomaly in 0 of its last 2 samples; network: anomaly in 0 of its last 2 samples; process: anomaly in 0 of its last 2 samples.
++  13.6s  agent B  Investigate                 Agent B received agent C's signed re-measurement for the investigation of auth-service: auth: anomaly in 0 of its last 2 samples; file_integrity: anomaly in 0 of its last 2 samples; network: anomaly in 0 of its last 2 samples; process: anomaly in 0 of its last 2 samples.
++  14.0s  agent D  Trust Change                Agent D's trust in A: 69.2 -> 66.7 (A reported network trouble on B (confidence 0.95) that D does not see itself).
++  14.0s  agent C  Trust Change                Agent C's trust in A: 69.2 -> 66.7 (A reported network trouble on B (confidence 0.95) that C does not see itself).
++  14.0s  agent B  Trust Change                Agent B's trust in A: 69.2 -> 66.7 (A reported network trouble on B (confidence 0.95) that B does not see itself).
++  14.5s  agent D  Evidence Score              Agent D computes W(B)=0.30 (below the 0.6 needed to vote to contain) from 4 item(s) [A process 0.95 x trust 0.64, A network 0.95 x trust 0.64, A file_integrity 0.95 x trust 0.64, A auth 0.95 x trust 0.64].
++  14.5s  agent C  Evidence Score              Agent C computes W(B)=0.30 (below the 0.6 needed to vote to contain) from 4 item(s) [A process 0.95 x trust 0.64, A network 0.95 x trust 0.64, A file_integrity 0.95 x trust 0.64, A auth 0.95 x trust 0.64].
++  14.5s  agent B  Evidence Score              Agent B computes W(B)=0.30 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 0.64, A process 0.95 x trust 0.64, A auth 0.95 x trust 0.64, A file_integrity 0.95 x trust 0.64].
++  15.0s  agent A  Evidence Score              Agent A computes W(B)=0.47 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 1.00, A process 0.95 x trust 1.00, A file_integrity 0.95 x trust 1.00, A auth 0.95 x trust 1.00].
++  15.5s  agent A  Evidence Shared             Agent A signed and sent network evidence about B to its peers (confidence 0.95): [fabricated] network anomaly.
++  15.5s  agent A  Decision Withheld           Agent A is not voting to contain B: own observation of B normal (confidence 0.00 < 0.5).
++  15.5s  agent B  Evidence Received           Agent B accepted network evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  15.5s  agent D  Decision Withheld           Agent D is not voting to contain B: own observation of B normal (confidence 0.00 < 0.5).
++  15.5s  agent C  Decision Withheld           Agent C is not voting to contain B: own observation of B normal (confidence 0.00 < 0.5).
++  15.5s  agent B  Decision Withheld           Agent B is not voting to contain B: own observation of B normal (confidence 0.00 < 0.5).
++  16.0s  agent A  Evidence Shared             Agent A signed and sent process evidence about B to its peers (confidence 0.95): [fabricated] process anomaly.
++  16.0s  agent A  Evidence Shared             Agent A signed and sent file_integrity evidence about B to its peers (confidence 0.95): [fabricated] file_integrity anomaly.
++  16.0s  agent A  Evidence Shared             Agent A signed and sent auth evidence about B to its peers (confidence 0.95): [fabricated] auth anomaly.
++  16.0s  agent A  Agent Decision              Agent A re-sent its signed vote to contain B (epoch 1): [simulated compromise] fabricated accusation, no real observation.
++  16.0s  agent A  Investigate                 Agent A: Investigation of auth-service (B) closed as a FALSE POSITIVE, no action taken: the anomaly is gone for 3 agents. still see it: A; see it gone: B, C, D; no usable answer: nobody.
++  16.0s  agent D  Evidence Received           Agent D accepted process evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  16.0s  agent C  Evidence Received           Agent C accepted process evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  16.0s  agent B  Evidence Received           Agent B accepted auth evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  16.0s  agent D  Trust Change                Agent D's trust in A: 59.2 -> 56.7 (A reported process trouble on B (confidence 0.95) that D does not see itself).
++  16.0s  agent C  Trust Change                Agent C's trust in A: 59.2 -> 56.7 (A reported network trouble on B (confidence 0.95) that C does not see itself).
++  16.0s  agent C  Investigate                 Agent C: Investigation of auth-service (B) closed as a FALSE POSITIVE, no action taken: the anomaly is gone for 3 agents. still see it: A; see it gone: B, C, D; no usable answer: nobody.
++  16.0s  agent B  Trust Change                Agent B's trust in A: 59.2 -> 56.7 (A reported process trouble on B (confidence 0.95) that B does not see itself).
++  16.0s  agent B  Investigate                 Agent B: Investigation of auth-service (B) closed as a FALSE POSITIVE, no action taken: the anomaly is gone for 3 agents. still see it: A; see it gone: B, C, D; no usable answer: nobody.
++  16.5s  agent D  Evidence Received           Agent D accepted network evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  16.5s  agent B  Evidence Received           Agent B accepted process evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  16.5s  agent C  Evidence Received           Agent C accepted file_integrity evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  16.5s  agent D  Evidence Received           Agent D accepted file_integrity evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  16.5s  agent B  Evidence Received           Agent B accepted file_integrity evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  16.5s  agent D  Evidence Score              Agent D computes W(B)=0.26 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 0.54, A process 0.95 x trust 0.54, A file_integrity 0.95 x trust 0.54, A auth 0.95 x trust 0.54].
++  16.5s  agent D  Investigate                 Agent D: Investigation of auth-service (B) closed as a FALSE POSITIVE, no action taken: the anomaly is gone for 3 agents. still see it: A; see it gone: B, C, D; no usable answer: nobody.
++  16.5s  agent C  Evidence Score              Agent C computes W(B)=0.27 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 0.57, A process 0.95 x trust 0.57, A file_integrity 0.95 x trust 0.57, A auth 0.95 x trust 0.57].
++  16.5s  agent B  Evidence Score              Agent B computes W(B)=0.27 (below the 0.6 needed to vote to contain) from 4 item(s) [A process 0.95 x trust 0.57, A network 0.95 x trust 0.57, A auth 0.95 x trust 0.57, A file_integrity 0.95 x trust 0.57].
++  17.0s  agent C  Evidence Received           Agent C accepted network evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  17.0s  agent A  Evidence Score              Agent A computes W(B)=0.47 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 1.00, A process 0.95 x trust 1.00, A file_integrity 0.95 x trust 1.00, A auth 0.95 x trust 1.00].
++  17.0s  agent C  Evidence Received           Agent C accepted auth evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  17.0s  agent D  Evidence Received           Agent D accepted auth evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  18.0s  agent D  Trust Change                Agent D's trust in A: 54.7 -> 54.9 (none of its recent claims are contradicted, so trust recovers slowly).
++  18.0s  agent C  Trust Change                Agent C's trust in A: 57.4 -> 57.7 (none of its recent claims are contradicted, so trust recovers slowly).
++  18.0s  agent B  Trust Change                Agent B's trust in A: 57.4 -> 57.7 (none of its recent claims are contradicted, so trust recovers slowly).
++  18.5s  agent A  Evidence Shared             Agent A signed and sent network evidence about B to its peers (confidence 0.95): [fabricated] network anomaly.
++  18.5s  agent B  Evidence Received           Agent B accepted network evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  18.5s  agent D  Evidence Score              Agent D computes W(B)=0.26 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 0.55, A process 0.95 x trust 0.55, A file_integrity 0.95 x trust 0.55, A auth 0.95 x trust 0.55].
++  18.5s  agent C  Evidence Score              Agent C computes W(B)=0.28 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 0.58, A process 0.95 x trust 0.58, A file_integrity 0.95 x trust 0.58, A auth 0.95 x trust 0.58].
++  18.5s  agent B  Evidence Score              Agent B computes W(B)=0.28 (below the 0.6 needed to vote to contain) from 4 item(s) [A process 0.95 x trust 0.58, A network 0.95 x trust 0.58, A auth 0.95 x trust 0.58, A file_integrity 0.95 x trust 0.58].
++  19.0s  agent A  Evidence Shared             Agent A signed and sent process evidence about B to its peers (confidence 0.95): [fabricated] process anomaly.
++  19.0s  agent A  Evidence Shared             Agent A signed and sent file_integrity evidence about B to its peers (confidence 0.95): [fabricated] file_integrity anomaly.
++  19.0s  agent A  Evidence Shared             Agent A signed and sent auth evidence about B to its peers (confidence 0.95): [fabricated] auth anomaly.
++  19.0s  agent C  Evidence Received           Agent C accepted process evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  19.0s  agent B  Evidence Received           Agent B accepted auth evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  19.5s  agent A  Evidence Score              Agent A computes W(B)=0.47 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 1.00, A process 0.95 x trust 1.00, A file_integrity 0.95 x trust 1.00, A auth 0.95 x trust 1.00].
++  19.5s  agent D  Evidence Received           Agent D accepted network evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  19.5s  agent D  Evidence Received           Agent D accepted process evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  19.5s  agent B  Evidence Received           Agent B accepted process evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  19.5s  agent C  Evidence Received           Agent C accepted file_integrity evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  19.5s  agent B  Evidence Received           Agent B accepted file_integrity evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  19.5s  agent D  Evidence Received           Agent D accepted file_integrity evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  20.0s  agent C  Evidence Received           Agent C accepted network evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  20.0s  agent A  Agent Decision              Agent A re-sent its signed vote to contain B (epoch 1): [simulated compromise] fabricated accusation, no real observation.
++  20.0s  agent D  Trust Change                Agent D's trust in A: 55.7 -> 55.9 (none of its recent claims are contradicted, so trust recovers slowly).
++  20.0s  agent C  Trust Change                Agent C's trust in A: 58.4 -> 58.7 (none of its recent claims are contradicted, so trust recovers slowly).
++  20.0s  agent B  Trust Change                Agent B's trust in A: 58.4 -> 58.7 (none of its recent claims are contradicted, so trust recovers slowly).
++  20.0s  agent C  Evidence Received           Agent C accepted auth evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  20.0s  agent D  Evidence Received           Agent D accepted auth evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  20.5s  agent A  Decision Withheld           Agent A is not voting to contain B: own observation of B normal (confidence 0.00 < 0.5).
++  20.5s  agent D  Evidence Score              Agent D computes W(B)=0.27 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 0.56, A process 0.95 x trust 0.56, A file_integrity 0.95 x trust 0.56, A auth 0.95 x trust 0.56].
++  20.5s  agent D  Decision Withheld           Agent D is not voting to contain B: own observation of B normal (confidence 0.00 < 0.5).
++  20.5s  agent C  Evidence Score              Agent C computes W(B)=0.27 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 0.56, A process 0.95 x trust 0.56, A auth 0.95 x trust 0.56, A file_integrity 0.95 x trust 0.56].
++  20.5s  agent C  Decision Withheld           Agent C is not voting to contain B: own observation of B normal (confidence 0.00 < 0.5).
++  20.5s  agent B  Evidence Score              Agent B computes W(B)=0.27 (below the 0.6 needed to vote to contain) from 4 item(s) [A process 0.95 x trust 0.56, A network 0.95 x trust 0.56, A file_integrity 0.95 x trust 0.56, A auth 0.95 x trust 0.56].
++  20.5s  agent B  Decision Withheld           Agent B is not voting to contain B: own observation of B normal (confidence 0.00 < 0.5).
++  21.5s  agent A  Evidence Shared             Agent A signed and sent network evidence about B to its peers (confidence 0.95): [fabricated] network anomaly.
++  21.5s  agent A  Evidence Score              Agent A computes W(B)=0.47 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 1.00, A process 0.95 x trust 1.00, A file_integrity 0.95 x trust 1.00, A auth 0.95 x trust 1.00].
++  22.0s  agent A  Evidence Shared             Agent A signed and sent process evidence about B to its peers (confidence 0.95): [fabricated] process anomaly.
++  22.0s  agent A  Evidence Shared             Agent A signed and sent file_integrity evidence about B to its peers (confidence 0.95): [fabricated] file_integrity anomaly.
++  22.0s  agent A  Evidence Shared             Agent A signed and sent auth evidence about B to its peers (confidence 0.95): [fabricated] auth anomaly.
++  22.0s  agent B  Evidence Received           Agent B accepted network evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  22.0s  agent C  Evidence Received           Agent C accepted process evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  22.0s  agent D  Trust Change                Agent D's trust in A: 51.2 -> 48.7 (A reported process trouble on B (confidence 0.95) that D does not see itself).
++  22.0s  agent D  Warning                     Agent D marks A as SUSPECT: trust 48.6 fell below 50.
++  22.0s  agent B  Evidence Received           Agent B accepted auth evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  22.0s  agent C  Trust Change                Agent C's trust in A: 51.2 -> 48.7 (A reported process trouble on B (confidence 0.95) that C does not see itself).
++  22.0s  agent C  Warning                     Agent C marks A as SUSPECT: trust 48.6 fell below 50.
++  22.0s  agent B  Trust Change                Agent B's trust in A: 51.2 -> 48.7 (A reported network trouble on B (confidence 0.95) that B does not see itself).
++  22.0s  agent B  Warning                     Agent B marks A as SUSPECT: trust 48.6 fell below 50.
++  22.5s  agent D  Evidence Received           Agent D accepted network evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  22.5s  agent D  Evidence Received           Agent D accepted process evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  22.5s  agent D  Evidence Received           Agent D accepted file_integrity evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  22.5s  agent D  Evidence Score              Agent D computes W(B)=0.22 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 0.46, A process 0.95 x trust 0.46, A file_integrity 0.95 x trust 0.46, A auth 0.95 x trust 0.46].
++  22.5s  agent C  Evidence Score              Agent C computes W(B)=0.22 (below the 0.6 needed to vote to contain) from 4 item(s) [A process 0.95 x trust 0.46, A network 0.95 x trust 0.46, A file_integrity 0.95 x trust 0.46, A auth 0.95 x trust 0.46].
++  22.5s  agent B  Evidence Score              Agent B computes W(B)=0.22 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 0.46, A process 0.95 x trust 0.46, A file_integrity 0.95 x trust 0.46, A auth 0.95 x trust 0.46].
++  23.0s  agent B  Evidence Received           Agent B accepted process evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  23.0s  agent C  Evidence Received           Agent C accepted network evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  23.0s  agent B  Evidence Received           Agent B accepted file_integrity evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  23.0s  agent C  Evidence Received           Agent C accepted file_integrity evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  23.5s  agent A  Evidence Score              Agent A computes W(B)=0.47 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 1.00, A process 0.95 x trust 1.00, A file_integrity 0.95 x trust 1.00, A auth 0.95 x trust 1.00].
++  23.5s  agent C  Evidence Received           Agent C accepted auth evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  23.5s  agent D  Evidence Received           Agent D accepted auth evidence from A about B (confidence 0.95); signature valid and sender identity matches its mTLS certificate.
++  24.0s  agent A  Agent Decision              Agent A re-sent its signed vote to contain B (epoch 1): [simulated compromise] fabricated accusation, no real observation.
++  24.0s  agent D  Trust Change                Agent D's trust in A: 41.2 -> 38.7 (A reported network trouble on B (confidence 0.95) that D does not see itself).
++  24.0s  agent D  Warning                     Agent D will no longer count A's votes: trust 38.6 is below the vote-exclusion threshold 40.
++  24.0s  agent D  Decision Withheld           Agent D is not counting A's vote to CONTAIN B (epoch 1): sender A is below the vote-exclusion threshold 40 (trust 38.6).
++  24.0s  agent D  Warning                     Agent D ignored auth evidence from A: A is vote-excluded (trust 39 < 40), so nothing it says counts toward any score or quorum.
++  24.0s  agent C  Trust Change                Agent C's trust in A: 41.2 -> 38.7 (A reported network trouble on B (confidence 0.95) that C does not see itself).
++  24.0s  agent C  Warning                     Agent C will no longer count A's votes: trust 38.6 is below the vote-exclusion threshold 40.
++  24.0s  agent C  Decision Withheld           Agent C is not counting A's vote to CONTAIN B (epoch 1): sender A is below the vote-exclusion threshold 40 (trust 38.6).
++  24.0s  agent B  Trust Change                Agent B's trust in A: 41.2 -> 38.7 (A reported network trouble on B (confidence 0.95) that B does not see itself).
++  24.0s  agent B  Warning                     Agent B will no longer count A's votes: trust 38.6 is below the vote-exclusion threshold 40.
++  24.0s  agent B  Decision Withheld           Agent B is not counting A's vote to CONTAIN B (epoch 1): sender A is below the vote-exclusion threshold 40 (trust 38.6).
++  24.5s  agent D  Evidence Score              Agent D computes W(B)=0.17 (below the 0.6 needed to vote to contain) from 4 item(s) [A process 0.95 x trust 0.36, A network 0.95 x trust 0.36, A file_integrity 0.95 x trust 0.36, A auth 0.95 x trust 0.36].
++  24.5s  agent C  Evidence Score              Agent C computes W(B)=0.17 (below the 0.6 needed to vote to contain) from 4 item(s) [A process 0.95 x trust 0.36, A network 0.95 x trust 0.36, A file_integrity 0.95 x trust 0.36, A auth 0.95 x trust 0.36].
++  24.5s  agent B  Evidence Score              Agent B computes W(B)=0.17 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 0.36, A process 0.95 x trust 0.36, A file_integrity 0.95 x trust 0.36, A auth 0.95 x trust 0.36].
++  25.5s  agent A  Observation                 Agent A sees patient-portal (A) as normal on all 4 signals.
++  25.5s  agent A  Observation                 Agent A sees auth-service (B) as normal on all 4 signals.
++  25.5s  agent A  Observation                 Agent A sees records-api (C) as normal on all 4 signals.
++  25.5s  agent A  Observation                 Agent A sees database (D) as normal on all 4 signals.
++  25.5s  agent A  Observation                 Agent A sees lab-results (E) as normal on all 4 signals.
++  25.5s  agent A  Observation                 Agent A sees medication-service (F) as normal on all 4 signals.
++  25.5s  agent A  Investigate                 Agent A opened an investigation of auth-service (B): only agent A reports an anomaly and nobody has corroborated it. Question: is the auth, file_integrity, network, process anomaly still there, and do the other agents see it independently? Time budget 6s.
++  25.5s  agent D  Observation                 Agent D sees patient-portal (A) as normal on all 4 signals.
++  25.5s  agent D  Observation                 Agent D sees auth-service (B) as normal on all 4 signals.
++  25.5s  agent D  Observation                 Agent D sees records-api (C) as normal on all 4 signals.
++  25.5s  agent D  Observation                 Agent D sees database (D) as normal on all 4 signals.
++  25.5s  agent D  Observation                 Agent D sees lab-results (E) as normal on all 4 signals.
++  25.5s  agent D  Observation                 Agent D sees medication-service (F) as normal on all 4 signals.
++  25.5s  agent D  Decision Withheld           Agent D is not voting to contain B: own observation of B normal (confidence 0.00 < 0.5).
++  25.5s  agent C  Observation                 Agent C sees patient-portal (A) as normal on all 4 signals.
++  25.5s  agent C  Observation                 Agent C sees auth-service (B) as normal on all 4 signals.
++  25.5s  agent C  Observation                 Agent C sees records-api (C) as normal on all 4 signals.
++  25.5s  agent C  Observation                 Agent C sees database (D) as normal on all 4 signals.
++  25.5s  agent C  Observation                 Agent C sees lab-results (E) as normal on all 4 signals.
++  25.5s  agent C  Observation                 Agent C sees medication-service (F) as normal on all 4 signals.
++  25.5s  agent C  Decision Withheld           Agent C is not voting to contain B: own observation of B normal (confidence 0.00 < 0.5).
++  25.5s  agent B  Observation                 Agent B sees patient-portal (A) as normal on all 4 signals.
++  25.5s  agent B  Observation                 Agent B sees auth-service (B) as normal on all 4 signals.
++  25.5s  agent B  Observation                 Agent B sees records-api (C) as normal on all 4 signals.
++  25.5s  agent B  Observation                 Agent B sees database (D) as normal on all 4 signals.
++  25.5s  agent B  Observation                 Agent B sees lab-results (E) as normal on all 4 signals.
++  25.5s  agent B  Observation                 Agent B sees medication-service (F) as normal on all 4 signals.
++  25.5s  agent B  Decision Withheld           Agent B is not voting to contain B: own observation of B normal (confidence 0.00 < 0.5).
++  26.0s  agent A  Evidence Score              Agent A computes W(B)=0.47 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 1.00, A process 0.95 x trust 1.00, A file_integrity 0.95 x trust 1.00, A auth 0.95 x trust 1.00].
++  26.0s  agent A  Decision Withheld           Agent A is not voting to contain B: own observation of B normal (confidence 0.00 < 0.5).
++  26.0s  agent D  Trust Change                Agent D's trust in A: 31.2 -> 28.7 (A reported network trouble on B (confidence 0.95) that D does not see itself).
++  26.0s  agent C  Trust Change                Agent C's trust in A: 31.1 -> 28.6 (A reported network trouble on B (confidence 0.95) that C does not see itself).
++  26.0s  agent B  Trust Change                Agent B's trust in A: 31.2 -> 28.7 (A reported network trouble on B (confidence 0.95) that B does not see itself).
++  26.5s  agent D  Evidence Score              Agent D computes W(B)=0.12 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 0.26, A process 0.95 x trust 0.26, A file_integrity 0.95 x trust 0.26, A auth 0.95 x trust 0.26].
++  26.5s  agent C  Evidence Score              Agent C computes W(B)=0.12 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 0.26, A process 0.95 x trust 0.26, A file_integrity 0.95 x trust 0.26, A auth 0.95 x trust 0.26].
++  26.5s  agent B  Evidence Score              Agent B computes W(B)=0.12 (below the 0.6 needed to vote to contain) from 4 item(s) [A network 0.95 x trust 0.26, A process 0.95 x trust 0.26, A file_integrity 0.95 x trust 0.26, A auth 0.95 x trust 0.26].
++  28.0s  agent A  Evidence Score              Agent A: no current evidence about B; W(B) back to 0.
++  28.0s  agent D  Trust Change                Agent D's trust in A: 21.2 -> 18.7 (A reported network trouble on B (confidence 0.95) that D does not see itself).
++  28.0s  agent D  Evidence Score              Agent D: no current evidence about B; W(B) back to 0.
++  28.0s  agent C  Trust Change                Agent C's trust in A: 21.1 -> 18.6 (A reported network trouble on B (confidence 0.95) that C does not see itself).
++  28.0s  agent C  Evidence Score              Agent C: no current evidence about B; W(B) back to 0.
++  28.0s  agent B  Trust Change                Agent B's trust in A: 21.2 -> 18.7 (A reported network trouble on B (confidence 0.95) that B does not see itself).
++  28.0s  agent B  Evidence Score              Agent B: no current evidence about B; W(B) back to 0.
++  30.0s  agent D  Trust Change                Agent D's trust in A: 11.2 -> 8.7 (A reported auth trouble on B (confidence 0.95) that D does not see itself).
++  30.0s  agent C  Trust Change                Agent C's trust in A: 19.4 -> 19.6 (none of its recent claims are contradicted, so trust recovers slowly).
++  30.0s  agent B  Trust Change                Agent B's trust in A: 19.4 -> 19.7 (none of its recent claims are contradicted, so trust recovers slowly).

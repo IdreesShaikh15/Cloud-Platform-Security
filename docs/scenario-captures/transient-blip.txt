@@ -1,0 +1,101 @@
+# Real event log of the Demo Mode scenario 'A short traffic spike on the Electronic Health Records (EHR) API seen by two agents' (id: transient-blip)
+# Captured from the simulator (python3 sim/demo_server.py --dashboard), oldest line first. SIMULATOR data only: nothing here comes from a real cluster.
+# 96 lines over 11 seconds. Columns: seconds since the first line | which security agent logged it | the 'Show' filter name | the line.
+# 'Agent X' is a security guard; a bare letter at the end of a sentence (for example 'contain C') is the healthcare app: A Patient Portal, B Login & Access Service, C EHR API, D Clinical Database, E Laboratory Results Service, F Medication Service.
+
++   0.0s  agent A  Observation                 Agent A sees records-api (C): 40 outbound connections (limit 8) -> confidence 1.00.
++   0.0s  agent B  Observation                 Agent B sees records-api (C): 40 outbound connections (limit 8) -> confidence 1.00.
++   0.0s  agent A  Evidence Shared             Agent A signed and sent network evidence about C to its peers (confidence 1.00): 40 outbound conns, tx 1 KiB/s.
++   0.0s  agent A  Evidence Score              Agent A computes W(C)=0.50 (below the 0.6 needed to vote to contain) from 1 item(s) [A network 1.00 x trust 1.00].
++   0.0s  agent A  Decision Withheld           Agent A is not voting to contain C: W(C)=0.50 below 0.6.
++   0.0s  agent B  Evidence Shared             Agent B signed and sent network evidence about C to its peers (confidence 1.00): 40 outbound conns, tx 1 KiB/s.
++   0.0s  agent B  Evidence Score              Agent B computes W(C)=0.50 (below the 0.6 needed to vote to contain) from 1 item(s) [B network 1.00 x trust 1.00].
++   0.0s  agent B  Decision Withheld           Agent B is not voting to contain C: W(C)=0.50 below 0.6.
++   0.0s  agent C  Evidence Received           Agent C accepted network evidence from B about C (confidence 1.00); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent C  Evidence Received           Agent C accepted network evidence from A about C (confidence 1.00); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent D  Evidence Received           Agent D accepted network evidence from A about C (confidence 1.00); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent B  Evidence Received           Agent B accepted network evidence from A about C (confidence 1.00); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent A  Evidence Received           Agent A accepted network evidence from B about C (confidence 1.00); signature valid and sender identity matches its mTLS certificate.
++   0.0s  agent D  Evidence Received           Agent D accepted network evidence from B about C (confidence 1.00); signature valid and sender identity matches its mTLS certificate.
++   0.5s  agent A  Evidence Score              Agent A computes W(C)=1.00 (at or above the 0.6 needed to vote to contain) from 2 item(s) [A network 1.00 x trust 1.00, B network 1.00 x trust 1.00].
++   0.5s  agent B  Evidence Score              Agent B computes W(C)=1.00 (at or above the 0.6 needed to vote to contain) from 2 item(s) [B network 1.00 x trust 1.00, A network 1.00 x trust 1.00].
++   0.5s  agent D  Evidence Score              Agent D computes W(C)=1.00 (at or above the 0.6 needed to vote to contain) from 2 item(s) [A network 1.00 x trust 1.00, B network 1.00 x trust 1.00].
++   0.5s  agent D  Decision Withheld           Agent D is not voting to contain C: own observation of C normal (confidence 0.00 < 0.5).
++   0.5s  agent C  Evidence Score              Agent C computes W(C)=1.00 (at or above the 0.6 needed to vote to contain) from 2 item(s) [B network 1.00 x trust 1.00, A network 1.00 x trust 1.00].
++   0.5s  agent C  Decision Withheld           Agent C is not voting to contain C: own observation of C normal (confidence 0.00 < 0.5).
++   0.5s  agent B  Agent Decision              Agent B cast a signed vote to contain C (epoch 1): sees the anomaly itself (confidence 1.00) and W(C)=1.00 >= 0.6.
++   0.5s  agent A  Agent Decision              Agent A cast a signed vote to contain C (epoch 1): sees the anomaly itself (confidence 1.00) and W(C)=1.00 >= 0.6.
++   2.0s  agent A  Investigate                 Agent A opened an investigation of records-api (C): agents A, B report an anomaly but the other agents do not. Question: is the network anomaly still there, and do the other agents see it independently? Time budget 6s.
++   2.0s  agent C  Investigate                 Agent C joined agent A's investigation of records-api (C): re-measuring network at a higher rate.
++   2.0s  agent D  Investigate                 Agent D joined agent A's investigation of records-api (C): re-measuring network at a higher rate.
++   2.0s  agent B  Investigate                 Agent B joined agent A's investigation of records-api (C): re-measuring network at a higher rate.
++   2.0s  agent A  Investigate                 Agent A received agent C's signed re-measurement for the investigation of records-api: network: anomaly in 0 of its last 2 samples.
++   2.0s  agent A  Investigate                 Agent A received agent B's signed re-measurement for the investigation of records-api: network: anomaly in 0 of its last 2 samples.
++   2.0s  agent A  Investigate                 Agent A received agent D's signed re-measurement for the investigation of records-api: network: anomaly in 0 of its last 2 samples.
++   2.0s  agent C  Investigate                 Agent C received agent A's signed re-measurement for the investigation of records-api: network: anomaly in 1 of its last 1 samples.
++   2.0s  agent B  Investigate                 Agent B received agent A's signed re-measurement for the investigation of records-api: network: anomaly in 1 of its last 1 samples.
++   2.0s  agent C  Investigate                 Agent C received agent B's signed re-measurement for the investigation of records-api: network: anomaly in 0 of its last 2 samples.
++   2.1s  agent C  Investigate                 Agent C received agent D's signed re-measurement for the investigation of records-api: network: anomaly in 0 of its last 2 samples.
++   2.1s  agent B  Investigate                 Agent B received agent D's signed re-measurement for the investigation of records-api: network: anomaly in 0 of its last 2 samples.
++   2.1s  agent D  Investigate                 Agent D received agent B's signed re-measurement for the investigation of records-api: network: anomaly in 0 of its last 2 samples.
++   2.1s  agent D  Investigate                 Agent D received agent A's signed re-measurement for the investigation of records-api: network: anomaly in 1 of its last 1 samples.
++   2.1s  agent D  Investigate                 Agent D received agent C's signed re-measurement for the investigation of records-api: network: anomaly in 0 of its last 2 samples.
++   2.1s  agent B  Investigate                 Agent B received agent C's signed re-measurement for the investigation of records-api: network: anomaly in 0 of its last 2 samples.
++   2.5s  agent A  Observation                 Agent A sees records-api (C) as normal on all 4 signals.
++   2.5s  agent A  Evidence Score              Agent A computes W(C)=1.00 (at or above the 0.6 needed to vote to contain) from 2 item(s) [A network 1.00 x trust 1.00, B network 1.00 x trust 1.00].
++   2.5s  agent A  Decision Withheld           Agent A is not voting to contain C: own observation of C normal (confidence 0.00 < 0.5).
++   2.5s  agent B  Observation                 Agent B sees records-api (C) as normal on all 4 signals.
++   2.5s  agent B  Evidence Score              Agent B computes W(C)=1.00 (at or above the 0.6 needed to vote to contain) from 2 item(s) [B network 1.00 x trust 1.00, A network 1.00 x trust 1.00].
++   2.5s  agent B  Decision Withheld           Agent B is not voting to contain C: own observation of C normal (confidence 0.00 < 0.5).
++   2.5s  agent D  Evidence Score              Agent D computes W(C)=1.00 (at or above the 0.6 needed to vote to contain) from 2 item(s) [A network 1.00 x trust 1.00, B network 1.00 x trust 1.00].
++   2.5s  agent C  Evidence Score              Agent C computes W(C)=1.00 (at or above the 0.6 needed to vote to contain) from 2 item(s) [B network 1.00 x trust 1.00, A network 1.00 x trust 1.00].
++   4.0s  agent D  Trust Change                Agent D's trust in A: 100.0 -> 97.5 (A reported network trouble on C (confidence 1.00) that D does not see itself).
++   4.0s  agent D  Trust Change                Agent D's trust in B: 100.0 -> 97.5 (B reported network trouble on C (confidence 1.00) that D does not see itself).
++   4.0s  agent C  Trust Change                Agent C's trust in A: 100.0 -> 97.5 (A reported network trouble on C (confidence 1.00) that C does not see itself).
++   4.0s  agent C  Trust Change                Agent C's trust in B: 100.0 -> 97.5 (B reported network trouble on C (confidence 1.00) that C does not see itself).
++   4.5s  agent A  Evidence Score              Agent A computes W(C)=1.00 (at or above the 0.6 needed to vote to contain) from 2 item(s) [B network 1.00 x trust 1.00, A network 1.00 x trust 1.00].
++   4.5s  agent A  Investigate                 Agent A: Investigation of records-api (C) closed as a FALSE POSITIVE, no action taken: the anomaly is gone for 4 agents. still see it: nobody; see it gone: A, B, C, D; no usable answer: nobody.
++   4.5s  agent B  Evidence Score              Agent B computes W(C)=1.00 (at or above the 0.6 needed to vote to contain) from 2 item(s) [B network 1.00 x trust 1.00, A network 1.00 x trust 1.00].
++   4.5s  agent D  Evidence Score              Agent D computes W(C)=0.95 (at or above the 0.6 needed to vote to contain) from 2 item(s) [A network 1.00 x trust 0.95, B network 1.00 x trust 0.95].
++   4.5s  agent C  Evidence Score              Agent C computes W(C)=0.95 (at or above the 0.6 needed to vote to contain) from 2 item(s) [A network 1.00 x trust 0.95, B network 1.00 x trust 0.95].
++   5.0s  agent A  Evidence Score              Agent A: no current evidence about C; W(C) back to 0.
++   5.0s  agent B  Investigate                 Agent B: Investigation of records-api (C) closed as a FALSE POSITIVE, no action taken: the anomaly is gone for 4 agents. still see it: nobody; see it gone: A, B, C, D; no usable answer: nobody.
++   5.0s  agent D  Investigate                 Agent D: Investigation of records-api (C) closed as a FALSE POSITIVE, no action taken: the anomaly is gone for 4 agents. still see it: nobody; see it gone: A, B, C, D; no usable answer: nobody.
++   5.0s  agent C  Investigate                 Agent C: Investigation of records-api (C) closed as a FALSE POSITIVE, no action taken: the anomaly is gone for 4 agents. still see it: nobody; see it gone: A, B, C, D; no usable answer: nobody.
++   5.5s  agent B  Evidence Score              Agent B: no current evidence about C; W(C) back to 0.
++   5.5s  agent D  Evidence Score              Agent D: no current evidence about C; W(C) back to 0.
++   5.5s  agent C  Evidence Score              Agent C: no current evidence about C; W(C) back to 0.
++   6.0s  agent D  Trust Change                Agent D's trust in A: 92.7 -> 93.0 (none of its recent claims are contradicted, so trust recovers slowly).
++   6.0s  agent D  Trust Change                Agent D's trust in B: 92.7 -> 93.0 (none of its recent claims are contradicted, so trust recovers slowly).
++   6.0s  agent C  Trust Change                Agent C's trust in A: 92.7 -> 93.0 (none of its recent claims are contradicted, so trust recovers slowly).
++   6.0s  agent C  Trust Change                Agent C's trust in B: 92.7 -> 93.0 (none of its recent claims are contradicted, so trust recovers slowly).
++   8.0s  agent D  Trust Change                Agent D's trust in A: 93.7 -> 94.0 (none of its recent claims are contradicted, so trust recovers slowly).
++   8.0s  agent D  Trust Change                Agent D's trust in B: 93.7 -> 94.0 (none of its recent claims are contradicted, so trust recovers slowly).
++   8.0s  agent C  Trust Change                Agent C's trust in A: 93.7 -> 94.0 (none of its recent claims are contradicted, so trust recovers slowly).
++   8.0s  agent C  Trust Change                Agent C's trust in B: 93.7 -> 94.0 (none of its recent claims are contradicted, so trust recovers slowly).
++  10.0s  agent D  Trust Change                Agent D's trust in A: 94.7 -> 95.0 (none of its recent claims are contradicted, so trust recovers slowly).
++  10.0s  agent D  Trust Change                Agent D's trust in B: 94.7 -> 95.0 (none of its recent claims are contradicted, so trust recovers slowly).
++  10.0s  agent C  Trust Change                Agent C's trust in A: 94.7 -> 95.0 (none of its recent claims are contradicted, so trust recovers slowly).
++  10.0s  agent C  Trust Change                Agent C's trust in B: 94.7 -> 95.0 (none of its recent claims are contradicted, so trust recovers slowly).
++  10.5s  agent A  Observation                 Agent A sees patient-portal (A) as normal on all 4 signals.
++  10.5s  agent A  Observation                 Agent A sees auth-service (B) as normal on all 4 signals.
++  10.5s  agent A  Observation                 Agent A sees database (D) as normal on all 4 signals.
++  10.5s  agent A  Observation                 Agent A sees lab-results (E) as normal on all 4 signals.
++  10.5s  agent A  Observation                 Agent A sees medication-service (F) as normal on all 4 signals.
++  10.5s  agent B  Observation                 Agent B sees patient-portal (A) as normal on all 4 signals.
++  10.5s  agent B  Observation                 Agent B sees auth-service (B) as normal on all 4 signals.
++  10.5s  agent B  Observation                 Agent B sees database (D) as normal on all 4 signals.
++  10.5s  agent B  Observation                 Agent B sees lab-results (E) as normal on all 4 signals.
++  10.5s  agent B  Observation                 Agent B sees medication-service (F) as normal on all 4 signals.
++  10.5s  agent D  Observation                 Agent D sees patient-portal (A) as normal on all 4 signals.
++  10.5s  agent D  Observation                 Agent D sees auth-service (B) as normal on all 4 signals.
++  10.5s  agent D  Observation                 Agent D sees records-api (C) as normal on all 4 signals.
++  10.5s  agent D  Observation                 Agent D sees database (D) as normal on all 4 signals.
++  10.5s  agent D  Observation                 Agent D sees lab-results (E) as normal on all 4 signals.
++  10.5s  agent D  Observation                 Agent D sees medication-service (F) as normal on all 4 signals.
++  10.5s  agent C  Observation                 Agent C sees patient-portal (A) as normal on all 4 signals.
++  10.5s  agent C  Observation                 Agent C sees auth-service (B) as normal on all 4 signals.
++  10.5s  agent C  Observation                 Agent C sees records-api (C) as normal on all 4 signals.
++  10.5s  agent C  Observation                 Agent C sees database (D) as normal on all 4 signals.
++  10.5s  agent C  Observation                 Agent C sees lab-results (E) as normal on all 4 signals.
++  10.5s  agent C  Observation                 Agent C sees medication-service (F) as normal on all 4 signals.
