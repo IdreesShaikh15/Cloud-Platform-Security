@@ -95,3 +95,23 @@ Same sandbox cluster as above, rebuilt with the Synthea build (`build-images.sh`
 * The services answer with real Synthea records (`source: Synthea`, `synthetic: true`); the Laboratory Results and Medication services read the dataset from the database over HTTP, behind a token from the Login service.
 * The Live page's chart section (24 small charts, labelled `LIVE_CLUSTER`) was screenshotted from this cluster through the laptop dashboard script, with "telemetry age 0 s". A bug found while doing it: a helper function named `spark` collided with an older one, which flattened the charts; renamed and a test added.
 * Not measured here: kubelet CPU/memory with the new traffic (the Metrics API is not available in the sandbox; the idle numbers in section 5 were taken before the traffic existed), and nothing on WSL.
+
+## 8. Demo-day rehearsal (SANDBOX-CLUSTER, 22 Oct 2026)
+The same sandbox cluster, after its VM had been restarted (all pods restarted once; Docker, Minikube and the runc wrapper were brought back with the restart recipe, about 8 minutes until every pod was Ready). Then `scripts/preflight.sh`, `scripts/demo-reset.sh` and every live part of `docs/DEMO-DAY.md` were run in order, exactly as written. Times are seconds from the command.
+
+| Step | What happened (measured) |
+|---|---|
+| `preflight.sh` on the freshly restarted cluster | caught the real state: all pods "restarted in the last 30 minutes" (the VM restart), leftover incident annotations on `records-api`, and workload E at trust 92. All three were genuine. `RESTART_WINDOW_MIN=1` was needed for the rehearsal because of the VM restart. Runtime about 13 s (with the port checks about 20 s). |
+| `demo-reset.sh` from a clean state | 75 s; ended `25 PASS, 0 WARN, 0 FAIL ... READY TO PRESENT` (apart from the explained restarts). From the dirty state left by the centralized comparison (controller running, `auth-service` isolated, annotations, marker): 72 s, all six workloads still matched the manifest, final preflight clean, all trust values 100. |
+| Agent down (`scale ... --replicas=0` + forced pod delete) | page showed DEGRADED, "3 of 4 (unreachable: B)" after **4 s**. Without the forced delete it takes **17-33 s** (the agent's 30 s shutdown wait). Back to 4 of 4 **7-31 s** after scaling up. |
+| Tripwire on E with agent B down | contained **4 s**, Agreement by A, C, D (B unavailable); clean pod and Recovery Check at **39 s**; Limited **52 s**, Monitored **62 s**, Confirmed by Peers **71 s**, Normal Access Restored **84 s**; the alert is RESOLVED with signers A, C, D; no NetworkPolicy remains. A first run took 92 s to workload trust 100. |
+| Lying agent (A accuses B) | `auth-service` never isolated, no NetworkPolicy; the other agents' trust in A fell from 100 starting at about 13-30 s to **0 at 51-60 s**. |
+| Centralized comparison | `switch-mode.sh baseline` 6 s; the page says centralized mode (the four agents take about 30 s to disappear); `simulate-compromised-controller.sh B` isolated the **healthy `auth-service` within 2-3 s**. |
+
+**Problems found and fixed during the rehearsal (each is in the commit history):**
+1. `scripts/laptop-dashboard.sh` left orphan processes after Ctrl-C or `kill`: the simulator server's child dashboard and the `kubectl port-forward` children kept their ports, and the next start silently showed the **old** page with the old Security Alerts. It now stops every child process. Verified: after a plain `kill` nothing is left; a fresh start shows 0 alerts. (A SIGINT sent to a *background* job is ignored by the shell, so it was verified with SIGTERM; in a real terminal Ctrl-C is the normal way to stop it.)
+2. `demo-reset.sh` first switched back to the distributed agents *before* cleaning (they briefly saw the old incident state); it now removes the controller, cleans, then starts the agents.
+3. `preflight.sh`: a parsing bug hid the real pod problem as a count mismatch; restart handling now FAILs within a window and WARNs after it; if the cluster does not answer it stops after the first section instead of printing 30 follow-on failures.
+4. The runbook originally said deleting an agent pod shows "3 of 4" for a while; it does so for only 2 s because the replacement starts quickly, so the runbook now scales the agent to 0 and force-deletes it.
+
+**Not rehearsed:** forgery and obstruct as live steps (listed as spare segments), anything on WSL/Docker Desktop, the browser clicks themselves (the dashboard API was read instead, plus the earlier screenshots).
