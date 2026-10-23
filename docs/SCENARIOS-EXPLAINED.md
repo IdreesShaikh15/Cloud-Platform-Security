@@ -49,7 +49,13 @@ Above the log there are two rows of buttons. **Every button starts switched on; 
   * **Liar / forger scenarios** (false-accusation, forge-evidence, obstruct, ambiguous): leave **on** *Warning*, *Trust Change*, *Failed Verification*, *Investigate*, *Decision Withheld*, *Agent Decision*; switch **off** the rest.
 * The search box accepts any word, e.g. `SUSPECT`, `isolated`, `FALSE POSITIVE`, `HUMAN REVIEW`.
 * Switching to the **Detailed** view (top right) adds the Investigate tab, the "Who agreed" tables and the Activity Log tab. The **Simple** view is better on stage.
-* Tip from my runs: the **Security Alerts** list keeps the alerts of the scenarios you ran earlier in the same browser session (my third scenario showed three alerts). The newest is on top; or restart the dashboard for a clean list.
+* **Known quirk of the Security Alerts tab (important, found while checking this document).** The dashboard builds that list from what it has seen since it was started, and **Reset does not clear it**.
+  After "Reset" the first alert of the next scenario is named "C ... #1" again, so the old and the new run can be **mixed in one alert page**. Examples seen in my runs: after scenario 1 an old
+  "C Electronic Health Records (EHR) API #1 ... RESOLVED" alert was still listed while scenarios 2, 3, 5 and 7 (which isolate nothing) were running; and in scenario 13 the alert's story box said
+  "4 of the 4 security agents agreed (A B C D)" although the table beside it said "agreed by B C D" and the log line says "Quorum reached: B, C, D signed ...".
+  **How to stay safe on stage:** (1) restart the dashboard before the presentation and, if you can, before the key scenarios (Ctrl-C, run `python3 sim/demo_server.py --dashboard` again); (2) for "who agreed" always trust the log line
+  "Quorum reached: ... signed ..." and the table column "agreed by", not the number in the story box; (3) scenarios that isolate nothing (2, 3, 5, 7) create **no** Security Alert: that is the correct result, do not look for one.
+* The **Agents** row of buttons reads **A B C D CTRL**; "CTRL" is the central controller of the centralized-comparison mode and is empty in these scenarios.
 * Press **Reset** before every new scenario (the page says "press Reset before the next scenario").
 
 ### 1.4 Who is who: the "four security guards with walkie-talkies" picture
@@ -167,7 +173,7 @@ If you present the **live cluster** parts from `docs/DEMO-DAY.md`, use Demo Mode
 **Outcome and what it proves.** The attack was contained **1.0 s** after the first line and the service was back to normal access at **+17.6 s** (simulator time; about 84 s on the real cluster). Every step carried 3-of-4 agreement; no single guard decided anything, and access came back in stages, not all at once.
 
 **What to click.**
-* **Overview** tab: watch the **Electronic Health Records (EHR) API** card change state (Being replaced -> Recovery Check -> Returning to normal access, with the five-step bar Isolation / Limited Access / Monitored Access / Confirmed by Peers / Normal Access Restored) and the top counters ("Healthy workloads 5 of 6" and back to "6 of 6"). Point at the **Services** table: "ISOLATED NOW" and the sentence about what stops working.
+* **Overview** tab: watch the **Electronic Health Records (EHR) API** card change state (Being replaced -> Recovery Check -> Returning to normal access, with the five-step bar Isolation / Limited Access / Monitored Access / Confirmed by Peers / Normal Access Restored) and the top counters (seen in my run: "Healthy workloads 5 of 6", "Unhealthy workloads 1", "Active security alerts 1" during the incident, then "6 of 6" and "Recoveries succeeded 1"). Point at the **Services** table: "ISOLATED NOW" and the sentence about what stops working.
 * **Security Alerts** tab -> click the new alert: read the **story box** ("What happened ...") aloud.
 * In **Live activity**: Agents row: leave only **A**. Show row: **Story only** recipe (Agent Decision, Agreement Reached, Action Taken, Warning).
 
@@ -202,9 +208,11 @@ If you present the **live cluster** parts from `docs/DEMO-DAY.md`, use Demo Mode
 **Outcome and what it proves.** The Login & Access Service was **never isolated**: the run contains **no** "Quorum reached" and no "Action Taken" line at all. The liar's trust kept falling (to about 9 by +30 s). **One compromised guard can neither cause damage nor go unnoticed.** (With a single central controller the same lie would have worked: that is the comparison in scenario/part "centralized".)
 
 **What to click.**
-* **Overview**: the Login & Access Service card stays **Healthy / trust 100** the whole time; the Agent A badge turns **SUSPECT** (Agent trust falls).
+* **Overview**: the Login & Access Service card stays **Healthy / trust 100** the whole time; **Agent A's card shows the label "simulated compromise: false-accusation"** and its **Agent trust number falls** (in my run: 58.2 at +20 s; below 50 the other guards call it SUSPECT).
+  The counter "Active investigations" goes to **1** for a few seconds and back to 0.
+* **No Security Alert is created** (nothing was isolated). Do not open that tab; if an old alert from an earlier scenario is still listed, ignore it.
 * **Live activity**: Show recipe **Liar**: Warning, Trust Change, Investigate, Decision Withheld, Agent Decision. Search the word `SUSPECT`.
-* Detailed view -> **Investigate** tab: the closed investigation "FALSE POSITIVE"; **Who agreed**/"Waiting for agreement": A "Agrees" alone, B C D "Disagree".
+* Detailed view -> **Investigate** tab: the investigation of the Login & Access Service ("Is the auth, file_integrity, network, process anomaly ... still present, and do other agents see it independently?") and, when it ends, its outcome "FALSE POSITIVE".
 
 **Say it out loud (about 40 s).** "Now one of our four guards is a traitor. It signs a false report that the login service is under attack, and even votes to lock it. Look what happens: nothing. One vote is not three. The other guards re-measure, see nothing, and close the alarm as a false positive. And they remember: they lower their trust in the liar, flag it as suspect, and soon ignore its votes completely. One compromised guard cannot hurt the hospital, and cannot hide either."
 
@@ -237,7 +245,7 @@ If you present the **live cluster** parts from `docs/DEMO-DAY.md`, use Demo Mode
 **What to click.**
 * **Live activity**: Show recipe **Liar**; in particular switch **on** *Failed Verification* and read that one line aloud.
 * Detailed view -> **Activity Log** tab -> "Messages that failed verification" (the rejected message is listed there with who sent it).
-* **Overview**: Agent A badge -> SUSPECT; the Clinical Database card stays Healthy.
+* **Overview**: Agent A's card shows the label "simulated compromise" and its Agent trust collapses within seconds; the Clinical Database card stays Healthy. No Security Alert is created (nothing was isolated).
 
 **Say it out loud (about 35 s).** "This time the traitor does not just lie, it forges: it sends a report in guard B's name. Look at this line: the message says it is from B, but the radio badge says A, so guard B throws it away and immediately lowers its trust in A. Guard C flags A as suspect and stops counting its votes. Every message is signed and every link is checked, so you cannot speak with someone else's voice, and the database was never touched."
 
@@ -268,9 +276,9 @@ If you present the **live cluster** parts from `docs/DEMO-DAY.md`, use Demo Mode
 **Outcome and what it proves.** The whole cycle (isolate, replace, check, return) completed with **three of four** guards: **one failed guard does not stop protection**. Press **Reset** afterwards: guard D stays down in the simulator until you do.
 
 **What to click.**
-* **Overview**: the counter "Agents connected 3 of 4" and the Agent D card marked unavailable; the EHR API card going through the stages.
+* **Overview**: the counter **"Agents connected 3 of 4"** turns red a moment after you press Start (seen in my run) and **stays 3 of 4 after the scenario ends** (guard D stays down until Reset); the EHR API card goes through the stages and "Healthy workloads" shows 5 of 6, then 6 of 6.
 * **Live activity**: Show recipe **Story only** plus *Agent Connection*. Agents row: leave A (or B).
-* Detailed view -> **Security Alerts** -> alert -> **Who agreed**: A, B, C "Agrees", D "Unavailable" (never counted as a yes).
+* The Security Alerts story box may say "4 of the 4 ... agreed"; the true number is on the log line ("Quorum reached: A, B, C signed ...") and in the alert table column "agreed by": say "three of the four" (see the quirk in 1.3).
 
 **Say it out loud (about 35 s).** "First I switch off one of our four guards. Watch the log: guard A reports it lost the link to guard D. Now the same attack as before. Look at the agreement line: only A, B and C signed. Three out of four is enough, so the service is still isolated, cleaned and returned to normal. A guard going down does not mean the hospital is unprotected."
 
@@ -301,7 +309,7 @@ If you present the **live cluster** parts from `docs/DEMO-DAY.md`, use Demo Mode
 **Outcome and what it proves.** **Nothing was isolated** and nobody lost access: the platform does not panic on a harmless blip, because it needs three independent guards to agree and re-checks a split opinion first. (Honest limit, stated in the results: if **three or more** guards see a harmless spike, a threshold detector cannot tell it from an attack.)
 
 **What to click.**
-* **Overview**: every card stays **Healthy**; "Active investigations 1" appears briefly on the counters.
+* **Overview**: every card stays **Healthy** and the counter "Healthy workloads" stays **6 of 6**; "Active investigations" shows **1** for a few seconds (seen in my run) and returns to 0. No Security Alert is created.
 * **Live activity**: Show recipe **Liar** (Investigate, Agent Decision, Decision Withheld, Trust Change).
 * Detailed view -> **Investigate** tab: the closed "FALSE POSITIVE".
 
@@ -339,6 +347,7 @@ If you present the **live cluster** parts from `docs/DEMO-DAY.md`, use Demo Mode
 * **Overview**: the EHR API card turns to isolated about 8 s in.
 * **Live activity**: Show recipe **Liar** (Investigate, Agent Decision, Agreement Reached, Action Taken).
 * Detailed view -> **Investigate** tab: "CONFIRMED", and the investigation that is "superseded" once the vote happened.
+* The agreement was **B, C, D** (three), as the log line says; ignore any "4 of the 4" wording in the Security Alerts story box (see the quirk in 1.3).
 
 **Say it out loud (about 35 s).** "This is the quiet thief: barely over the limit, nine connections instead of eight. One guard alone would never act. Two guards notice, two do not, so the system investigates: everybody measures again. This time they all see it, still there. The investigation is marked CONFIRMED, three guards vote, and the service is isolated. A slow attack that hides under every single alarm threshold is still caught."
 
@@ -369,7 +378,7 @@ If you present the **live cluster** parts from `docs/DEMO-DAY.md`, use Demo Mode
 **Outcome and what it proves.** With no attack and no agreement, **nothing is isolated** but a person is told. The system separates "clearly an attack" (3 of 4), "clearly nothing" (false positive) and "cannot tell" (ask a human), instead of forcing a guess.
 
 **What to click.**
-* **Overview**: all cards Healthy; the EHR API card gets a "needs a look / under watch" note.
+* **Overview**: all cards stay Healthy (no alert is created); the investigation counter goes to 1 and the EHR API is "under watch" afterwards.
 * **Live activity**: Show recipe **Liar**; search `HUMAN REVIEW`.
 * Detailed view -> **Investigate** tab: "AMBIGUOUS".
 
@@ -562,7 +571,8 @@ If you present the **live cluster** parts from `docs/DEMO-DAY.md`, use Demo Mode
 
 **What to click.**
 * **Overview**: the EHR API goes through isolation and recovery as in scenario 1.
-* Detailed view -> **Security Alerts** -> alert -> **Who agreed**: A "Disagrees" with the reason "withholding its vote", B, C, D "Agrees".
+* **Security Alerts** tab: the alert row's column **"agreed by" shows B C D** (seen in my run). Its story box said "4 of the 4 security agents agreed (A B C D)": that wording is wrong for this scenario (the dashboard counts guard A as having "seen" the evidence); say "exactly three: B, C and D" and point at the table column or the log line instead (see the quirk in 1.3).
+* Detailed view -> alert -> **Who agreed**: A "Disagrees" with its reason, B C D "Agrees" (this table was not re-checked in my screen test).
 * **Live activity**: Show *Decision Withheld* and *Agreement Reached*; search `obstruction`.
 
 **Say it out loud (about 35 s).** "This guard does not lie, it just refuses to help. Watch its lines: 'not voting, withholding its vote' at every step. And still: B, C and D, exactly three, agree to isolate, to accept the clean copy, and to open the door step by step. The platform keeps working with one guard on strike. I will also be honest about the limit: there is no spare. Two silent guards would stop it."
