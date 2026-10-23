@@ -8,7 +8,8 @@
 # READ-ONLY. It never changes the cluster, the project or any file in it: only `get`, the API-server read proxy, a read-only
 # `python -c` hash inside each workload (scripts/verify-baseline.py), `--dry-run=server` requests made AS the agents' identity (the webhook is asked and must refuse; nothing is stored)
 # and HTTP GETs. Exit code 0 = no FAIL (WARN is allowed), 1 = at least one FAIL, 2 = bad usage.
-# Environment: EXPECT_CONTEXT (cr-platform), EXPECT_NODES (4), DASH_PORT (8091), PORTAL_PORT (18090), KUBECTL (kubectl).
+# Environment: EXPECT_CONTEXT (cr-platform), EXPECT_NODES (4), DASH_PORT (8091), PORTAL_PORT (18090), KUBECTL (kubectl),
+# RESTART_WINDOW_MIN (30: a pod restart within this many minutes is a FAIL, an older one a WARN).
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 EXPECT_CONTEXT="${EXPECT_CONTEXT:-cr-platform}"; EXPECT_NODES="${EXPECT_NODES:-4}"
@@ -78,11 +79,11 @@ NWORK=$(( ${#NAMES[@]} > 0 ? ${#NAMES[@]} - 1 : 0 ))
 pod_check() {   # pod_check <namespace> <label>=<value> <display name> <expected count>
   local ns="$1" sel="$2" name="$3" want="$4"
   kc -n "$ns" get pods -l "$sel" -o json > "$T/p.json" 2>/dev/null || echo '{"items":[]}' > "$T/p.json"
-  py "$T/p.json" "$want" > "$T/p.out" <<'PY'
+  py "$T/p.json" "$want" "${RESTART_WINDOW_MIN:-30}" > "$T/p.out" <<'PY'
 import json, sys, datetime
-d = json.load(open(sys.argv[1])); want = int(sys.argv[2]); now = datetime.datetime.now(datetime.timezone.utc)
+d = json.load(open(sys.argv[1])); want = int(sys.argv[2]); win = float(sys.argv[3]); now = datetime.datetime.now(datetime.timezone.utc)
 items = [p for p in d["items"] if not p["metadata"].get("deletionTimestamp")]
-bad = []; recent = []
+bad = []; recent = []; old = []
 for p in items:
     cs = p["status"].get("containerStatuses") or []
     if not (p["status"].get("phase") == "Running" and cs and all(c["ready"] for c in cs)):
@@ -91,14 +92,16 @@ for p in items:
         if c["restartCount"] > 0:
             t = ((c.get("lastState") or {}).get("terminated") or {}).get("finishedAt")
             age = (now - datetime.datetime.fromisoformat(t.replace("Z", "+00:00"))).total_seconds() / 60 if t else 0
-            recent.append(f'{p["metadata"]["name"]} restarted {c["restartCount"]}x, last {age:.0f} min ago')
-print(len(items), want, "|".join(bad), "|".join(recent))
+            (recent if age <= win else old).append(f'{p["metadata"]["name"]} restarted {c["restartCount"]}x, last {age:.0f} min ago')
+print(len(items), want, "|".join(bad), "|".join(recent), "|".join(old), sep="#")
 PY
-  local n w b r; read -r n w b r < "$T/p.out" || true
+  local n w b r o; IFS="#" read -r n w b r o < "$T/p.out" || true
   if [ "${n:-0}" != "$want" ] || [ -n "${b:-}" ]; then
     fail "$name: ${n:-0} pod(s) found, $want expected; not Running/Ready: ${b:-none}" "Wait 1-2 minutes. If it persists: kubectl -n $ns describe pod -l $sel | tail -30 (Pending usually means too little Docker Desktop memory: give it 6 GB+)."
   elif [ -n "${r:-}" ]; then
-    warn "$name: ${r//|/; }" "A restart can mean it crashed. Check: kubectl -n $ns logs -l $sel --previous --tail=20. If the last restart was before today's setup it is harmless."
+    fail "$name restarted in the last 30 minutes: ${r//|/; }" "Something crashed or the machine was restarted. Check: kubectl -n $ns logs -l $sel --previous --tail=20. If it was a laptop/Docker restart, run bash scripts/demo-reset.sh (fresh agents), then re-run this."
+  elif [ -n "${o:-}" ]; then
+    warn "$name: ${o//|/; }" "An older restart; harmless if you know why (e.g. Docker was restarted yesterday). Check: kubectl -n $ns logs -l $sel --previous --tail=20."
   else pass "$name: Running and Ready, no restarts"; fi
 }
 for ((i=0; i<NWORK; i++)); do pod_check healthcare "app=${NAMES[$i]}" "${NAMES[$i]}" 1; done

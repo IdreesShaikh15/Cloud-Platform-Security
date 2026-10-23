@@ -54,8 +54,9 @@ step "4/8 removing isolation policies, the experiment marker and incident annota
 for np in $(kubectl -n healthcare get networkpolicy -o name 2>/dev/null | grep 'resilience-isolate' || true); do run kubectl -n healthcare delete "$np" --ignore-not-found; done
 run kubectl -n resilience delete configmap cr-attack-marker --ignore-not-found
 for d in "${WORK[@]}"; do
+  if [ "$DRY" = 1 ]; then echo "   [dry-run] remove the resilience.io/{epoch,phase,stage,isolated-epoch,recovered-epoch,recovery-*,qc*,action,authorized-by} annotations from deploy/$d"; continue; fi
   for k in epoch phase stage isolated-epoch recovered-epoch recovery-requested-at recovery-attempt qc action authorized-by qc-votes; do
-    run kubectl -n healthcare annotate deploy "$d" "resilience.io/$k-" >/dev/null 2>&1 || true
+    kubectl -n healthcare annotate deploy "$d" "resilience.io/$k-" >/dev/null 2>&1 || true
   done
 done
 
