@@ -34,21 +34,24 @@ fi
 mapfile -t NAMES < <(python3 "$ROOT/scripts/gen-workloads.py" --names 2>/dev/null)
 [ "${#NAMES[@]}" -ge 5 ] || { echo "cannot read the workload names from config/workloads.json" >&2; exit 2; }
 WORK=("${NAMES[@]:0:$(( ${#NAMES[@]} - 1 ))}")
-AGENTS=(agent-a agent-b agent-c agent-d)
+AGENTS=(agent-a agent-b agent-c agent-d); NEED_AGENTS=0
 echo "context $CTX; workloads: ${WORK[*]}${DRY:+}"; [ "$DRY" = 1 ] && echo "(dry run: nothing will be changed)"
 
 step "1/8 centralized baseline? (the four distributed agents must be the decision-makers)"
 if kubectl -n resilience get deploy central-controller >/dev/null 2>&1; then
-  echo "   the central controller is deployed: switching back to the distributed agents"
-  run bash "$ROOT/scripts/switch-mode.sh" distributed
+  echo "   the central controller is deployed: removing it (the agents are started again in step 7, after the state is clean)"
+  run kubectl delete -f "$ROOT/k8s/baseline/central-controller.yaml" --ignore-not-found
+  NEED_AGENTS=1
 else echo "   no: distributed mode is already active"; fi
 
 step "2/8 switching every simulated compromise OFF (idempotent)"
 for a in "${AGENTS[@]}"; do run kubectl -n resilience exec "deploy/$a" -- python -m resilience restore 2>/dev/null || echo "   ($a not answering: it is restarted in step 7 anyway)"; done
 
 step "3/8 stopping the four agents so nothing reacts while the state is cleaned"
-run kubectl -n resilience scale deploy "${AGENTS[@]}" --replicas=0
-run kubectl -n resilience wait --for=delete pod -l app=resilience-agent --timeout=90s
+if [ "$NEED_AGENTS" = 0 ]; then
+  run kubectl -n resilience scale deploy "${AGENTS[@]}" --replicas=0
+  run kubectl -n resilience wait --for=delete pod -l app=resilience-agent --timeout=90s
+else echo "   the agents were removed together with the baseline mode: nothing to stop"; fi
 
 step "4/8 removing isolation policies, the experiment marker and incident annotations"
 for np in $(kubectl -n healthcare get networkpolicy -o name 2>/dev/null | grep 'resilience-isolate' || true); do run kubectl -n healthcare delete "$np" --ignore-not-found; done
@@ -80,7 +83,7 @@ else
 fi
 
 step "7/8 starting the agents again (fresh pods: trust 100, empty alert history) and restarting the in-cluster dashboard"
-run kubectl -n resilience scale deploy "${AGENTS[@]}" --replicas=1
+if [ "$NEED_AGENTS" = 1 ]; then run kubectl apply -f "$ROOT/k8s/resilience/20-agents.yaml"; else run kubectl -n resilience scale deploy "${AGENTS[@]}" --replicas=1; fi
 for a in "${AGENTS[@]}"; do run kubectl -n resilience rollout status "deploy/$a" --timeout=180s; done
 run kubectl -n resilience rollout restart deploy/dashboard
 run kubectl -n resilience rollout status deploy/dashboard --timeout=180s

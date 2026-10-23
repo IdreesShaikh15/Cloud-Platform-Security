@@ -9,7 +9,8 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PORT="${PORT:-8091}"; BASE="${FORWARD_BASE:-18081}"; NS="${NS:-resilience}"
 PIDS=()
-cleanup() { for p in "${PIDS[@]}"; do kill "$p" 2>/dev/null; done; wait 2>/dev/null; }
+# each forward loop runs kubectl as a child: stop the child too, or the port stays taken after Ctrl-C
+cleanup() { for p in "${PIDS[@]}"; do pkill -P "$p" 2>/dev/null; kill "$p" 2>/dev/null; done; wait 2>/dev/null; }
 trap cleanup EXIT INT TERM
 
 LIVE=""

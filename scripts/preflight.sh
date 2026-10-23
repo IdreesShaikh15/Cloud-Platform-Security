@@ -99,7 +99,7 @@ PY
   if [ "${n:-0}" != "$want" ] || [ -n "${b:-}" ]; then
     fail "$name: ${n:-0} pod(s) found, $want expected; not Running/Ready: ${b:-none}" "Wait 1-2 minutes. If it persists: kubectl -n $ns describe pod -l $sel | tail -30 (Pending usually means too little Docker Desktop memory: give it 6 GB+)."
   elif [ -n "${r:-}" ]; then
-    fail "$name restarted in the last 30 minutes: ${r//|/; }" "Something crashed or the machine was restarted. Check: kubectl -n $ns logs -l $sel --previous --tail=20. If it was a laptop/Docker restart, run bash scripts/demo-reset.sh (fresh agents), then re-run this."
+    fail "$name restarted in the last 30 minutes: ${r//|/; }" "Something crashed, or Docker/the laptop was restarted. Look: kubectl -n $ns logs -l $sel --previous --tail=20. If you know the cause (e.g. you restarted Docker) and everything else is green, it is safe to continue: re-run with RESTART_WINDOW_MIN=1 bash scripts/preflight.sh, or wait 30 minutes."
   elif [ -n "${o:-}" ]; then
     warn "$name: ${o//|/; }" "An older restart; harmless if you know why (e.g. Docker was restarted yesterday). Check: kubectl -n $ns logs -l $sel --previous --tail=20."
   else pass "$name: Running and Ready, no restarts"; fi
