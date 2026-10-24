@@ -587,6 +587,24 @@ def decision_logs_view(live: dict) -> dict:
             "ok": (not broken) if per else None}
 
 
+def trust_matrix_view(live: dict, ids: list) -> dict:
+    """Who trusts whom: rows = the agent doing the judging, columns = the agent being judged. Only what each reachable agent
+    REPORTS about its peers (its own trust table and its own SUSPECT / votes-ignored flags); an agent that does not answer has no
+    row (the page shows "not reported"), and an agent never judges itself (no diagonal entry). Nothing is computed or filled in here.
+    The "Agent trust" shown on a card is the median of one column (the other agents' scores for that agent): see aggregate()."""
+    th = next((s.get("thresholds") for s in live.values() if s.get("thresholds")), None) or {}
+    rows = {}
+    for judge in ids:
+        s = live.get(judge)
+        if not s:
+            continue
+        trust, flags = s.get("agent_trust") or {}, s.get("flags") or {}
+        rows[judge] = {j: {"trust": trust[j], "suspect": (flags.get(j) or {}).get("suspect"),
+                           "vote_excluded": (flags.get(j) or {}).get("vote_excluded")}
+                       for j in ids if j != judge and j in trust}
+    return {"agents": list(ids), "rows": rows, "suspect_below": th.get("suspect_below"), "vote_min_trust": th.get("vote_min_trust")}
+
+
 def aggregate() -> dict:
     statuses = ch().collector.snapshot()
     if not statuses and not ch().collector.last_poll:     # poller not warmed up yet
@@ -657,7 +675,7 @@ def aggregate() -> dict:
             # The baseline controller is "running" only if it ANSWERS, not merely because a URL is configured
             # (the live dashboard manifest always configures one, even when no controller is deployed).
             "baseline_up": base is not None,
-            "nodes": nodes, "decisions": uniq[:15], "rejections": rejections,
+            "nodes": nodes, "trust_matrix": trust_matrix_view(live, ids), "decisions": uniq[:15], "rejections": rejections,
             "investigations": investigations_view(live),
             "incidents": incident_list(statuses),
             "summary": summary_view(nodes, live, ids, investigations_view(live)),

@@ -208,7 +208,7 @@ If you present the **live cluster** parts from `docs/DEMO-DAY.md`, use Demo Mode
 **Outcome and what it proves.** The Login & Access Service was **never isolated**: the run contains **no** "Quorum reached" and no "Action Taken" line at all. The liar's trust kept falling (to about 9 by +30 s). **One compromised guard can neither cause damage nor go unnoticed.** (With a single central controller the same lie would have worked: that is the comparison in scenario/part "centralized".)
 
 **What to click.**
-* **Overview**: the Login & Access Service card stays **Healthy / trust 100** the whole time; **Agent A's card shows the label "simulated compromise: false-accusation"** and its **Agent trust number falls** (in my run: 58.2 at +20 s; below 50 the other guards call it SUSPECT).
+* **Overview**: the Login & Access Service card stays **Healthy / trust 100** the whole time; **Agent A's card shows the label "simulated compromise: false-accusation"** and its row **"Agent A (security agent on this node): trust ..."** falls (in an earlier run: 58.2 at +20 s; below 50 the other guards call it SUSPECT). Under the number the card lists the three guards' own scores ("median of B, C, D ...: B: 21.2 · C: 21.1 · D: 21.1"), and the **Who trusts whom** table (Overview, open in Detailed view) shows the same numbers per guard with the "votes ignored" tag.
   The counter "Active investigations" goes to **1** for a few seconds and back to 0.
 * **No Security Alert is created** (nothing was isolated). Do not open that tab; if an old alert from an earlier scenario is still listed, ignore it.
 * **Live activity**: Show recipe **Liar**: Warning, Trust Change, Investigate, Decision Withheld, Agent Decision. Search the word `SUSPECT`.

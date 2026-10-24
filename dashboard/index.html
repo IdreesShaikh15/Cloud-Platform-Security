@@ -181,10 +181,12 @@
 <div class="counters" id="counters" aria-label="Summary counters"></div>
 <div class="grid" id="nodes"></div>
 <div class="hint">Click a card to open that agent's own view (what it measures, whom it trusts, how it scores the evidence, why it has or has not agreed).</div>
+<details class="evd" id="trustgrid"><summary><b>Who trusts whom</b> (each security agent's own trust score for each of the others)</summary>
+  <div id="trustgrid-body" class="mut">no data yet</div></details>
 <details class="evd meaning adv" id="meaning"><summary>What do the numbers on these cards mean? (four separate things; there is deliberately no single combined "security score")</summary>
   <ul>
-    <li><b>Workload trust (0-100)</b>: how much the agents trust <i>this workload</i> right now. It falls while they see something wrong, restarts at 0 when a workload is isolated, and has to climb back (20, 40, 60, 80) before each step back to normal access.</li>
-    <li><b>Agent trust (0-100)</b>: how much the <i>other agents</i> trust <i>this agent's evidence</i> (their median). It falls only when what an agent claims is contradicted by what the others see themselves. A low value marks it SUSPECT; a very low one means its votes are ignored.</li>
+    <li><b>Workload trust (0-100)</b>: the <i>service's own health</i>: how much the agents trust <i>this workload</i> right now. It falls while they see something wrong with it, restarts at 0 when it is isolated, and has to climb back (20, 40, 60, 80) before each step back to normal access.</li>
+    <li><b>Agent trust (0-100)</b>: about a <i>security agent</i>, not a service: how much the <i>other three agents</i> trust <i>this agent's evidence</i> (the median of their three separate scores, listed on its card and in "Who trusts whom"). It falls only when what an agent claims is contradicted by what the others see themselves. Below 50 it is marked SUSPECT; below 40 its votes are ignored.</li>
     <li><b>Evidence confidence (0 to 1)</b>: how sure <i>one agent</i> is about <i>one kind of signal</i> (Network Activity, Running Processes, File Changes, Failed Logins) on one workload. 0 is normal.</li>
     <li><b>Recovery Check</b>: pass or fail, not a score. Before a replacement is accepted, the agents check that it is healthy, that its files match the known-good copy, that it behaves normally and that it is really a new instance.</li>
     <li><b>Agreement Reached (3 of 4)</b>: an action such as Isolation happens only when at least 3 of the 4 agents have signed a vote for it. A missing vote is never approval.</li>
@@ -283,8 +285,8 @@ const V = {
   resp: {agrees:["✔", "Agrees"], disagrees:["✖", "Disagrees"], unavailable:["⛔", "Unavailable"], not_yet:["…", "Not yet responded"], failed_verification:["⚠", "Message failed verification"]},
 };
 const HELP = {
-  workloadTrust: "How much the agents trust this workload right now, 0-100. It falls while they see something wrong, restarts at 0 when a workload is isolated, and must climb back (20, 40, 60, 80) before each step back to normal access.",
-  agentTrust: "How much the OTHER agents trust this agent's evidence, 0-100 (their median). It falls only when what this agent claims is contradicted by what they see themselves. A low value marks the agent SUSPECT; a very low one means its votes are ignored.",
+  workloadTrust: "Workload trust is about the SERVICE itself (the healthcare app), 0-100: its own health as the security agents see it. It falls while they see something wrong with the service, restarts at 0 when the service is isolated, and must climb back (20, 40, 60, 80) before each step back to normal access. It says nothing about any security agent.",
+  agentTrust: "Agent trust is about a SECURITY AGENT (a guard), not about a service: how much the OTHER three security agents trust this one, 0-100. Each of the three keeps its own score for it (shown under the number); the card shows their median. It falls only when what this agent reports is contradicted by what the others see themselves. Below 50 the agent is SUSPECT; below 40 its votes are ignored. See \"Who trusts whom\" for all the scores.",
   quorum: "Agreement Reached (3 of 4): an action such as Isolation happens only when at least 3 of the 4 agents have signed a vote for it. One or two agents can never do it alone, and a missing vote is never approval.",
   evidenceScore: "Evidence score: how strongly the evidence about a workload adds up, counting each report in proportion to how much its sender is trusted. An agent agrees to isolate only if the score is high enough AND it sees the problem itself.",
   confidence: "Evidence confidence: how sure ONE agent is about ONE kind of signal on ONE workload, from 0 (normal) to 1 (certain). It is not a trust score, and there is no combined score.",
@@ -678,6 +680,7 @@ let VIEW = "simple";
 try { const q = new URLSearchParams(location.search).get("view"), st = localStorage.getItem("cr-view"); VIEW = q === "detailed" || q === "simple" ? q : st === "detailed" ? "detailed" : "simple"; } catch (e) {}
 function setView(v) {
   VIEW = v; document.body.dataset.view = v;
+  const tg = document.getElementById("trustgrid"); if (tg) tg.open = v === "detailed";        // collapsed in Simple, open in Detailed
   for (const b of document.querySelectorAll("#modebar .vsw button")) b.setAttribute("aria-pressed", String(b.dataset.view === v));
   try { localStorage.setItem("cr-view", v); } catch (e) {}
 }
@@ -941,6 +944,23 @@ function renderDependencies(nodes) {
     }).join("");
 }
 
+// "Who trusts whom": rows = the agent judging, columns = the agent being judged; ONLY what the agents report (backend: trust_matrix_view)
+function renderTrustGrid(s) {
+  const el = document.getElementById("trustgrid-body"), m = s.trust_matrix || {}, ag = m.agents || [], rows = m.rows || {};
+  if (!ag.length || !Object.keys(rows).length) { el.innerHTML = '<div class="mut">Not available: no security agent is reporting (for example in the centralized comparison mode there are no agents and no trust scores).</div>'; return; }
+  const sb = m.suspect_below, vm = m.vote_min_trust;
+  const cell = (judge, judged) => {
+    if (judge === judged) return '<td class="mut" title="an agent does not judge itself">\u2014</td>';
+    const r = rows[judge]; if (!r) return '<td class="mut" title="this agent is not answering, so it reports nothing">not reported</td>';
+    const c = r[judged]; if (!c || c.trust == null) return '<td class="mut">not reported</td>';
+    const ex = c.vote_excluded != null ? c.vote_excluded : (vm != null && c.trust < vm), su = c.suspect != null ? c.suspect : (sb != null && c.trust < sb);
+    return `<td><b>${c.trust}</b>${ex ? ' <span class="tag bad" title="its votes and reports are ignored">votes ignored</span>' : su ? ' <span class="tag warn" title="doubted by this agent">SUSPECT</span>' : ""}</td>`;
+  };
+  el.innerHTML = `<table><tr><th>agent doing the judging \u2193 &nbsp; agent being judged \u2192</th>${ag.map(j => `<th>${nb(j)}</th>`).join("")}</tr>` +
+    ag.map(i => `<tr><th>${nb(i)} Agent ${i}'s trust in:</th>${ag.map(j => cell(i, j)).join("")}</tr>`).join("") + "</table>" +
+    `<div class="hint">Read across a row: how much that agent trusts each of the others (0-100, as that agent reports it). The "Agent trust" on a card is the <b>median of one column</b> (the other three agents' scores for that agent).
+    SUSPECT = below ${sb ?? "50"}; votes ignored = below ${vm ?? "40"} (the agents' own thresholds). \u2014 = an agent does not judge itself.</div>`;
+}
 function renderState(s) {
   lastState = s;
   if (s.configured === false || !(s.connection || {}).connected) { renderBanner(s); document.getElementById("sub").textContent = CH === "live" ? "Live Monitoring" : "Demo Mode"; return; }
@@ -948,6 +968,7 @@ function renderState(s) {
   renderBanner(s);
   const cc = s.mode === "centralized" && s.central_compromised; if (cc) document.getElementById("sub").textContent += ` · controller compromise simulation: ${cc}`;
   renderDependencies(s.nodes);
+  renderTrustGrid(s);
   document.getElementById("nodes").innerHTML = Object.entries(s.nodes).map(([id,n]) => {
     const state = n.display_state || n.phase, dets = n.detections || [];
     const conf = dets.length ? dets.map(d => `${esc(sigName(d.type))} ${d.confidence}`).join(" · ") : "none (everything looks normal)";
@@ -958,10 +979,12 @@ function renderState(s) {
       ${n.attention ? `<div class="rv">NEEDS HUMAN ATTENTION: ${esc(n.attention.reason)}. Stays isolated; NOT shown as healthy.</div>` : ""}
       ${n.attempt > 1 && n.phase !== "HEALTHY" ? `<div class="mut">recovery attempt ${n.attempt} of ${n.recovery ? n.recovery.max_attempts : "?"}${n.recovery && n.recovery.failure ? " · last attempt failed: " + esc(n.recovery.failure) : ""}</div>` : ""}
       ${stages(n)}
-      <div class="row"><span>${tip("Workload trust", "workloadTrust")}</span><span>${n.workload_trust ?? "-"}</span></div>${bar(n.workload_trust)}
-      ${n.has_agent === false ? `<div class="mut" title="This workload has no security agent of its own. All four agents (A, B, C, D) watch it and a change needs 3 of the 4 to agree, exactly as for the other workloads.">Watched by all four agents (no agent of its own) · placed on Minikube node ${esc(n.zone || "-")}</div>` : `
-      <div class="row"><span>${tip("Agent trust", "agentTrust")}</span><span>${n.agent_trust ?? "-"}
-        ${n.agent_trust != null && n.agent_trust < 50 ? '<span class="tag bad">SUSPECT</span>' : ''}</span></div>${bar(n.agent_trust)}`}
+      <div class="row"><span>${tip("Workload trust (this service's own health)", "workloadTrust")}</span><span>${n.workload_trust ?? "-"}</span></div>${bar(n.workload_trust)}
+      ${n.has_agent === false ? `<div class="mut" title="This workload has no security agent of its own. All four agents (A, B, C, D) watch it and a change needs 3 of the 4 to agree, exactly as for the other workloads.">${tip("No security agent on this service", "agentTrust")}; watched by all four agents (A, B, C, D) · placed on Minikube node ${esc(n.zone || "-")}</div>` : (() => {
+        const others = ["A","B","C","D"].filter(x => x !== id), views = n.agent_trust_views || {};
+        return `<div class="row"><span>${tip(`Agent ${id} (security agent on this node)`, "agentTrust")}</span><span>trust ${n.agent_trust ?? "-"}
+        ${n.agent_trust != null && n.agent_trust < 50 ? '<span class="tag bad">SUSPECT</span>' : ''}</span></div>${bar(n.agent_trust)}
+        <div class="mut">median of ${others.join(", ")} (how much each trusts Agent ${id}): ${others.map(p => `${p}: ${views[p] ?? "not reported"}`).join(" · ")}</div>`; })()}
       ${n.has_agent === false || n.agent_up ? "" : "<div class='mut'><b style='color:var(--bad)'>Agent unavailable</b> (the other agents carry on without it)</div>"}
       ${n.agent_compromised_sim ? `<div class='mut'><b style='color:var(--bad)'>simulated compromise: ${esc(n.agent_compromised_sim)}</b></div>` : ""}`}
       <div class="mut">${tip("Evidence confidence now", "confidence")}: ${conf}</div>

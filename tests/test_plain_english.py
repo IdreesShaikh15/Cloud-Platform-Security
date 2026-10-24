@@ -288,7 +288,7 @@ def test_overview_uses_plain_words_with_tooltips_and_keeps_raw_values_in_technic
             tabs = pg.locator(".tabs button").all_inner_texts()
             assert [re.sub(r"\s*\d+$", "", x.split("\n")[0].strip()) for x in tabs] == ["Overview", "Security Alerts", "Investigate", "Recovery", "Performance Results", "Activity Log"]
             cards = shown(pg, "#nodes")
-            for want in ("Returning to normal access", "Isolation", "Workload trust", "Agent trust", "Evidence confidence now", "Network Activity 1", "File Changes 0.95"):
+            for want in ("Returning to normal access", "Isolation", "Workload trust", "security agent on this node", "Evidence confidence now", "Network Activity 1", "File Changes 0.95"):
                 assert want in cards, want
             for raw in ("W(T)", "QUARANTINE", "REINTEGRATING", "FILE_INTEGRITY"):
                 assert raw not in cards, raw
