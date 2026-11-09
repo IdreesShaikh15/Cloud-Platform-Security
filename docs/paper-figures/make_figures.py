@@ -128,7 +128,7 @@ def fig1():
             s.path([(xs[k - 1] + bw, dy + 28), (x, dy + 28)])
     # containment and recovery
     cy, ch, cw, cg = 690, 62, 172, 20
-    boxes = [["Forensic Evidence", "Preservation"], ["Kubernetes NetworkPolicy", "Isolation"],
+    boxes = [["Forensic Snapshot", "Initiation"], ["Kubernetes NetworkPolicy", "Isolation"],
              ["Known-Good Container", "Image Replacement"], ["Recovery", "Validation"],
              ["Controlled Workload", "Reintegration"]]
     cx = []
@@ -136,11 +136,15 @@ def fig1():
         x = X0 + k * (cw + cg)
         s.box(x, cy, cw, ch, b, 12.5, True)
         cx.append(x + cw / 2)
-        if k:
+        if k and k != 1:
             s.path([(x - cg, cy + ch / 2), (x, cy + ch / 2)])
+    pad = 4
+    s.rect(X0 - pad, cy - 7, 2 * cw + cg + 2 * pad, ch + 14, fill="none", dash="4,3", sw=1.0)
+    s.text(X0, cy + ch + 20, "started concurrently", 11, italic=True, anchor="start")
+    mid = X0 + cw + cg / 2
     qx = xs[2] + bw - 40
-    s.path([(qx, dy + 56), (qx, 672), (cx[0], 672), (cx[0], cy)])
-    s.text((qx + cx[0]) / 2, 666, "authorized protective action", 11, italic=True)
+    s.path([(qx, dy + 56), (qx, 672), (mid, 672), (mid, cy - 7)])
+    s.text((qx + mid) / 2, 666, "authorized protective action", 11, italic=True)
     # feedback to workload layer
     fx = 1016
     s.path([(cx[4], cy + ch), (cx[4], 784), (fx, 784), (fx, 70), (985, 70)])
@@ -164,54 +168,66 @@ def fig2():
     s.diamond(cx, d1y, 540, 160, ["Are at least three eligible", "agents authorizing", "the same action?"], 14)
     s.path([(cx + 270, d1y), (800, d1y)], halo=False); s.text(cx + 285, d1y - 8, "NO", 13, True, anchor="start")
     s.box(800, d1y - 30, 360, 60, ["Protective Action Withheld"], 15, True)
-    seq = ["Preserve Forensic Evidence", "Isolate Workload Using Kubernetes NetworkPolicy",
-           "Replace Workload Using Known-Good Container Image", "Perform Recovery Validation"]
-    y0 = 690
-    yy = [y0 + k * 88 for k in range(4)]
-    s.path([(cx, d1y + 80), (cx, yy[0])], halo=False); s.text(cx + 12, d1y + 102, "YES", 13, True, anchor="start")
-    for y, n in zip(yy, seq):
-        if len(n) > 40:
-            k = n.index(" Using") if " Using" in n else len(n) // 2
-            s.box(cx - bw / 2, y, bw, bh, [n[:k], n[k + 1:]], 15, True)
-        else:
-            s.box(cx - bw / 2, y, bw, bh, [n], 15, True)
-    for a, b in zip(yy[:-1], yy[1:]):
-        s.path([(cx, a + bh), (cx, b)], halo=False)
-    d2y = yy[3] + bh + 34 + 60
-    s.path([(cx, yy[3] + bh), (cx, d2y - 60)], halo=False)
-    s.diamond(cx, d2y, 360, 120, ["Validation", "Successful?"], 15)
+    # --- parallel: forensic snapshot initiation || NetworkPolicy isolation
+    s.text(cx + 12, d1y + 102, "YES", 13, True, anchor="start")
+    yf, py = 668, 696
+    lx, rx_ = cx - 125, cx + 125            # centres of the two parallel boxes
+    s.path([(cx, d1y + 80), (cx, yf)], arrow=False, halo=False)
+    s.path([(lx, yf), (rx_, yf)], arrow=False, halo=False)
+    s.path([(lx, yf), (lx, py)], halo=False); s.path([(rx_, yf), (rx_, py)], halo=False)
+    pw = 232
+    s.box(lx - pw / 2, py, pw, bh, ["Start Forensic Snapshot"], 14, True)
+    s.box(rx_ - pw / 2, py, pw, bh, ["Apply NetworkPolicy", "Isolation"], 14, True)
+    s.text(rx_ + pw / 2 + 14, py + 14, "started concurrently after quorum", 12, italic=True, anchor="start")
+    yj, rep = py + bh + 30, py + bh + 60
+    s.path([(lx, py + bh), (lx, yj)], arrow=False, halo=False)
+    s.path([(rx_, py + bh), (rx_, yj)], arrow=False, halo=False)
+    s.path([(lx, yj), (rx_, yj)], arrow=False, halo=False)
+    s.path([(cx, yj), (cx, rep)], halo=False)
+    s.text(rx_ + pw / 2 + 14, py + bh + 22, "replacement waits for confirmed isolation", 12, italic=True, anchor="start")
+    s.text(rx_ + pw / 2 + 14, py + bh + 38, "and snapshot completion (snapshot wait capped at 15 s;", 12, italic=True, anchor="start")
+    s.text(rx_ + pw / 2 + 14, py + bh + 54, "capture then continues in the background)", 12, italic=True, anchor="start")
+    s.box(cx - bw / 2, rep, bw, bh, ["Replace Workload", "Using Known-Good Container Image"], 15, True)
+    val = rep + 88
+    s.path([(cx, rep + bh), (cx, val)], halo=False)
+    s.box(cx - bw / 2, val, bw, bh, ["Perform Recovery Validation"], 15, True)
+    d2y = val + bh + 34 + 65
+    s.path([(cx, val + bh), (cx, d2y - 65)], halo=False)
+    s.diamond(cx, d2y, 420, 130, ["Validation Passed?", "(Three-of-Four Quorum)"], 15)
     # retry branch
     rx, rw = 800, 380
-    s.path([(cx + 180, d2y), (rx, d2y)], halo=False); s.text(cx + 195, d2y - 8, "NO", 13, True, anchor="start")
-    s.box(rx, d2y - 34, rw, 68, ["Retry Recovery", "(Maximum Three Attempts)"], 15, True)
-    ry = yy[2] + bh / 2
-    s.path([(rx + rw / 2, d2y - 34), (rx + rw / 2, ry), (cx + bw / 2, ry)], halo=False)
-    s.text(rx + rw / 2 + 10, (ry + d2y - 34) / 2, "retry", 12, italic=True, anchor="start")
-    s.path([(rx + rw / 2, d2y + 34), (rx + rw / 2, d2y + 94)], halo=False)
-    s.text(rx + rw / 2 + 10, d2y + 70, "retries exhausted", 12, italic=True, anchor="start")
-    s.box(rx, d2y + 94, rw, 52, ["Needs Attention"], 15, True)
+    s.path([(cx + 210, d2y), (rx, d2y)], halo=False); s.text(cx + 222, d2y - 8, "NO", 13, True, anchor="start")
+    s.text(cx + 222, d2y + 16, "failure persists > 90 s", 11, italic=True, anchor="start")
+    s.box(rx, d2y - 36, rw, 72, ["Quorum-Authorized Retry Recovery", "(Maximum Three Retries)"], 15, True)
+    ry = rep + bh / 2
+    s.path([(rx + rw / 2, d2y - 36), (rx + rw / 2, ry), (cx + bw / 2, ry)], halo=False)
+    s.text(rx + rw / 2 + 10, (ry + d2y - 36) / 2, "retry: replace again", 12, italic=True, anchor="start")
+    s.path([(rx + rw / 2, d2y + 36), (rx + rw / 2, d2y + 96)], halo=False)
+    s.text(rx + rw / 2 + 10, d2y + 72, "retries exhausted", 12, italic=True, anchor="start")
+    s.box(rx, d2y + 96, rw, 52, ["Needs Attention"], 15, True)
     # reintegration
-    ry0 = d2y + 120
-    s.path([(cx, d2y + 60), (cx, d2y + 84)], arrow=False, halo=False)
-    ytop = ry0 + 62
-    s.path([(cx, d2y + 60), (cx, d2y + 90), (155, d2y + 90), (155, ytop)], halo=False)
-    s.text(cx + 12, d2y + 78, "YES", 13, True, anchor="start")
-    s.text(190, d2y + 86 + 36 - 12, "", 1)
-    s.text(185, ytop - 10, "Staged reintegration (workload-trust milestones)", 14, True, anchor="start")
+    ytop = d2y + 190
+    s.path([(cx, d2y + 65), (cx, d2y + 98), (155, d2y + 98), (155, ytop)], halo=False)
+    s.text(cx + 12, d2y + 86, "YES", 13, True, anchor="start")
+    s.text(185, ytop - 12, "Staged reintegration: each stage is entered only after its own three-of-four quorum", 14, True, anchor="start")
     stg = [("QUARANTINE", 0), ("RESTRICTED", 20), ("MONITORED", 40), ("PEER_VALIDATED", 60), ("FULL", 80)]
-    sw_, sg = 230, 30
+    sw_, sg = 215, 48
     for k, (n, m) in enumerate(stg):
         x = 40 + k * (sw_ + sg)
         s.rect(x, ytop, sw_, 84)
         s.text(x + sw_ / 2, ytop + 34, n, 15, True)
-        s.text(x + sw_ / 2, ytop + 58, f"Workload-trust milestone: {m}", 12.5)
+        s.text(x + sw_ / 2, ytop + 58, f"Workload trust to enter: {m}", 12.5)
         if k:
             s.path([(x - sg, ytop + 42), (x, ytop + 42)], halo=False)
-    s.text(675, ytop + 114, "Each transition requires configured dwell time, workload-health checks, trust conditions, and authorization.", 13, italic=True)
+            s.text(x - sg / 2, ytop + 34, "3-of-4", 11, italic=True)
+    s.text(675, ytop + 114, "Workload Trust Required to Enter: 0, 20, 40, 60, 80", 13, True)
+    s.text(675, ytop + 134, "Each transition: separate three-of-four quorum, at least 10 s in the current stage, local anomaly confidence below 0.3.", 12.5, italic=True)
     hx = 40 + 4 * (sw_ + sg) + sw_ / 2
-    s.path([(hx, ytop + 84), (hx, ytop + 150)], halo=False)
-    s.box(hx - 130, ytop + 150, 260, 52, ["Healthy Workload Operation"], 15, True)
-    s.h = ytop + 215
+    s.path([(hx, ytop + 84), (hx, ytop + 160)], halo=False)
+    s.rect(hx - 150, ytop + 160, 300, 66)
+    s.text(hx, ytop + 186, "Healthy Workload Operation", 15, True)
+    s.text(hx, ytop + 208, "after the cluster confirms the isolation policy is removed", 11, italic=True)
+    s.h = ytop + 245
     s.o[0] = s.o[0].replace('height="1530"', f'height="{s.h}"').replace("0 0 1350 1530", f"0 0 1350 {s.h}")
     s.save("fig2_workflow.svg")
 
