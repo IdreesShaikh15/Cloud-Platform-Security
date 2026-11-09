@@ -1,0 +1,160 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="818" viewBox="0 0 1040 818" font-family="Arial, Helvetica, FreeSans, 'Liberation Sans', sans-serif">
+<title>Fig. 1 Overall architecture</title>
+<rect width="100%" height="100%" fill="#fff"/>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#000"/></marker></defs>
+
+<rect x="5" y="5" width="990" height="150" rx="0" fill="#fafafa" stroke="#000" stroke-width="1.4"/>
+<rect x="5" y="5" width="34" height="150" rx="0" fill="#e9e9e9" stroke="#000" stroke-width="1.4"/>
+<text x="22" y="80.0" font-size="1" text-anchor="middle" fill="#000"></text>
+<text x="15" y="80.0" font-size="12" text-anchor="middle" fill="#000" font-weight="bold" transform="rotate(-90 15 80.0)">Healthcare</text>
+<text x="29" y="80.0" font-size="12" text-anchor="middle" fill="#000" font-weight="bold" transform="rotate(-90 29 80.0)">Workload Layer</text>
+<rect x="5" y="160" width="990" height="482" rx="0" fill="#fafafa" stroke="#000" stroke-width="1.4"/>
+<rect x="5" y="160" width="34" height="482" rx="0" fill="#e9e9e9" stroke="#000" stroke-width="1.4"/>
+<text x="22" y="401.0" font-size="1" text-anchor="middle" fill="#000"></text>
+<text x="15" y="401.0" font-size="12" text-anchor="middle" fill="#000" font-weight="bold" transform="rotate(-90 15 401.0)">Distributed Security Agent</text>
+<text x="29" y="401.0" font-size="12" text-anchor="middle" fill="#000" font-weight="bold" transform="rotate(-90 29 401.0)">and Decision Layer</text>
+<rect x="5" y="655" width="990" height="148" rx="0" fill="#fafafa" stroke="#000" stroke-width="1.4"/>
+<rect x="5" y="655" width="34" height="148" rx="0" fill="#e9e9e9" stroke="#000" stroke-width="1.4"/>
+<text x="22" y="729.0" font-size="1" text-anchor="middle" fill="#000"></text>
+<text x="15" y="729.0" font-size="12" text-anchor="middle" fill="#000" font-weight="bold" transform="rotate(-90 15 729.0)">Containment and</text>
+<text x="29" y="729.0" font-size="12" text-anchor="middle" fill="#000" font-weight="bold" transform="rotate(-90 29 729.0)">Recovery Layer</text>
+<rect x="50" y="15" width="935" height="105" rx="0" fill="#fff" stroke="#000" stroke-width="1.2" stroke-dasharray="5,3"/>
+<text x="58" y="31" font-size="12" text-anchor="start" fill="#000" font-weight="bold">Containerized Healthcare Application Environment</text>
+<text x="728" y="34" font-size="11" text-anchor="start" fill="#000">co-located agent monitors workload</text>
+<text x="728" y="50" font-size="11" text-anchor="start" fill="#000">all four agents monitor E and F</text>
+<rect x="65" y="58" width="135" height="40" rx="0" fill="#fff" stroke="#000" stroke-width="1.2"/>
+<text x="132.5" y="82.5" font-size="13" text-anchor="middle" fill="#000" font-weight="bold">Workload A</text>
+<rect x="218" y="58" width="135" height="40" rx="0" fill="#fff" stroke="#000" stroke-width="1.2"/>
+<text x="285.5" y="82.5" font-size="13" text-anchor="middle" fill="#000" font-weight="bold">Workload B</text>
+<rect x="371" y="58" width="135" height="40" rx="0" fill="#fff" stroke="#000" stroke-width="1.2"/>
+<text x="438.5" y="82.5" font-size="13" text-anchor="middle" fill="#000" font-weight="bold">Workload C</text>
+<rect x="524" y="58" width="135" height="40" rx="0" fill="#fff" stroke="#000" stroke-width="1.2"/>
+<text x="591.5" y="82.5" font-size="13" text-anchor="middle" fill="#000" font-weight="bold">Workload D</text>
+<rect x="677" y="58" width="135" height="40" rx="0" fill="#fff" stroke="#000" stroke-width="1.2"/>
+<text x="744.5" y="82.5" font-size="13" text-anchor="middle" fill="#000" font-weight="bold">Workload E</text>
+<rect x="830" y="58" width="135" height="40" rx="0" fill="#fff" stroke="#000" stroke-width="1.2"/>
+<text x="897.5" y="82.5" font-size="13" text-anchor="middle" fill="#000" font-weight="bold">Workload F</text>
+<rect x="46" y="226" width="218" height="176" rx="0" fill="#fff" stroke="#000" stroke-width="1.2"/>
+<text x="155.0" y="246" font-size="14" text-anchor="middle" fill="#000" font-weight="bold">Agent A</text>
+<rect x="60" y="258" width="190" height="23" rx="2" fill="#f2f2f2" stroke="#000" stroke-width="0.9"/>
+<text x="155.0" y="273.7" font-size="12" text-anchor="middle" fill="#000">Workload Monitoring</text>
+<rect x="60" y="286" width="190" height="23" rx="2" fill="#f2f2f2" stroke="#000" stroke-width="0.9"/>
+<text x="155.0" y="301.7" font-size="12" text-anchor="middle" fill="#000">Rule-Based Detection</text>
+<rect x="60" y="314" width="190" height="23" rx="2" fill="#f2f2f2" stroke="#000" stroke-width="0.9"/>
+<text x="155.0" y="329.7" font-size="12" text-anchor="middle" fill="#000">Evidence Generation</text>
+<rect x="60" y="342" width="190" height="23" rx="2" fill="#f2f2f2" stroke="#000" stroke-width="0.9"/>
+<text x="155.0" y="357.7" font-size="12" text-anchor="middle" fill="#000">Ed25519 Signing</text>
+<rect x="60" y="370" width="190" height="23" rx="2" fill="#f2f2f2" stroke="#000" stroke-width="0.9"/>
+<text x="155.0" y="385.7" font-size="12" text-anchor="middle" fill="#000">Local Trust Assessment</text>
+<rect x="286" y="226" width="218" height="176" rx="0" fill="#fff" stroke="#000" stroke-width="1.2"/>
+<text x="395.0" y="246" font-size="14" text-anchor="middle" fill="#000" font-weight="bold">Agent B</text>
+<rect x="300" y="258" width="190" height="23" rx="2" fill="#f2f2f2" stroke="#000" stroke-width="0.9"/>
+<text x="395.0" y="273.7" font-size="12" text-anchor="middle" fill="#000">Workload Monitoring</text>
+<rect x="300" y="286" width="190" height="23" rx="2" fill="#f2f2f2" stroke="#000" stroke-width="0.9"/>
+<text x="395.0" y="301.7" font-size="12" text-anchor="middle" fill="#000">Rule-Based Detection</text>
+<rect x="300" y="314" width="190" height="23" rx="2" fill="#f2f2f2" stroke="#000" stroke-width="0.9"/>
+<text x="395.0" y="329.7" font-size="12" text-anchor="middle" fill="#000">Evidence Generation</text>
+<rect x="300" y="342" width="190" height="23" rx="2" fill="#f2f2f2" stroke="#000" stroke-width="0.9"/>
+<text x="395.0" y="357.7" font-size="12" text-anchor="middle" fill="#000">Ed25519 Signing</text>
+<rect x="300" y="370" width="190" height="23" rx="2" fill="#f2f2f2" stroke="#000" stroke-width="0.9"/>
+<text x="395.0" y="385.7" font-size="12" text-anchor="middle" fill="#000">Local Trust Assessment</text>
+<rect x="526" y="226" width="218" height="176" rx="0" fill="#fff" stroke="#000" stroke-width="1.2"/>
+<text x="635.0" y="246" font-size="14" text-anchor="middle" fill="#000" font-weight="bold">Agent C</text>
+<rect x="540" y="258" width="190" height="23" rx="2" fill="#f2f2f2" stroke="#000" stroke-width="0.9"/>
+<text x="635.0" y="273.7" font-size="12" text-anchor="middle" fill="#000">Workload Monitoring</text>
+<rect x="540" y="286" width="190" height="23" rx="2" fill="#f2f2f2" stroke="#000" stroke-width="0.9"/>
+<text x="635.0" y="301.7" font-size="12" text-anchor="middle" fill="#000">Rule-Based Detection</text>
+<rect x="540" y="314" width="190" height="23" rx="2" fill="#f2f2f2" stroke="#000" stroke-width="0.9"/>
+<text x="635.0" y="329.7" font-size="12" text-anchor="middle" fill="#000">Evidence Generation</text>
+<rect x="540" y="342" width="190" height="23" rx="2" fill="#f2f2f2" stroke="#000" stroke-width="0.9"/>
+<text x="635.0" y="357.7" font-size="12" text-anchor="middle" fill="#000">Ed25519 Signing</text>
+<rect x="540" y="370" width="190" height="23" rx="2" fill="#f2f2f2" stroke="#000" stroke-width="0.9"/>
+<text x="635.0" y="385.7" font-size="12" text-anchor="middle" fill="#000">Local Trust Assessment</text>
+<rect x="766" y="226" width="218" height="176" rx="0" fill="#fff" stroke="#000" stroke-width="1.2"/>
+<text x="875.0" y="246" font-size="14" text-anchor="middle" fill="#000" font-weight="bold">Agent D</text>
+<rect x="780" y="258" width="190" height="23" rx="2" fill="#f2f2f2" stroke="#000" stroke-width="0.9"/>
+<text x="875.0" y="273.7" font-size="12" text-anchor="middle" fill="#000">Workload Monitoring</text>
+<rect x="780" y="286" width="190" height="23" rx="2" fill="#f2f2f2" stroke="#000" stroke-width="0.9"/>
+<text x="875.0" y="301.7" font-size="12" text-anchor="middle" fill="#000">Rule-Based Detection</text>
+<rect x="780" y="314" width="190" height="23" rx="2" fill="#f2f2f2" stroke="#000" stroke-width="0.9"/>
+<text x="875.0" y="329.7" font-size="12" text-anchor="middle" fill="#000">Evidence Generation</text>
+<rect x="780" y="342" width="190" height="23" rx="2" fill="#f2f2f2" stroke="#000" stroke-width="0.9"/>
+<text x="875.0" y="357.7" font-size="12" text-anchor="middle" fill="#000">Ed25519 Signing</text>
+<rect x="780" y="370" width="190" height="23" rx="2" fill="#f2f2f2" stroke="#000" stroke-width="0.9"/>
+<text x="875.0" y="385.7" font-size="12" text-anchor="middle" fill="#000">Local Trust Assessment</text>
+<path d="M70,212 L936,212" fill="none" stroke="#000" stroke-width="1.2" stroke-dasharray="4,3"/>
+<path d="M744.5,98 L744.5,212" fill="none" stroke="#000" stroke-width="1.2" stroke-dasharray="4,3"/>
+<path d="M897.5,98 L897.5,212" fill="none" stroke="#000" stroke-width="1.2" stroke-dasharray="4,3"/>
+<path d="M70,212 L70,226" fill="none" stroke="#000" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#a)"/>
+<path d="M436,212 L436,226" fill="none" stroke="#000" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#a)"/>
+<path d="M676,212 L676,226" fill="none" stroke="#000" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#a)"/>
+<path d="M936,212 L936,226" fill="none" stroke="#000" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#a)"/>
+<text x="515" y="496" font-size="12.5" text-anchor="middle" fill="#000" font-weight="bold">Peer-to-peer gRPC + mTLS links between all agents</text>
+<text x="515" y="513" font-size="12" text-anchor="middle" fill="#000" font-style="italic">Ed25519-signed evidence, votes and certificate shares</text>
+<rect x="46" y="528" width="938" height="108" rx="0" fill="#fff" stroke="#000" stroke-width="1.2" stroke-dasharray="5,3"/>
+<text x="515" y="620" font-size="12" text-anchor="middle" fill="#000" font-style="italic">Independent local trust and decision state at each agent</text>
+<rect x="60" y="540" width="250" height="56" rx="0" fill="#fff" stroke="#000" stroke-width="1.2"/>
+<text x="185.0" y="564.4" font-size="13" text-anchor="middle" fill="#000" font-weight="bold">Observer-Specific</text>
+<text x="185.0" y="580.7" font-size="13" text-anchor="middle" fill="#000" font-weight="bold">Trust Management</text>
+<rect x="370" y="540" width="250" height="56" rx="0" fill="#fff" stroke="#000" stroke-width="1.2"/>
+<text x="495.0" y="564.4" font-size="13" text-anchor="middle" fill="#000" font-weight="bold">Trust-Weighted</text>
+<text x="495.0" y="580.7" font-size="13" text-anchor="middle" fill="#000" font-weight="bold">Evidence Correlation</text>
+<rect x="680" y="540" width="250" height="56" rx="0" fill="#fff" stroke="#000" stroke-width="1.2"/>
+<text x="805.0" y="564" font-size="13" text-anchor="middle" fill="#000" font-weight="bold">Three-of-Four Quorum Authorization</text>
+<text x="805.0" y="583" font-size="11.5" text-anchor="middle" fill="#000">3-of-4 Application-Level Authorization</text>
+<rect x="46" y="690" width="172" height="62" rx="0" fill="#fff" stroke="#000" stroke-width="1.2"/>
+<text x="132.0" y="717.6" font-size="12.5" text-anchor="middle" fill="#000" font-weight="bold">Forensic Evidence</text>
+<text x="132.0" y="733.2" font-size="12.5" text-anchor="middle" fill="#000" font-weight="bold">Preservation</text>
+<rect x="238" y="690" width="172" height="62" rx="0" fill="#fff" stroke="#000" stroke-width="1.2"/>
+<text x="324.0" y="717.6" font-size="12.5" text-anchor="middle" fill="#000" font-weight="bold">Kubernetes NetworkPolicy</text>
+<text x="324.0" y="733.2" font-size="12.5" text-anchor="middle" fill="#000" font-weight="bold">Isolation</text>
+<rect x="430" y="690" width="172" height="62" rx="0" fill="#fff" stroke="#000" stroke-width="1.2"/>
+<text x="516.0" y="717.6" font-size="12.5" text-anchor="middle" fill="#000" font-weight="bold">Known-Good Container</text>
+<text x="516.0" y="733.2" font-size="12.5" text-anchor="middle" fill="#000" font-weight="bold">Image Replacement</text>
+<rect x="622" y="690" width="172" height="62" rx="0" fill="#fff" stroke="#000" stroke-width="1.2"/>
+<text x="708.0" y="717.6" font-size="12.5" text-anchor="middle" fill="#000" font-weight="bold">Recovery</text>
+<text x="708.0" y="733.2" font-size="12.5" text-anchor="middle" fill="#000" font-weight="bold">Validation</text>
+<rect x="814" y="690" width="172" height="62" rx="0" fill="#fff" stroke="#000" stroke-width="1.2"/>
+<text x="900.0" y="717.6" font-size="12.5" text-anchor="middle" fill="#000" font-weight="bold">Controlled Workload</text>
+<text x="900.0" y="733.2" font-size="12.5" text-anchor="middle" fill="#000" font-weight="bold">Reintegration</text>
+<text x="511.0" y="666" font-size="11" text-anchor="middle" fill="#000" font-style="italic">authorized protective action</text>
+<text x="1029" y="430" font-size="11" text-anchor="middle" fill="#000" font-style="italic" transform="rotate(-90 1029 430)">Recovered workload re-enters the application environment</text>
+<path d="M700,30 L722,30" stroke="#000" stroke-width="1.2" fill="none"/>
+<path d="M700,46 L722,46" stroke="#000" stroke-width="1.2" stroke-dasharray="4,3" fill="none"/>
+<path d="M132.5,98 L132.5,226" fill="none" stroke="#fff" stroke-width="5.2"/>
+<path d="M132.5,98 L132.5,226" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#a)"/>
+<path d="M285.5,98 L285.5,172 L326,172 L326,226" fill="none" stroke="#fff" stroke-width="5.2"/>
+<path d="M285.5,98 L285.5,172 L326,172 L326,226" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#a)"/>
+<path d="M438.5,98 L438.5,186 L566,186 L566,226" fill="none" stroke="#fff" stroke-width="5.2"/>
+<path d="M438.5,98 L438.5,186 L566,186 L566,226" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#a)"/>
+<path d="M591.5,98 L591.5,200 L806,200 L806,226" fill="none" stroke="#fff" stroke-width="5.2"/>
+<path d="M591.5,98 L591.5,200 L806,200 L806,226" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#a)"/>
+<path d="M169.0,402 L169.0,422 L381.0,422 L381.0,402" fill="none" stroke="#fff" stroke-width="5.1"/>
+<path d="M169.0,402 L169.0,422 L381.0,422 L381.0,402" fill="none" stroke="#000" stroke-width="1.1" marker-end="url(#a)" marker-start="url(#a)"/>
+<path d="M409.0,402 L409.0,422 L621.0,422 L621.0,402" fill="none" stroke="#fff" stroke-width="5.1"/>
+<path d="M409.0,402 L409.0,422 L621.0,422 L621.0,402" fill="none" stroke="#000" stroke-width="1.1" marker-end="url(#a)" marker-start="url(#a)"/>
+<path d="M649.0,402 L649.0,422 L861.0,422 L861.0,402" fill="none" stroke="#fff" stroke-width="5.1"/>
+<path d="M649.0,402 L649.0,422 L861.0,422 L861.0,402" fill="none" stroke="#000" stroke-width="1.1" marker-end="url(#a)" marker-start="url(#a)"/>
+<path d="M183.0,402 L183.0,440 L607.0,440 L607.0,402" fill="none" stroke="#fff" stroke-width="5.1"/>
+<path d="M183.0,402 L183.0,440 L607.0,440 L607.0,402" fill="none" stroke="#000" stroke-width="1.1" marker-end="url(#a)" marker-start="url(#a)"/>
+<path d="M423.0,402 L423.0,456 L847.0,456 L847.0,402" fill="none" stroke="#fff" stroke-width="5.1"/>
+<path d="M423.0,402 L423.0,456 L847.0,456 L847.0,402" fill="none" stroke="#000" stroke-width="1.1" marker-end="url(#a)" marker-start="url(#a)"/>
+<path d="M197.0,402 L197.0,472 L833.0,472 L833.0,402" fill="none" stroke="#fff" stroke-width="5.1"/>
+<path d="M197.0,402 L197.0,472 L833.0,472 L833.0,402" fill="none" stroke="#000" stroke-width="1.1" marker-end="url(#a)" marker-start="url(#a)"/>
+<path d="M310,568 L370,568" fill="none" stroke="#fff" stroke-width="5.2"/>
+<path d="M310,568 L370,568" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#a)"/>
+<path d="M620,568 L680,568" fill="none" stroke="#fff" stroke-width="5.2"/>
+<path d="M620,568 L680,568" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#a)"/>
+<path d="M218,721.0 L238,721.0" fill="none" stroke="#fff" stroke-width="5.2"/>
+<path d="M218,721.0 L238,721.0" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#a)"/>
+<path d="M410,721.0 L430,721.0" fill="none" stroke="#fff" stroke-width="5.2"/>
+<path d="M410,721.0 L430,721.0" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#a)"/>
+<path d="M602,721.0 L622,721.0" fill="none" stroke="#fff" stroke-width="5.2"/>
+<path d="M602,721.0 L622,721.0" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#a)"/>
+<path d="M794,721.0 L814,721.0" fill="none" stroke="#fff" stroke-width="5.2"/>
+<path d="M794,721.0 L814,721.0" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#a)"/>
+<path d="M890,596 L890,672 L132.0,672 L132.0,690" fill="none" stroke="#fff" stroke-width="5.2"/>
+<path d="M890,596 L890,672 L132.0,672 L132.0,690" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#a)"/>
+<path d="M900.0,752 L900.0,784 L1016,784 L1016,70 L985,70" fill="none" stroke="#fff" stroke-width="5.2"/>
+<path d="M900.0,752 L900.0,784 L1016,784 L1016,70 L985,70" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#a)"/>
+</svg>
