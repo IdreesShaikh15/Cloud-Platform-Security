@@ -21,25 +21,9 @@
 
 \title{Distributed Cyber-Resilience for Containerized Healthcare Applications}
 
-\author{%
-\IEEEauthorblockN{Swetha P.\,C.}
-\IEEEauthorblockA{Associate Professor, Information Science Engineering\\
-BMS College of Engineering, Bengaluru, India}
-\and
-\IEEEauthorblockN{Idrees Shaikh}
-\IEEEauthorblockA{Computer Science Engineering\\
-BMS College of Engineering, Bengaluru, India}
-\and
-\IEEEauthorblockN{Karan Nair}
-\IEEEauthorblockA{Computer Science Engineering\\
-BMS College of Engineering, Bengaluru, India}
-\and
-\IEEEauthorblockN{Manish Ramu}
-\IEEEauthorblockA{Computer Science Engineering\\
-BMS College of Engineering, Bengaluru, India}
-\and
-\IEEEauthorblockN{Mohammed Amaan}
-\IEEEauthorblockA{Computer Science Engineering\\
+\author{\IEEEauthorblockN{Swetha P.\,C.\IEEEauthorrefmark{1}, Idrees Shaikh\IEEEauthorrefmark{2}, Karan Nair\IEEEauthorrefmark{2}, Manish Ramu\IEEEauthorrefmark{2}, and Mohammed Amaan\IEEEauthorrefmark{2}}
+\IEEEauthorblockA{\IEEEauthorrefmark{1}Associate Professor, Information Science Engineering\\
+\IEEEauthorrefmark{2}Computer Science Engineering\\
 BMS College of Engineering, Bengaluru, India}}
 
 \maketitle
@@ -239,7 +223,7 @@ Fig.~\ref{fig:flow} follows the order in which the code performs these steps.
 
 \begin{figure*}[!t]
 \centering
-\includegraphics[width=0.78\textwidth]{fig2_workflow.pdf}
+\includegraphics[width=0.95\textwidth]{fig2_workflow.pdf}
 \caption{Workflow of evidence validation, quorum-authorized containment, known-good workload replacement, recovery validation, and staged reintegration.}
 \label{fig:flow}
 \end{figure*}
@@ -290,12 +274,12 @@ The prototype is written in Python~3.11 with gRPC~1.84, Protocol Buffers~7.36, t
 \section{Experimental Setup}
 We used two environments for the experiments and a third only for screenshots; their results are kept apart (Fig.~\ref{fig:testbed}).
 
-\begin{figure}[!t]
+\begin{figure*}[!t]
 \centering
-\includegraphics[width=\columnwidth]{fig3_testbed.pdf}
+\includegraphics[width=0.8\textwidth]{fig3_testbed.pdf}
 \caption{Experimental testbed. The same agent code runs in the simulator and in the Kubernetes sandbox; the authors' own cluster was used only for normal-operation monitoring screenshots.}
 \label{fig:testbed}
-\end{figure}
+\end{figure*}
 
 \textbf{Simulator.} The simulator runs the real agent code, including signatures, gRPC with mutual TLS, trust, voting, certificates and the admission logic, against a synthetic world that generates telemetry and a fake Kubernetes backend. It uses shorter timers than the cluster (for example a 3\,s stage dwell instead of 10\,s), so its times are not wall-clock predictions. Every experiment is run 20 times with fixed seeds, except the mixed run (30 genuine and 30 benign trials); in total 1\,140 seeded trials ran without errors. Because the simulator is largely deterministic, run-to-run spread is narrow and understates what a real cluster would show.
 
@@ -307,7 +291,7 @@ We used two environments for the experiments and a third only for screenshots; t
 \caption{Software Environment}
 \label{tab:software}
 \centering\small
-\begin{tabularx}{\columnwidth}{@{}Y l@{}}
+\begin{tabularx}{\columnwidth}{@{}p{0.36\columnwidth} Y@{}}
 \toprule
 Component & Version \\
 \midrule
@@ -351,8 +335,9 @@ Sandbox cluster, tripwire to normal access & 83\,s (single run) \\
 \begin{table}[!t]
 \caption{Times per Scenario, Simulator Seconds, Median (IQR), 20 Runs Each; All 80 Runs Reached Full Access}
 \label{tab:timing}
-\centering\footnotesize
-\begin{tabularx}{\columnwidth}{@{}l Y Y Y Y@{}}
+\centering\scriptsize
+\setlength{\tabcolsep}{3pt}
+\begin{tabularx}{\columnwidth}{@{}p{1.7cm} Y Y Y Y@{}}
 \toprule
 Scenario & Detect & Isolate & Recover & Full access \\
 \midrule
@@ -490,7 +475,7 @@ On the authors' own cluster the dashboard showed four of four agents connected a
 
 \begin{figure*}[!t]
 \centering
-\includegraphics[width=0.62\textwidth]{live.png}
+\includegraphics[width=0.75\textwidth]{live.png}
 \caption{Dashboard connected to the authors' four-node Minikube cluster (Kubernetes 1.37.0): four of four agents reachable, six of six workloads healthy, synthetic data only. This is normal operation, not an attack.}
 \label{fig:live}
 \end{figure*}
