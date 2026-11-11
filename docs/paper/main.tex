@@ -11,6 +11,15 @@
 \usepackage{tabularx}
 \usepackage{url}
 \usepackage{textcomp}
+\usepackage{fancyhdr}
+\newcommand{\runhead}{\footnotesize B.M.S.\ College of Engineering, Department of Computer Science Engineering, November 2026}
+\setlength{\headheight}{14pt}
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\runhead}
+\rhead{\footnotesize\thepage}
+\renewcommand{\headrulewidth}{0pt}
+\fancypagestyle{plain}{\fancyhf{}\lhead{\runhead}\rhead{\footnotesize\thepage}\renewcommand{\headrulewidth}{0pt}}
 
 \graphicspath{{figs/}}
 \newcommand{\stage}[1]{\texttt{#1}}
@@ -32,6 +41,7 @@ Swetha P.\,C. & Idrees Shaikh & Karan Nair & Manish Ramu & Mohammed Amaan\\
 \end{tabular}}
 
 \maketitle
+\thispagestyle{fancy}
 
 \begin{abstract}
 Containerized healthcare applications on Kubernetes depend on many interconnected services, so a compromised workload, or a compromised monitor watching it, can disrupt the whole application. Intrusion detection and response tools that rely on a central decision-maker or on single alerts can be pushed into disruptive actions by one wrong or tampered report. This paper describes a prototype in which four peer security agents monitor six logical healthcare workloads through network, process, file-integrity and authentication indicators. The agents exchange Ed25519-signed evidence over gRPC with mutual TLS, keep their own trust score for each peer, and weigh incoming evidence by that score. A protective action requires signed votes from at least three distinct eligible agents; this is application-level threshold authorization and not a Byzantine fault tolerant consensus protocol. An approved containment starts a forensic snapshot, isolates the workload with a Kubernetes NetworkPolicy, replaces it from a known-good image, validates the replacement, and returns it to service in five quorum-gated stages. In simulation, all 80 runs across four attack scenarios reached full access, with a median of 1.2~s to isolation in the multi-signal compromise scenario. One lying agent never caused a false isolation (0/20), whereas three compromised agents did (20/20), and no containment was possible with only two agents alive. In a mixed run, all 30 genuine attacks were isolated, but 15 of 30 benign transients were isolated as well. A four-node Minikube/Calico sandbox completed one containment-to-reintegration cycle in 83~s, triggered by a harmless tripwire. All data are synthetic.
