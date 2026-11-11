@@ -207,6 +207,32 @@ This is application-level threshold voting. It stops a single agent from authori
 
 Once a quorum commits, the agents sign a certificate over a statement of the workload, target, action, stage, epoch, evidence digest and expiry (300\,s by default). A Kubernetes validating admission webhook accepts the isolation policies and the recovery-field updates made by the \texttt{resilience-agent} service account only if a valid certificate with at least three distinct signatures accompanies them. The webhook fails closed. It covers that one service account in the application namespace, and does not restrict other administrators.
 
+\begin{table}[!t]
+\caption{Trust and Quorum Parameters (Defaults)}
+\label{tab:trustq}
+\centering\small
+\begin{tabularx}{\columnwidth}{@{}Y l@{}}
+\toprule
+Parameter & Value \\
+\midrule
+Agents $n$ / faults $f$ / quorum $q$ & 4 / 1 / 3 \\
+Initial agent trust & 100 \\
+SUSPECT flag & below 50 \\
+Vote and evidence exclusion & below 40 \\
+Trust loss while contradicted & 2.5 per s \\
+Trust recovery otherwise & 0.5 per s \\
+Rejected-message penalty & 20 \\
+Contradiction grace (claim age) & 8\,s \\
+Clock-skew tolerance / replay cache & 15\,s / 120\,s \\
+Contain vote: local confidence / score $W$ & 0.5 / 0.6 \\
+After a corroborating investigation & 0.3 / 0.3 \\
+Corroboration bonus & 0.15 per extra type \\
+Certificate lifetime & 300\,s \\
+Executor stagger & 3\,s per rank \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
 \subsection{Containment, recovery and reintegration}
 \label{sec:recovery}
 Fig.~\ref{fig:flow} follows the order in which the code performs these steps.
@@ -235,33 +261,31 @@ After the validation quorum, the workload enters \stage{QUARANTINE} and moves th
 
 Workload trust is each agent's health score for a workload. It drops by 10 points per second while the agent's own observation is at least 0.5, rises by 2 per second otherwise, and is set to zero when a containment commits.
 
-\subsection{Prototype and configuration}
-The prototype is written in Python~3.11 with gRPC~1.84, Protocol Buffers~7.36, the \texttt{cryptography} library~50.0 for Ed25519 and the certificates, and the Kubernetes Python client~36.0. Each agent also keeps a hash-chained local decision log. Calico enforces the NetworkPolicies, and the operator dashboard uses only the Python standard library. Table~\ref{tab:params} lists the main defaults. The six workloads serve synthetic records produced with Synthea~\cite{synthea}.
-
 \begin{table}[!t]
-\caption{Main Prototype Parameters (Defaults)}
-\label{tab:params}
+\caption{Recovery and Reintegration Parameters (Defaults)}
+\label{tab:recov}
 \centering\small
 \begin{tabularx}{\columnwidth}{@{}Y l@{}}
 \toprule
 Parameter & Value \\
 \midrule
-Agents $n$ / faults $f$ / quorum $q$ & 4 / 1 / 3 \\
-Telemetry poll (cluster) & 1\,s \\
-Clock-skew tolerance / replay cache & 15\,s / 120\,s \\
-Contain vote: local / overall $W$ & 0.5 / 0.6 \\
-Corroboration bonus & 0.15 per extra type \\
-Agent trust: loss / recovery / rejection & 2.5 / 0.5 per s / 20 \\
-SUSPECT flag / exclusion & below 50 / below 40 \\
+Snapshot wait limit & 15\,s \\
+Validation timeout / replacement-ready timeout & 90\,s / 90\,s \\
+Recovery retries (maximum attempts) & 3 (4) \\
+Retry back-off & 15\,s, doubling, capped at 120\,s \\
+Kubernetes-call retries & at most 10, 2--30\,s back-off \\
+Reintegration stages & 5 \\
+Workload trust needed to enter a stage & 0, 20, 40, 60, 80 \\
+Minimum time in a stage & 10\,s \\
+Anomaly confidence limit to advance & below 0.3 \\
 Workload trust: loss / recovery & 10 / 2 per s \\
-Stage thresholds / minimum dwell & 0, 20, 40, 60, 80 / 10\,s \\
-Anomaly limit for advancing & below 0.3 \\
-Snapshot wait / validation timeout & 15\,s / 90\,s \\
-Recovery retries / back-off & 3 / 15\,s doubling to 120\,s \\
-Certificate lifetime & 300\,s \\
 \bottomrule
 \end{tabularx}
 \end{table}
+
+\subsection{Prototype and configuration}
+The prototype is written in Python~3.11 with gRPC~1.84, Protocol Buffers~7.36, the \texttt{cryptography} library~50.0 for Ed25519 and the certificates, and the Kubernetes Python client~36.0. Each agent also keeps a hash-chained local decision log. Calico enforces the NetworkPolicies, and the operator dashboard uses only the Python standard library. The main defaults are listed in Tables~\ref{tab:trustq} and~\ref{tab:recov}. The six workloads serve synthetic records produced with Synthea~\cite{synthea}.
+
 
 \section{Experimental Setup}
 We used two environments for the experiments and a third only for screenshots; their results are kept apart (Fig.~\ref{fig:testbed}).
@@ -279,11 +303,50 @@ We used two environments for the experiments and a third only for screenshots; t
 
 \textbf{Data.} The workloads serve Synthea-generated synthetic patient records. The detector reads telemetry, not records, so the data supply application context only and are not an intrusion-detection benchmark.
 
+\begin{table}[!t]
+\caption{Software Environment}
+\label{tab:software}
+\centering\small
+\begin{tabularx}{\columnwidth}{@{}Y l@{}}
+\toprule
+Component & Version \\
+\midrule
+Language & Python 3.11 \\
+RPC and serialization & gRPC 1.84.0, Protocol Buffers 7.36.2 \\
+Signatures and certificates & \texttt{cryptography} 50.0.1 (Ed25519, ECDSA P-256) \\
+Kubernetes client & \texttt{kubernetes} 36.0.3 \\
+Sandbox cluster & Kubernetes 1.34.12, Minikube 1.39, Calico 3.32 \\
+Authors' own cluster & Kubernetes 1.37.0 (monitoring only) \\
+Synthetic data & Synthea \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
 \textbf{Scenarios and metrics.} The simulator scenarios are a multi-signal application compromise, a single-signal attack, a slow-burn attack, a validation-retry case (the first replacement fails validation), a lying agent, $k$ compromised or silent agents, agent crashes, a centralized-controller baseline, and a mixed run of genuine attacks and benign traffic spikes. We report times to detect, isolate, recover and reach full access (all from the start of the attack), false-alarm rate (an alarm in a benign trial), false-isolation rate (a benign workload isolated), missed-isolation rate, and counts with 95\% Wilson intervals.
 
 \section{Results}
 \subsection{Overall behaviour}
-Across the four principal scenarios (20 runs each), all 80 runs went through detection, isolation, recovery and reintegration to full access. In the multi-signal application compromise the median time to isolate was 1.2\,s (simulator time), and a full return to normal access took 18.5\,s, most of it the four staged steps. Table~\ref{tab:timing} and Fig.~\ref{fig:timing} give the distributions. The slow-burn attack, which starts weak and grows, takes longest to isolate (median 9.7\,s, up to 21.5\,s) because agents wait for the evidence to build up. The validation-retry case reaches full access later (29.1\,s) because of one failed validation and the back-off.
+Across the four principal scenarios (20 runs each), all 80 runs went through detection, isolation, recovery and reintegration to full access. In the multi-signal application compromise the median time to isolate was 1.2\,s (simulator time), and a full return to normal access took 18.5\,s, most of it the four staged steps. Table~\ref{tab:key} lists the headline numbers, and Table~\ref{tab:timing} and Fig.~\ref{fig:timing} give the timing distributions. The slow-burn attack, which starts weak and grows, takes longest to isolate (median 9.7\,s, up to 21.5\,s) because agents wait for the evidence to build up. The validation-retry case reaches full access later (29.1\,s) because of one failed validation and the back-off.
+
+\begin{table}[!t]
+\caption{Key Results (Simulator Unless Stated)}
+\label{tab:key}
+\centering\small
+\begin{tabularx}{\columnwidth}{@{}Y l@{}}
+\toprule
+Measure & Result \\
+\midrule
+Runs reaching full access (4 scenarios) & 80/80 \\
+Median time to isolate, app compromise & 1.2\,s \\
+Median time to full access, app compromise & 18.5\,s \\
+Healthy workload isolated, one lying agent & 0/20 \\
+Healthy workload isolated, three lying agents & 20/20 \\
+Real attack contained, two agents alive & 0/20 \\
+Benign transients: alarm / isolated & 29/30 / 15/30 \\
+Sandbox cluster, tripwire to normal access & 83\,s (single run) \\
+\bottomrule
+\end{tabularx}
+\end{table}
 
 \begin{table}[!t]
 \caption{Times per Scenario, Simulator Seconds, Median (IQR), 20 Runs Each; All 80 Runs Reached Full Access}
@@ -358,7 +421,27 @@ Central controller crashed (distributed: one agent crashed) & Contained 0/20 (20
 \end{table}
 
 \subsection{False alarms and false isolations}
-The mixed run used 30 genuine attacks (random mixes of the three attack signals) and 30 benign transients (short outbound-connection spikes seen by one to four agents, or long weak bursts). All 30 genuine attacks raised an alarm and were isolated, so nothing was missed (0/30). Among the benign cases 29 of 30 raised an alarm (97\%) and 15 of 30 led to an isolation (50\%, 95\% CI 33--67\%). Precision at the isolation level was 67\%, recall was 100\%, and $F_1$ is therefore 0.80. The split is informative (Fig.~\ref{fig:mixed}): no benign transient seen by only one or two agents was ever isolated (0 of 12), but 15 of the 18 seen by three or four were. A threshold detector cannot tell a spike that every agent sees from an attack, so the quorum helps only where the benign disturbance is partial. In a real cluster all four agents poll the same endpoints, so spikes would usually be seen by all of them, and the 50\% should be read as a stress test with our hand-picked benign mix, not as a rate to expect in production.
+The mixed run used 30 genuine attacks (random mixes of the three attack signals) and 30 benign transients (short outbound-connection spikes seen by one to four agents, or long weak bursts). All 30 genuine attacks raised an alarm and were isolated, so nothing was missed (0/30). Among the benign cases 29 of 30 raised an alarm (97\%) and 15 of 30 led to an isolation (50\%, 95\% CI 33--67\%). Precision at the isolation level was 67\%, recall was 100\%, and $F_1$ is therefore 0.80. Table~\ref{tab:mixed} and Fig.~\ref{fig:mixed} give the details, and the split is informative: no benign transient seen by only one or two agents was ever isolated (0 of 12), but 15 of the 18 seen by three or four were. A threshold detector cannot tell a spike that every agent sees from an attack, so the quorum helps only where the benign disturbance is partial. In a real cluster all four agents poll the same endpoints, so spikes would usually be seen by all of them, and the 50\% should be read as a stress test with our hand-picked benign mix, not as a rate to expect in production.
+
+\begin{table}[!t]
+\caption{Mixed Run: Detection and Isolation Outcomes (Simulator)}
+\label{tab:mixed}
+\centering\small
+\begin{tabularx}{\columnwidth}{@{}Y l@{}}
+\toprule
+Metric & Result \\
+\midrule
+Genuine attacks: raised an alarm & 30/30 \\
+Genuine attacks: isolated (missed isolation) & 30/30 (0/30) \\
+Benign transients: raised an alarm & 29/30 (97\%) \\
+Benign transients: isolated (false isolation) & 15/30 (50\%) \\
+\quad seen by 1--2 agents & 0/12 isolated \\
+\quad seen by 3--4 agents & 15/18 isolated \\
+Precision / recall at isolation & 67\% / 100\% \\
+$F_1$ at isolation & 0.80 \\
+\bottomrule
+\end{tabularx}
+\end{table}
 
 \begin{figure}[!t]
 \centering
