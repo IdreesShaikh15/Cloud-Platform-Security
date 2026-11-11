@@ -1,0 +1,554 @@
+% Distributed Cyber-Resilience for Containerized Healthcare Applications
+% IEEE journal-format source. Build: pdflatex main && pdflatex main (no BibTeX needed, references are inline).
+% Not compiled in the environment where it was written; see README.md in this folder.
+\documentclass[journal]{IEEEtran}
+
+\usepackage{cite}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{url}
+\usepackage{textcomp}
+\usepackage{fancyhdr}
+\newcommand{\runhead}{\footnotesize B.M.S.\ College of Engineering, Department of Computer Science Engineering, November 2026}
+\setlength{\headheight}{14pt}
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\runhead}
+\rhead{\footnotesize\thepage}
+\renewcommand{\headrulewidth}{0pt}
+\fancypagestyle{plain}{\fancyhf{}\lhead{\runhead}\rhead{\footnotesize\thepage}\renewcommand{\headrulewidth}{0pt}}
+
+\graphicspath{{figs/}}
+\newcommand{\stage}[1]{\texttt{#1}}
+\newcommand{\action}[1]{\texttt{#1}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+\begin{document}
+
+\title{Distributed Cyber-Resilience for Containerized Healthcare Applications}
+
+\author{%
+\small
+\setlength{\tabcolsep}{2pt}
+\begin{tabular}{*{5}{>{\centering\arraybackslash}p{3.3cm}}}
+Swetha P.\,C. & Idrees Shaikh & Karan Nair & Manish Ramu & Mohammed Amaan\\
+\textit{Associate Professor} & \textit{B.E.\ Student} & \textit{B.E.\ Student} & \textit{B.E.\ Student} & \textit{B.E.\ Student}\\
+\textit{Information Science Engineering} & \textit{Computer Science Engineering} & \textit{Computer Science Engineering} & \textit{Computer Science Engineering} & \textit{Computer Science Engineering}\\[3pt]
+\multicolumn{5}{c}{\textit{BMS College of Engineering, Bengaluru, India}}
+\end{tabular}}
+
+\maketitle
+\thispagestyle{fancy}
+
+\begin{abstract}
+Containerized healthcare applications on Kubernetes depend on many interconnected services, so a compromised workload, or a compromised monitor watching it, can disrupt the whole application. Intrusion detection and response tools that rely on a central decision-maker or on single alerts can be pushed into disruptive actions by one wrong or tampered report. This paper describes a prototype in which four peer security agents monitor six logical healthcare workloads through network, process, file-integrity and authentication indicators. The agents exchange Ed25519-signed evidence over gRPC with mutual TLS, keep their own trust score for each peer, and weigh incoming evidence by that score. A protective action requires signed votes from at least three distinct eligible agents; this is application-level threshold authorization and not a Byzantine fault tolerant consensus protocol. An approved containment starts a forensic snapshot, isolates the workload with a Kubernetes NetworkPolicy, replaces it from a known-good image, validates the replacement, and returns it to service in five quorum-gated stages. In simulation, all 80 runs across four attack scenarios reached full access, with a median of 1.2~s to isolation in the multi-signal compromise scenario. One lying agent never caused a false isolation (0/20), whereas three compromised agents did (20/20), and no containment was possible with only two agents alive. In a mixed run, all 30 genuine attacks were isolated, but 15 of 30 benign transients were isolated as well. A four-node Minikube/Calico sandbox completed one containment-to-reintegration cycle in 83~s, triggered by a harmless tripwire. All data are synthetic.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Collaborative intrusion detection, container security, cyber-resilience, trust management, quorum authorization, Kubernetes, healthcare.
+\end{IEEEkeywords}
+
+\section{Introduction}
+\IEEEPARstart{H}{ospitals} and health-technology vendors now run patient portals, record services, laboratory systems and databases as containers orchestrated by Kubernetes. That makes scaling and updating easier, and it also means the application is a set of interconnected services, each of which can be exploited, tampered with or disrupted. An outage or a leak in such a system affects availability and privacy at the same time.
+
+Intrusion detection that works from a single vantage point has two well-known weaknesses. If the detector or its controller is compromised, the whole defence goes with it, and a response driven by one alert will sooner or later fire on a false one. Collaborative detection, where several monitors share what they see, addresses part of this~\cite{zhou10,vasilo15,li22}. It also creates a new problem: a monitor that is authenticated can still be wrong or malicious, so a valid signature establishes who sent a report, but not whether the report is true.
+
+We built a prototype that treats those two questions separately. Messages are authenticated with signatures and mutual TLS, and the credibility of each sender is tracked separately as a trust score that every agent keeps for itself. A disruptive action is only taken when three of the four agents independently agree on it. After a containment, the workload is rebuilt from a known-good image and put back in stages rather than all at once.
+
+Our contributions are modest and mostly about integration:
+\begin{enumerate}
+\item A decentralized architecture of four identical peer agents that monitor six containerized healthcare workloads without a central controller.
+\item An evidence path that combines Ed25519 signatures, gRPC over mutual TLS, per-observer trust scores, and a trust-weighted score used to decide how to vote.
+\item A three-of-four threshold authorization for containment, validation, recovery retries and each reintegration stage, backed by signed quorum certificates checked by a Kubernetes admission webhook.
+\item An evaluation split into a simulator that runs the real agent code and a four-node Minikube/Calico sandbox. We report where the design holds, and where it fails: three compromised agents, only two agents alive, and a detector that raises many false alarms.
+\end{enumerate}
+We do not claim that any single mechanism here is new. The quorum is not a Byzantine fault tolerant protocol, the detector uses fixed rules and no learning, and the data are synthetic. Section~\ref{sec:limits} lists these limits in full.
+
+Section~II reviews related work. Section~III describes the system. Section~IV sets out the experiments, Section~V gives the results, Section~VI discusses limits and Section~VII concludes.
+
+\section{Related Work}
+\subsection{Collaborative intrusion detection}
+Zhou et al.~\cite{zhou10} surveyed coordinated attacks and collaborative detection and argued that sharing observations across monitoring points exposes attacks that a single host does not see. Vasilomanolakis et al.~\cite{vasilo15} classified collaborative systems by architecture and coordination and pointed out the open problems of information exchange and trust. Li et al.~\cite{li22} reviewed trust-based collaborative detection specifically. On the correlation side, Elshoush and Osman~\cite{elshoush11} surveyed alert correlation, and Balasubramaniyan et al.~\cite{balas98} described an early detection architecture built from autonomous agents. These works motivate sharing evidence between monitors but mostly stop at the alert; they do not cover what happens to the workload afterwards.
+
+\subsection{Trust and reputation}
+Jøsang et al.~\cite{josang07} surveyed trust and reputation systems, and Kamvar et al.~\cite{kamvar03} proposed EigenTrust, which derives global reputations from peer feedback. Our prototype is simpler. Each agent keeps its own trust value for each peer, and the value moves only when a peer's claims contradict what the agent sees itself. There is no global reputation to attack.
+
+\subsection{Byzantine fault tolerance}
+The Byzantine generals problem~\cite{lamport82} and the impossibility result for asynchronous consensus with one faulty process~\cite{flp85} frame the limits of agreement among unreliable parties. PBFT~\cite{castro99,castro02} tolerates $f$ Byzantine replicas with $n=3f+1$ replicas and quorums of $2f+1$. With $n=4$ and $f=1$ that quorum is three. We use the same numbers, but only for sizing. Our scheme has no primary, no views, no ordered log and no pre-prepare/prepare/commit phases, so it gives none of PBFT's guarantees and should not be read as a BFT protocol.
+
+\subsection{Container and cloud security}
+Jarkas et al.~\cite{jarkas25} survey attacks and defences for containers, Patel et al.~\cite{patel13} and Modi et al.~\cite{modi13} review intrusion detection and prevention in the cloud, and NIST SP~800-190~\cite{nist190} gives container-hardening guidance. These sources describe threats and preventive controls. Our focus is the response: how a compromised workload is contained, replaced and readmitted.
+
+\subsection{Anomaly detection, cryptography and incident response}
+Anomaly-based detection is broad and well surveyed~\cite{garcia09,bhuyan14,khraisat19}, and its main practical problem is false alarms. Our detector is deliberately plain: fixed thresholds and rules, with no learned model, which makes its behaviour easy to inspect but, as Section~V shows, prone to false alarms. For message security we use Ed25519 (EdDSA, RFC~8032~\cite{rfc8032}), TLS~1.3~\cite{rfc8446} and the X.509 profile~\cite{rfc5280}. For the response process we follow the general ideas of NIST incident-response guidance~\cite{nist61}, zero trust architecture~\cite{nist207} and the NIST Cybersecurity Framework~2.0~\cite{csf2}, without claiming compliance with any of them.
+
+\subsection{Gap}
+Each area above is well covered on its own. We found less work that puts collaborative evidence, per-agent trust, threshold authorization and staged recovery of a Kubernetes workload into one prototype and then tests it under lying, crashed and colluding agents. Table~\ref{tab:related} summarizes how our prototype relates to the literature. The right-hand column states what we do, not what is new.
+
+\begin{table}[!t]
+\caption{Related Work and What This Prototype Does}
+\label{tab:related}
+\centering\small
+\begin{tabularx}{\columnwidth}{@{}p{1.9cm} Y Y@{}}
+\toprule
+Area & Literature & This prototype \\
+\midrule
+Collaborative IDS & Shared alerts and correlation~\cite{zhou10,vasilo15,elshoush11} & Four peers exchange signed evidence \\
+Trust & Global reputation~\cite{josang07,kamvar03} & Per-observer trust, contradiction-driven \\
+Agreement & PBFT~\cite{castro99,castro02} & Three-of-four threshold voting, no PBFT phases \\
+Container security & Surveys and guidance~\cite{jarkas25,nist190} & NetworkPolicy isolation and image replacement \\
+Detection & Anomaly surveys~\cite{garcia09,bhuyan14} & Fixed thresholds and rules, no learning \\
+Authentication & EdDSA, TLS, X.509~\cite{rfc8032,rfc8446,rfc5280} & Ed25519 signatures plus mutual TLS \\
+Response & Incident-response guidance~\cite{nist61,nist207} & Snapshot, isolate, replace, validate, staged return \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Proposed System}
+\subsection{Overview}
+The system has four peer security agents, A to D, that watch six logical workloads, A to F (Fig.~\ref{fig:arch}). The agents are identical and no one of them leads. Workloads A to D each have a co-located agent, while E and F, the laboratory-results and medication services, have none of their own and are watched by all four agents. We therefore use ``agent'' for the four decision-makers and ``workload'' for the six protected services throughout.
+
+Each agent polls workload telemetry, turns it into signed evidence, sends that evidence to its peers, and judges what it receives using its own trust scores. When three distinct eligible agents vote for the same action, the action is authorized, a quorum certificate is assembled, and one agent (picked by a fixed ranking) carries it out. Fig.~\ref{fig:flow} shows the complete flow from detection to restored service.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.92\textwidth]{fig1_architecture.pdf}
+\caption{Overall architecture of the proposed distributed cyber-resilience system for containerized healthcare applications. Solid arrows show co-located monitoring; dashed arrows show that all four agents monitor workloads E and F.}
+\label{fig:arch}
+\end{figure*}
+
+\subsection{Monitoring and evidence generation}
+Detection is rule-based. Each workload exposes \texttt{/health} and \texttt{/\_telemetry} endpoints that report counters read from the process table and the file system, and the agents poll them once per second. The detector looks at four kinds of signal (Table~\ref{tab:signals}): outbound network activity, running processes, file integrity against a known-good SHA-256 manifest, and failed authentications attributed to the workload's pod address.
+
+For the two network metrics and the authentication count, the confidence in an anomaly rises with the amount by which the metric exceeds its threshold:
+\begin{equation}
+c(x)=\begin{cases}
+0, & x\le\theta,\\[2pt]
+0.5+0.5\,\min\!\left(1,\dfrac{x-\theta}{s}\right), & x>\theta,
+\end{cases}
+\label{eq:conf}
+\end{equation}
+where $x$ is the measured value, $\theta$ the threshold, and $s$ a scale. The scales are 16 connections, $10^{6}$~B/s and 40 failed logins respectively. Process and file signals do not use Eq.~(\ref{eq:conf}); they carry fixed confidences set by the rule that matched. The thresholds are engineering defaults. They have not been tuned or checked against real healthcare attack traces.
+
+Each evidence message names the observing agent, the target workload, the signal type, the confidence and a timestamp. Note that workloads report their own telemetry, including the file hashes, over plain HTTP inside the cluster. We rely on several agents reading the same workload, not on any one workload telling the truth about itself.
+
+\begin{table}[!t]
+\caption{Implemented Detection Conditions}
+\label{tab:signals}
+\centering\small
+\begin{tabularx}{\columnwidth}{@{}l Y Y@{}}
+\toprule
+Signal & Condition & Parameter \\
+\midrule
+Network & Outbound connections & More than 8 \\
+Network & Outbound transmit rate & More than 256\,000 B/s \\
+Process & Suspicious name or directory & Confidence 0.95 \\
+Process & Not in the allowlist & Confidence 0.60 \\
+File integrity & Modified file & Confidence 0.95 \\
+File integrity & Missing file & Confidence 0.80 \\
+File integrity & New file & Confidence 0.70 \\
+Authentication & Failed logins & More than 10 in 10\,s \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Evidence exchange}
+Evidence, votes and certificate shares are Protocol Buffer messages wrapped in a signed envelope. The signature is Ed25519 over the message kind, a zero byte and the serialized payload; the kind prefix stops a signature made for one message type from being replayed as another. Agents talk over gRPC with mutual TLS, and the certificate's common name maps to the agent identity.
+
+A receiving agent checks, in this order: that the TLS identity equals the claimed signer; that the signer is known; the signature; that the payload parses and its author is the signer; that the timestamp is within 15\,s of local time; and that the message is not in a 120\,s replay cache. A message that fails any check is dropped and the peer that delivered it loses 20 trust points. For evidence, the receiver then checks the sender's trust (next subsection).
+
+A valid signature proves that a particular agent sent the message and that nobody altered it. It does not prove that what the agent reported is true, which is why trust is handled separately.
+
+\subsection{Agent trust}
+Every agent keeps a trust score between 0 and 100 for each of the other three, starting at 100. The score changes linearly:
+\begin{equation}
+T(t+\Delta t)=\min\{100,\;\max\{0,\;T(t)+r\,\Delta t\}\}.
+\label{eq:trust}
+\end{equation}
+A peer's claim counts as contradicted when it reports confidence of at least 0.5, the claim is at least 8\,s old, and the receiving agent's own highest confidence for that workload around that time stayed below 0.2. While a peer's claims are contradicted, $r=-2.5$ per second; otherwise $r=+0.5$ per second. A rejected message costs a one-off 20 points. Recovery is therefore deliberately much slower than loss of trust.
+
+Two thresholds matter, and they do different things:
+\begin{itemize}
+\item Below 50 the peer is marked SUSPECT. This raises a flag and an event. It does not change how the peer's messages are handled.
+\item Below 40 the peer is excluded. Its evidence is rejected when it arrives and its votes are not counted.
+\end{itemize}
+Between 40 and 50 a peer is therefore still fully eligible: its evidence is accepted and weighted by its actual trust score (Eq.~(\ref{eq:weight})), and its vote counts as one vote. Eligibility is checked against the current score at every cycle, so a peer that recovers above 40 becomes eligible again, and one that falls below it loses its votes, including those already received.
+
+Trust values are private to each observer, so two agents can hold different scores for the same peer. This is agent trust. It is unrelated to the \emph{workload trust} described in Section~\ref{sec:recovery}.
+
+\subsection{Evidence correlation and voting}
+For each target workload and each signal type $k$, an agent takes the highest confidence each eligible sender has reported (its own observations count with trust 100) and weights it by its trust in that sender:
+\begin{equation}
+w_{i,k}=c_{i,k}\,\frac{T_i}{100}.
+\label{eq:weight}
+\end{equation}
+The score for the signal type is the mean weight times a corroboration factor, and the overall score takes the best signal type plus a small bonus for every additional type reported by two or more senders:
+\begin{align}
+S_k &= \operatorname{mean}_i(w_{i,k})\cdot\min\!\left(1,\tfrac{|N_k|}{2}\right),\label{eq:sk}\\
+W   &= \max_k S_k + 0.15\,\max(0,\,|C|-1),\label{eq:W}
+\end{align}
+where $N_k$ is the set of distinct eligible senders for type $k$ (the divisor 2 equals $f+1$) and $C$ is the set of types reported by at least two senders.
+
+An agent votes to contain a workload only if its own highest local confidence is at least 0.5 and $W\ge 0.6$. If a targeted investigation, in which peers re-measure the workload at a higher rate, has corroborated a persistent local anomaly, these thresholds relax to 0.3 and 0.3. The constants were chosen by hand and are not claimed to be optimal. Optionally, an agent can wait for a network-only or authentication-only anomaly to persist before voting; this is off by default.
+
+\subsection{Quorum authorization}
+Four agents are configured with $f=1$, so the quorum is $2f+1=3$. A vote is keyed by the action type, the target, the incident epoch and, where relevant, the stage or attempt number, so votes for different actions cannot be pooled. With $V_i=1$ when agent $i$ has cast an eligible vote for the same key,
+\begin{equation}
+Q=\sum_{i=1}^{4}V_i\;\ge\;3.
+\label{eq:quorum}
+\end{equation}
+Four actions go through this rule: \action{CONTAIN}, \action{VALIDATE}, \action{RETRY\_RECOVERY} and \action{ADVANCE\_STAGE}. Agents never cast negative votes; silence is simply no support. With three agents alive an action can still commit, and with two or fewer it cannot.
+
+This is application-level threshold voting. It stops a single agent from authorizing a disruptive action, and it fails safe by not acting when fewer than three agents are available. It is not PBFT or any Byzantine consensus protocol: there is no leader, no view change and no ordered replicated log. Three or more compromised agents can reach quorum with false evidence, and the experiments in Section~V confirm that.
+
+Once a quorum commits, the agents sign a certificate over a statement of the workload, target, action, stage, epoch, evidence digest and expiry (300\,s by default). A Kubernetes validating admission webhook accepts the isolation policies and the recovery-field updates made by the \texttt{resilience-agent} service account only if a valid certificate with at least three distinct signatures accompanies them. The webhook fails closed. It covers that one service account in the application namespace, and does not restrict other administrators.
+
+\begin{table}[!t]
+\caption{Trust and Quorum Parameters (Defaults)}
+\label{tab:trustq}
+\centering\small
+\begin{tabularx}{\columnwidth}{@{}Y l@{}}
+\toprule
+Parameter & Value \\
+\midrule
+Agents $n$ / faults $f$ / quorum $q$ & 4 / 1 / 3 \\
+Initial agent trust & 100 \\
+SUSPECT flag & below 50 \\
+Vote and evidence exclusion & below 40 \\
+Trust loss while contradicted & 2.5 per s \\
+Trust recovery otherwise & 0.5 per s \\
+Rejected-message penalty & 20 \\
+Contradiction grace (claim age) & 8\,s \\
+Clock-skew tolerance / replay cache & 15\,s / 120\,s \\
+Contain vote: local confidence / score $W$ & 0.5 / 0.6 \\
+After a corroborating investigation & 0.3 / 0.3 \\
+Corroboration bonus & 0.15 per extra type \\
+Certificate lifetime & 300\,s \\
+Executor stagger & 3\,s per rank \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Containment, recovery and reintegration}
+\label{sec:recovery}
+Fig.~\ref{fig:flow} follows the order in which the code performs these steps.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.95\textwidth]{fig2_workflow.pdf}
+\caption{Workflow of evidence validation, quorum-authorized containment, known-good workload replacement, recovery validation, and staged reintegration.}
+\label{fig:flow}
+\end{figure*}
+
+\subsubsection{Snapshot and isolation}
+When the \action{CONTAIN} quorum commits, the executing agent starts a forensic snapshot of the workload and applies a NetworkPolicy named \texttt{resilience-isolate-<workload>}; the two begin at the same time. The replacement waits until the isolation is confirmed in the cluster and the snapshot has finished, but the wait for the snapshot is capped at 15\,s. After that the replacement proceeds and the snapshot continues in the background, so a snapshot may be incomplete when the old pod is removed.
+
+\subsubsection{Replacement}
+The workload is redeployed from the configured known-good image, using a Recreate deployment strategy so that the old instance is not reused. Agents are ranked per incident and a lower-ranked agent waits 3\,s per rank before acting; actions are idempotent and an unclear outcome is re-read from the cluster before anything is repeated.
+
+\subsubsection{Validation}
+Each agent checks the replacement on its own: (i) the health endpoint answers with HTTP~200; (ii) the instance identifier differs from the one recorded at containment; (iii) if a baseline manifest is loaded, the reported file hashes equal it exactly; and (iv) the agent's own anomaly confidence for the workload is below 0.3. It votes \action{VALIDATE} only if all four hold, and three eligible agents must do so. These checks do not authenticate the workload's identity: check (ii) only shows that a different instance is running, and the hashes in (iii) are reported by the workload itself.
+
+\subsubsection{Retries}
+If validation keeps failing for 90\,s, or the replacement is still not ready 90\,s after deployment, agents vote \action{RETRY\_RECOVERY}. Each retry needs its own three-agent quorum, follows a new snapshot of the failed instance, and waits for a back-off that starts at 15\,s, doubles each time and is capped at 120\,s. At most three retries are allowed, so there are at most four attempts. After that the workload stays quarantined and is flagged as needing a human. Failed individual Kubernetes calls are retried by a separate mechanism, at most ten times with a bounded back-off, before the action is abandoned.
+
+\subsubsection{Staged reintegration}
+After the validation quorum, the workload enters \stage{QUARANTINE} and moves through \stage{RESTRICTED}, \stage{MONITORED} and \stage{PEER\_VALIDATED} to \stage{FULL}. Every move needs its own three-agent quorum. An agent votes for the next stage only if the workload has spent at least 10\,s in its current stage, its workload trust has reached the next stage's threshold (20, 40, 60 and 80 for the four moves), and its own anomaly confidence is below 0.3. Each stage applies a less restrictive NetworkPolicy, and \stage{FULL} removes it. A workload at \stage{FULL} counts as healthy only after the cluster confirms that the policy is gone.
+
+Workload trust is each agent's health score for a workload. It drops by 10 points per second while the agent's own observation is at least 0.5, rises by 2 per second otherwise, and is set to zero when a containment commits.
+
+\begin{table}[!t]
+\caption{Recovery and Reintegration Parameters (Defaults)}
+\label{tab:recov}
+\centering\small
+\begin{tabularx}{\columnwidth}{@{}Y l@{}}
+\toprule
+Parameter & Value \\
+\midrule
+Snapshot wait limit & 15\,s \\
+Validation timeout / replacement-ready timeout & 90\,s / 90\,s \\
+Recovery retries (maximum attempts) & 3 (4) \\
+Retry back-off & 15\,s, doubling, capped at 120\,s \\
+Kubernetes-call retries & at most 10, 2--30\,s back-off \\
+Reintegration stages & 5 \\
+Workload trust needed to enter a stage & 0, 20, 40, 60, 80 \\
+Minimum time in a stage & 10\,s \\
+Anomaly confidence limit to advance & below 0.3 \\
+Workload trust: loss / recovery & 10 / 2 per s \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Prototype and configuration}
+The prototype is written in Python~3.11 with gRPC~1.84, Protocol Buffers~7.36, the \texttt{cryptography} library~50.0 for Ed25519 and the certificates, and the Kubernetes Python client~36.0. Each agent also keeps a hash-chained local decision log. Calico enforces the NetworkPolicies, and the operator dashboard uses only the Python standard library. The main defaults are listed in Tables~\ref{tab:trustq} and~\ref{tab:recov}. The six workloads serve synthetic records produced with Synthea~\cite{synthea}.
+
+
+\section{Experimental Setup}
+We used two environments for the experiments and a third only for screenshots; their results are kept apart (Fig.~\ref{fig:testbed}).
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.8\textwidth]{fig3_testbed.pdf}
+\caption{Experimental testbed. The same agent code runs in the simulator and in the Kubernetes sandbox; the authors' own cluster was used only for normal-operation monitoring screenshots.}
+\label{fig:testbed}
+\end{figure*}
+
+\textbf{Simulator.} The simulator runs the real agent code, including signatures, gRPC with mutual TLS, trust, voting, certificates and the admission logic, against a synthetic world that generates telemetry and a fake Kubernetes backend. It uses shorter timers than the cluster (for example a 3\,s stage dwell instead of 10\,s), so its times are not wall-clock predictions. Every experiment is run 20 times with fixed seeds, except the mixed run (30 genuine and 30 benign trials); in total 1\,140 seeded trials ran without errors. Because the simulator is largely deterministic, run-to-run spread is narrow and understates what a real cluster would show.
+
+\textbf{Kubernetes sandbox.} A four-node Minikube cluster with Calico (Minikube~1.39, Kubernetes~1.34.12, Calico~3.32) was built in a cloud sandbox. It runs the six workloads, four agents, the dashboard and two webhook replicas. The only attack launched there was a harmless operator-initiated tripwire, one line appended to a marker file in one workload. Separately, the authors' own four-node cluster (Kubernetes~1.37.0) was used to capture normal-operation monitoring screenshots; no attack was run on it.
+
+\textbf{Data.} The workloads serve Synthea-generated synthetic patient records. The detector reads telemetry, not records, so the data supply application context only and are not an intrusion-detection benchmark.
+
+\begin{table}[!t]
+\caption{Software Environment}
+\label{tab:software}
+\centering\small
+\begin{tabularx}{\columnwidth}{@{}p{0.36\columnwidth} Y@{}}
+\toprule
+Component & Version \\
+\midrule
+Language & Python 3.11 \\
+RPC and serialization & gRPC 1.84.0, Protocol Buffers 7.36.2 \\
+Signatures and certificates & \texttt{cryptography} 50.0.1 (Ed25519, ECDSA P-256) \\
+Kubernetes client & \texttt{kubernetes} 36.0.3 \\
+Sandbox cluster & Kubernetes 1.34.12, Minikube 1.39, Calico 3.32 \\
+Authors' own cluster & Kubernetes 1.37.0 (monitoring only) \\
+Synthetic data & Synthea \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Scenarios and metrics.} The simulator scenarios are a multi-signal application compromise, a single-signal attack, a slow-burn attack, a validation-retry case (the first replacement fails validation), a lying agent, $k$ compromised or silent agents, agent crashes, a centralized-controller baseline, and a mixed run of genuine attacks and benign traffic spikes. We report times to detect, isolate, recover and reach full access (all from the start of the attack), false-alarm rate (an alarm in a benign trial), false-isolation rate (a benign workload isolated), missed-isolation rate, and counts with 95\% Wilson intervals.
+
+\section{Results}
+\subsection{Overall behaviour}
+Across the four principal scenarios (20 runs each), all 80 runs went through detection, isolation, recovery and reintegration to full access. In the multi-signal application compromise the median time to isolate was 1.2\,s (simulator time), and a full return to normal access took 18.5\,s, most of it the four staged steps. Table~\ref{tab:key} lists the headline numbers, and Table~\ref{tab:timing} and Fig.~\ref{fig:timing} give the timing distributions. The slow-burn attack, which starts weak and grows, takes longest to isolate (median 9.7\,s, up to 21.5\,s) because agents wait for the evidence to build up. The validation-retry case reaches full access later (29.1\,s) because of one failed validation and the back-off.
+
+\begin{table}[!t]
+\caption{Key Results (Simulator Unless Stated)}
+\label{tab:key}
+\centering\small
+\begin{tabularx}{\columnwidth}{@{}Y l@{}}
+\toprule
+Measure & Result \\
+\midrule
+Runs reaching full access (4 scenarios) & 80/80 \\
+Median time to isolate, app compromise & 1.2\,s \\
+Median time to full access, app compromise & 18.5\,s \\
+Healthy workload isolated, one lying agent & 0/20 \\
+Healthy workload isolated, three lying agents & 20/20 \\
+Real attack contained, two agents alive & 0/20 \\
+Benign transients: alarm / isolated & 29/30 / 15/30 \\
+Sandbox cluster, tripwire to normal access & 83\,s (single run) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{table}[!t]
+\caption{Times per Scenario, Simulator Seconds, Median (IQR), 20 Runs Each; All 80 Runs Reached Full Access}
+\label{tab:timing}
+\centering\scriptsize
+\setlength{\tabcolsep}{3pt}
+\begin{tabularx}{\columnwidth}{@{}p{1.7cm} Y Y Y Y@{}}
+\toprule
+Scenario & Detect & Isolate & Recover & Full access \\
+\midrule
+App compromise & 0.3 (0.2--0.3) & 1.2 (1.0--1.4) & 3.7 (3.4--3.8) & 18.5 (18.3--18.8) \\
+Single signal & 0.6 (0.3--0.8) & 1.9 (1.3--2.1) & 4.4 (3.8--4.6) & 19.2 (18.6--19.5) \\
+Slow burn & 0.4 (0.2--0.5) & 9.7 (6.4--12.2) & 12.2 (8.9--14.7) & 26.2 (23.3--28.7) \\
+Validation retry & 0.1 (0.1--0.3) & 1.2 (1.0--1.3) & 3.6 (3.5--3.7) & 29.1 (28.7--29.3) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.62\textwidth]{timing.png}
+\caption{Time to detect, isolate, recover and reach full access in the four simulated scenarios (20 runs each; simulator results).}
+\label{fig:timing}
+\end{figure*}
+
+\subsection{A lying agent}
+In this experiment one agent signed fabricated evidence against a healthy workload (the login service). Its messages passed every signature and identity check, and the three honest agents still did not vote to contain, because each saw the workload as normal. The workload was never isolated (0/20, 95\% CI 0--16\%). The honest agents marked the liar SUSPECT after a median 22.5\,s and stopped counting its votes about 2\,s later (Fig.~\ref{fig:trust}); its trust fell to zero in every run. After the liar was restored its trust climbed at 0.5 per second and was only about 35 ninety seconds later, never back above 50. Note that the protection in the first 20 or so seconds comes from the quorum, not from trust, which had not yet dropped far.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.62\textwidth]{trust.png}
+\caption{Trust that the honest agents place in an agent that lies and later stops lying. The line is the median over 20 runs and the band is the 10th--90th percentile; simulator results.}
+\label{fig:trust}
+\end{figure*}
+
+\subsection{Quorum boundary, crashes and a central controller}
+Table~\ref{tab:quorum} and Fig.~\ref{fig:faulttol} summarize the experiments that vary how many agents are compromised or silent. The scheme resisted one compromised agent (and two, if the other two honest agents saw nothing wrong), and it failed at the point the quorum arithmetic predicts. Three liars isolated a healthy workload in 20 of 20 runs. Two liars together with one honest agent that saw only a weak, real blip did so too (20/20). Two silent agents meant that nothing could be contained (0/20), and with three of four alive the full cycle still completed in all runs. Against a central controller, a lying controller isolated a healthy workload every time (20/20) and kept 79\% of the workloads available over the test window, while a controller crash left a real attack uncontained (0/20). The distributed version had neither problem in these runs. Fig.~\ref{fig:dvc} shows this comparison. It only covers our own baseline controller and should not be generalized to centralized detection systems in general.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.85\textwidth]{faulttol.png}
+\caption{Fault-tolerance boundary: false isolation, containment of a real attack, and false isolation with one honest agent seeing a weak real blip, as the number of compromised or silent agents grows from 0 to 3 (20 runs per bar, 95\% intervals; simulator).}
+\label{fig:faulttol}
+\end{figure*}
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.85\textwidth]{dvc.png}
+\caption{Distributed three-of-four design against our centralized-controller baseline: a healthy workload wrongly isolated, availability while the decision-maker lies, and containment of a real attack (20 runs each; simulator).}
+\label{fig:dvc}
+\end{figure*}
+
+\begin{table}[!t]
+\caption{Quorum Behaviour Under Compromised, Silent and Crashed Agents (20 Runs per Row, Simulator)}
+\label{tab:quorum}
+\centering\footnotesize
+\begin{tabularx}{\columnwidth}{@{}Y l@{}}
+\toprule
+Condition & Outcome \\
+\midrule
+$k$=0, 1, 2 liars accuse a healthy workload & False isolation 0/20 each \\
+$k$=3 liars accuse a healthy workload & False isolation 20/20 \\
+$k$=0, 1 liars + 1 honest agent sees a weak blip & False isolation 0/20 each \\
+$k$=2 liars + 1 honest agent sees a weak blip & False isolation 20/20 \\
+$k$=0, 1 agents silent, real attack & Contained 20/20 each \\
+$k$=2 agents silent, real attack & Contained 0/20 \\
+4 / 3 / 2 agents alive, real attack & Contained 20/20 / 20/20 / 0/20 \\
+One agent withholds all its votes & Contained 20/20, median 1.5\,s \\
+Central controller lies (distributed: one agent lies) & False isolation 20/20 (0/20) \\
+Central controller crashed (distributed: one agent crashed) & Contained 0/20 (20/20) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{False alarms and false isolations}
+The mixed run used 30 genuine attacks (random mixes of the three attack signals) and 30 benign transients (short outbound-connection spikes seen by one to four agents, or long weak bursts). All 30 genuine attacks raised an alarm and were isolated, so nothing was missed (0/30). Among the benign cases 29 of 30 raised an alarm (97\%) and 15 of 30 led to an isolation (50\%, 95\% CI 33--67\%). Precision at the isolation level was 67\%, recall was 100\%, and $F_1$ is therefore 0.80. Table~\ref{tab:mixed} and Fig.~\ref{fig:mixed} give the details, and the split is informative: no benign transient seen by only one or two agents was ever isolated (0 of 12), but 15 of the 18 seen by three or four were. A threshold detector cannot tell a spike that every agent sees from an attack, so the quorum helps only where the benign disturbance is partial. In a real cluster all four agents poll the same endpoints, so spikes would usually be seen by all of them, and the 50\% should be read as a stress test with our hand-picked benign mix, not as a rate to expect in production.
+
+\begin{table}[!t]
+\caption{Mixed Run: Detection and Isolation Outcomes (Simulator)}
+\label{tab:mixed}
+\centering\small
+\begin{tabularx}{\columnwidth}{@{}Y l@{}}
+\toprule
+Metric & Result \\
+\midrule
+Genuine attacks: raised an alarm & 30/30 \\
+Genuine attacks: isolated (missed isolation) & 30/30 (0/30) \\
+Benign transients: raised an alarm & 29/30 (97\%) \\
+Benign transients: isolated (false isolation) & 15/30 (50\%) \\
+\quad seen by 1--2 agents & 0/12 isolated \\
+\quad seen by 3--4 agents & 15/18 isolated \\
+Precision / recall at isolation & 67\% / 100\% \\
+$F_1$ at isolation & 0.80 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=\columnwidth]{mixed.png}
+\caption{Mixed run of 30 genuine attacks and 30 benign transients (simulator). Bars show rates with 95\% confidence intervals.}
+\label{fig:mixed}
+\end{figure}
+
+\subsection{What the staged return buys}
+We compared the real design against two evaluation-only baselines using identical seeds (Fig.~\ref{fig:baselines}). When a dormant implant became active during the staged return, no run had the workload at full access while compromised (0/14), compared with 10 of 14 under an immediate return; in both cases the workload was contained again. The price is time: median 18.3\,s to full access against 8.5\,s. If the implant only woke up after the staged return would have finished, the gates did not help (5/6 versus 6/6). A baseline in which a single agent decides isolated a healthy workload in 20 of 20 runs after one false accusation or a short spike, compared with 0 of 20 for the three-of-four design.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.85\textwidth]{baselines.png}
+\caption{Staged return and quorum against two evaluation-only baselines, identical seeds (simulator). (a) healthy workloads wrongly isolated, (b) implant active during the return, (c) time to full access.}
+\label{fig:baselines}
+\end{figure*}
+
+\subsection{Overhead}
+In the simulator, each idle agent used about 0.1\% of one core and 2.3\,MB of added memory, rising to about 1.0\% and 4.2\,MB during an attack and recovery. These are indicative only.
+
+\subsection{Kubernetes sandbox}
+The sandbox cluster exercised the parts the simulator cannot: the real API server, Calico enforcement and the webhook. Table~\ref{tab:sandbox} lists the checks. A tripwire written to workload E (laboratory results) produced a \action{CONTAIN} quorum signed by agents A--D two seconds later, an isolation, a replacement pod, a \action{VALIDATE} quorum, and four stage changes, each with a quorum certificate that passed the webhook. The workload was back in normal access after 83\,s; most of that time was the pod's 30\,s termination grace and the four 10\,s dwells. Workload F took about 82\,s, and a repeat on E after a deployment upgrade completed the same way. These are single runs of a harmless trigger on one sandbox, so they show that the pipeline works end to end on a real cluster, not how it performs under load or real attacks. The sandbox runs also exposed four bugs, three in our own verification scripts and one real deployment bug (the webhook kept its old configuration after an upgrade and refused the isolation of the new workloads). All were fixed and covered by tests.
+
+\begin{table}[!t]
+\caption{Sandbox-Cluster Checks (Kubernetes 1.34.12, Minikube, Calico)}
+\label{tab:sandbox}
+\centering\footnotesize
+\begin{tabularx}{\columnwidth}{@{}Y l@{}}
+\toprule
+Check & Result \\
+\midrule
+RBAC probe per workload (6 workloads) & 27/27 pass each \\
+Admission webhook (3 workloads) & 7/7 pass each \\
+Webhook down, agent request still refused & 8/8 pass \\
+Calico isolation (2 workloads) & 16/16 pass each \\
+Baseline file manifest, all workloads & 6/6 match \\
+Tripwire on E, quorum to normal access & 83\,s (A--D signed) \\
+Tripwire on F, quorum to normal access & about 82\,s \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Live monitoring}
+On the authors' own cluster the dashboard showed four of four agents connected and six of six workloads healthy, with telemetry about one second old (Fig.~\ref{fig:live}). Each agent displayed its trust in its peers, its evidence scores, and five checked files per workload, all matching the baseline. These screenshots show normal operation. No attack was run on that cluster, so every attack-response figure above is from the simulator or the sandbox.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.75\textwidth]{live.png}
+\caption{Dashboard connected to the authors' four-node Minikube cluster (Kubernetes 1.37.0): four of four agents reachable, six of six workloads healthy, synthetic data only. This is normal operation, not an attack.}
+\label{fig:live}
+\end{figure*}
+
+\section{Discussion and Limitations}
+\label{sec:limits}
+The results support a narrow claim. Requiring three of four agents blocks a lone liar and a lone false alarm, an agent crash does not stop the response, and a replaced workload that is brought back in stages gives an implant less room than an immediate return. They do not show that the system detects attacks well. The detector is a set of fixed rules, 97\% of benign spikes triggered an alarm, and whether an alarm became an isolation depended on whether three agents saw the same disturbance.
+
+We see the following limits as important.
+\begin{enumerate}
+\item \textbf{Mostly simulated.} Most attack-response numbers come from a simulator with synthetic telemetry and a fake Kubernetes backend, with shorter timers and little timing noise. The sandbox shows that the real pipeline completes, from one harmless trigger.
+\item \textbf{Weak detection.} Fixed thresholds, no learning, no real healthcare attack traces, and a high false-alarm rate in our benign mix.
+\item \textbf{Self-reported telemetry.} Process lists, file hashes, instance identifiers and health come from the workload over unauthenticated HTTP. A compromised workload can misreport them, and validation does not authenticate workload identity. File-hash validation only runs when a baseline manifest is loaded.
+\item \textbf{Not Byzantine consensus.} Three or more colluding agents can authorize a false action and obtain a valid certificate, as Table~\ref{tab:quorum} shows. The scheme does not tolerate a majority of bad agents or arbitrary partitions.
+\item \textbf{Keys and certificates.} The PKI is static and there is no key rotation or revocation. The certificate verifier supports a ``consumed'' check but the agents and webhook do not pass one, so certificate replay protection rests on the epoch and expiry.
+\item \textbf{Clocks.} Messages more than 15\,s off are rejected and the delivering peer loses trust, so an honest agent with a skewed clock is penalized.
+\item \textbf{Evidence preservation.} The snapshot wait is capped at 15\,s, so a snapshot may be incomplete when the replacement starts.
+\item \textbf{Scope of the webhook and audit.} The webhook covers one service account in one namespace, not other administrators. The decision log is hash-chained but kept locally on each agent and not anchored elsewhere.
+\item \textbf{Scale and data.} Four agents, six workloads and 20 runs per case, with synthetic Synthea data. No real patient data were used and nothing here is a clinical or production evaluation.
+\item \textbf{Hand-chosen parameters.} Trust rates, vote thresholds and timers were set by hand and have not been tuned or analysed for sensitivity.
+\end{enumerate}
+Future work should start with the detector (adaptive thresholds, representative benign and attack traces), then authenticated telemetry and workload attestation, key rotation, and a real consensus protocol if tolerance of more than one bad agent is needed. Larger clusters and a controlled deployment study would be the next step after that.
+
+\section{Conclusion}
+We described and tested a prototype in which four peer agents authenticate evidence, track each other's reliability, and authorize containment, validation, retries and each reintegration stage only when three of them agree. In simulation it completed every attack-response run, kept a single lying agent from isolating a healthy workload, kept responding when one agent crashed, and did better than a central controller and a single-agent decision rule on the cases we tried. A real Minikube/Calico sandbox completed the full contain--replace--validate--reintegrate cycle with quorum certificates checked by an admission webhook. The same experiments mark the limits: three compromised agents defeat the quorum, two live agents cannot act, the staged return takes several times longer than an immediate one, and the rule-based detector raises many false alarms, half of which reached an isolation in our benign mix. The system's weak points are the detector and the unauthenticated telemetry, and those are where further work is needed first.
+
+\section*{Acknowledgment}
+The authors thank Dr.\ Swetha P.\,C.\ for guidance and feedback during the project, the Head of the Department and the Principal of BMS College of Engineering for facilities and support, and the Synthea project for the synthetic data generator.
+
+\section*{Declarations}
+\textbf{Funding:} none. \textbf{Conflict of interest:} none declared. \textbf{Ethics:} no human participants or real patient records were used; all health data are synthetic. \textbf{Data and code:} available from the corresponding author on reasonable request. \textbf{Author contributions:} to be completed by the authors before submission.
+
+\begin{thebibliography}{99}
+\bibitem{zhou10} C. V. Zhou, C. Leckie, and S. Karunasekera, ``A survey of coordinated attacks and collaborative intrusion detection,'' \emph{Comput. Secur.}, vol. 29, no. 1, pp. 124--140, Feb. 2010.
+\bibitem{vasilo15} E. Vasilomanolakis, S. Karuppayah, M. M{\"u}hlh{\"a}user, and M. Fischer, ``Taxonomy and survey of collaborative intrusion detection,'' \emph{ACM Comput. Surv.}, vol. 47, no. 4, 2015.
+\bibitem{li22} W. Li, W. Meng, and L. F. Kwok, ``Surveying trust-based collaborative intrusion detection: State-of-the-art, challenges and future directions,'' \emph{IEEE Commun. Surveys Tuts.}, vol. 24, no. 1, pp. 280--305, 2022.
+\bibitem{elshoush11} H. T. Elshoush and I. M. Osman, ``Alert correlation in collaborative intelligent intrusion detection systems---A survey,'' \emph{Appl. Soft Comput.}, vol. 11, no. 7, pp. 4349--4365, Oct. 2011.
+\bibitem{balas98} J. Balasubramaniyan, J. O. Garcia-Fernandez, D. Isacoff, E. Spafford, and D. Zamboni, ``An architecture for intrusion detection using autonomous agents,'' in \emph{Proc. 14th Annu. Comput. Security Appl. Conf. (ACSAC)}, 1998, pp. 13--24.
+\bibitem{josang07} A. J{\o}sang, R. Ismail, and C. Boyd, ``A survey of trust and reputation systems for online service provision,'' \emph{Decis. Support Syst.}, vol. 43, no. 2, pp. 618--644, Mar. 2007.
+\bibitem{kamvar03} S. D. Kamvar, M. T. Schlosser, and H. Garcia-Molina, ``The EigenTrust algorithm for reputation management in P2P networks,'' in \emph{Proc. 12th Int. Conf. World Wide Web (WWW)}, 2003, pp. 640--651.
+\bibitem{lamport82} L. Lamport, R. Shostak, and M. Pease, ``The Byzantine generals problem,'' \emph{ACM Trans. Program. Lang. Syst.}, vol. 4, no. 3, pp. 382--401, Jul. 1982.
+\bibitem{flp85} M. J. Fischer, N. A. Lynch, and M. S. Paterson, ``Impossibility of distributed consensus with one faulty process,'' \emph{J. ACM}, vol. 32, no. 2, pp. 374--382, Apr. 1985.
+\bibitem{castro99} M. Castro and B. Liskov, ``Practical Byzantine fault tolerance,'' in \emph{Proc. 3rd Symp. Operating Syst. Design Implement. (OSDI)}, 1999, pp. 173--186.
+\bibitem{castro02} M. Castro and B. Liskov, ``Practical Byzantine fault tolerance and proactive recovery,'' \emph{ACM Trans. Comput. Syst.}, vol. 20, no. 4, pp. 398--461, Nov. 2002.
+\bibitem{jarkas25} O. Jarkas, R. Ko, N. Dong, and R. Mahmud, ``A container security survey: Exploits, attacks, and defenses,'' \emph{ACM Comput. Surv.}, vol. 57, no. 7, 2025.
+\bibitem{patel13} A. Patel, M. Taghavi, K. Bakhtiyari, and J. Celestino J{\'u}nior, ``An intrusion detection and prevention system in cloud computing: A systematic review,'' \emph{J. Netw. Comput. Appl.}, vol. 36, no. 1, pp. 25--41, Jan. 2013.
+\bibitem{modi13} C. Modi, D. Patel, B. Borisaniya, H. Patel, A. Patel, and M. Rajarajan, ``A survey of intrusion detection techniques in cloud,'' \emph{J. Netw. Comput. Appl.}, vol. 36, no. 1, pp. 42--57, Jan. 2013.
+\bibitem{nist190} M. P. Souppaya, J. Morello, and K. Scarfone, ``Application container security guide,'' NIST, Gaithersburg, MD, USA, Special Publication 800-190, Sep. 2017.
+\bibitem{garcia09} P. Garc{\'\i}a-Teodoro, J. D{\'\i}az-Verdejo, G. Maci{\'a}-Fern{\'a}ndez, and E. V{\'a}zquez, ``Anomaly-based network intrusion detection: Techniques, systems and challenges,'' \emph{Comput. Secur.}, vol. 28, no. 1--2, pp. 18--28, 2009.
+\bibitem{bhuyan14} M. H. Bhuyan, D. K. Bhattacharyya, and J. K. Kalita, ``Network anomaly detection: Methods, systems and tools,'' \emph{IEEE Commun. Surveys Tuts.}, vol. 16, no. 1, pp. 303--336, 2014.
+\bibitem{khraisat19} A. Khraisat, I. Gondal, P. Vamplew, and J. Kamruzzaman, ``Survey of intrusion detection systems: Techniques, datasets and challenges,'' \emph{Cybersecurity}, vol. 2, Art. no. 20, 2019.
+\bibitem{rfc8032} S. Josefsson and I. Liusvaara, ``Edwards-curve digital signature algorithm (EdDSA),'' RFC 8032, Jan. 2017.
+\bibitem{rfc8446} E. Rescorla, ``The transport layer security (TLS) protocol version 1.3,'' RFC 8446, Aug. 2018.
+\bibitem{rfc5280} D. Cooper \emph{et al.}, ``Internet X.509 public key infrastructure certificate and certificate revocation list (CRL) profile,'' RFC 5280, May 2008.
+\bibitem{nist61} A. Nelson, S. Rekhi, M. Souppaya, and K. Scarfone, ``Incident response recommendations and considerations for cybersecurity risk management: A CSF 2.0 community profile,'' NIST, Special Publication 800-61 Rev.~3, Apr. 2025.
+\bibitem{nist207} S. Rose, O. Borchert, S. Mitchell, and S. Connelly, ``Zero trust architecture,'' NIST, Special Publication 800-207, Aug. 2020.
+\bibitem{csf2} NIST, ``The NIST cybersecurity framework (CSF) 2.0,'' NIST Cybersecurity White Paper 29, Feb. 2024.
+\bibitem{synthea} J. Walonoski \emph{et al.}, ``Synthea: An approach, method, and software mechanism for generating synthetic patients and the synthetic electronic health care record,'' \emph{J. Amer. Med. Inform. Assoc.}, vol. 25, no. 3, pp. 230--238, 2018.
+\end{thebibliography}
+
+\end{document}

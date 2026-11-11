@@ -15,3 +15,7 @@ Before submission:
 - Fill in the author-contributions sentence in the Declarations.
 - Check every reference (authors, pages, DOIs); they were written from memory and not looked up online. Refs [12] (Jarkas et al.) and [25] (Synthea) in particular.
 - Numbers in the Results come from `docs/RESULTS.md`, `docs/SANDBOX-CLUSTER.md` and the dashboard screenshots; re-run `scripts/evaluate.py` if you change anything.
+
+## Versions
+- `main.tex`: the paper text taken from `Abstract.docx` (the authors' reworded version), with typos fixed and a handful of factual mistakes corrected (listed in the commit message and in the chat).
+- `main_previous.tex`: the earlier text before that swap, kept for comparison.
