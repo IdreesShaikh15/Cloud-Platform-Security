@@ -264,7 +264,14 @@ Certificate lifetime & 300\,s \\
 \end{table}
 
 \section{Experimental Setup}
-We used two environments and keep their results apart.
+We used two environments for the experiments and a third only for screenshots; their results are kept apart (Fig.~\ref{fig:testbed}).
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=\columnwidth]{fig3_testbed.pdf}
+\caption{Experimental testbed. The same agent code runs in the simulator and in the Kubernetes sandbox; the authors' own cluster was used only for normal-operation monitoring screenshots.}
+\label{fig:testbed}
+\end{figure}
 
 \textbf{Simulator.} The simulator runs the real agent code, including signatures, gRPC with mutual TLS, trust, voting, certificates and the admission logic, against a synthetic world that generates telemetry and a fake Kubernetes backend. It uses shorter timers than the cluster (for example a 3\,s stage dwell instead of 10\,s), so its times are not wall-clock predictions. Every experiment is run 20 times with fixed seeds, except the mixed run (30 genuine and 30 benign trials); in total 1\,140 seeded trials ran without errors. Because the simulator is largely deterministic, run-to-run spread is narrow and understates what a real cluster would show.
 
@@ -312,7 +319,21 @@ In this experiment one agent signed fabricated evidence against a healthy worklo
 \end{figure*}
 
 \subsection{Quorum boundary, crashes and a central controller}
-Table~\ref{tab:quorum} summarizes the experiments that vary how many agents are compromised or silent. The scheme holds up to one compromised agent (and two, if the other two honest agents see nothing wrong), and it breaks where the arithmetic says it must. Three liars isolated a healthy workload in 20 of 20 runs. Two liars together with one honest agent that saw only a weak, real blip did so too (20/20). Two silent agents meant that nothing could be contained (0/20), and with three of four alive the full cycle still completed in all runs. Against a central controller, a lying controller isolated a healthy workload every time (20/20) and kept 79\% of the workloads available over the test window, while a controller crash left a real attack uncontained (0/20). The distributed version had neither problem in these runs. This comparison only covers our own baseline controller and should not be generalized to centralized detection systems in general.
+Table~\ref{tab:quorum} and Fig.~\ref{fig:faulttol} summarize the experiments that vary how many agents are compromised or silent. The scheme holds up to one compromised agent (and two, if the other two honest agents see nothing wrong), and it breaks where the arithmetic says it must. Three liars isolated a healthy workload in 20 of 20 runs. Two liars together with one honest agent that saw only a weak, real blip did so too (20/20). Two silent agents meant that nothing could be contained (0/20), and with three of four alive the full cycle still completed in all runs. Against a central controller, a lying controller isolated a healthy workload every time (20/20) and kept 79\% of the workloads available over the test window, while a controller crash left a real attack uncontained (0/20). The distributed version had neither problem in these runs. Fig.~\ref{fig:dvc} shows this comparison. It only covers our own baseline controller and should not be generalized to centralized detection systems in general.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.85\textwidth]{faulttol.png}
+\caption{Fault-tolerance boundary: false isolation, containment of a real attack, and false isolation with one honest agent seeing a weak real blip, as the number of compromised or silent agents grows from 0 to 3 (20 runs per bar, 95\% intervals; simulator).}
+\label{fig:faulttol}
+\end{figure*}
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.85\textwidth]{dvc.png}
+\caption{Distributed three-of-four design against our centralized-controller baseline: a healthy workload wrongly isolated, availability while the decision-maker lies, and containment of a real attack (20 runs each; simulator).}
+\label{fig:dvc}
+\end{figure*}
 
 \begin{table}[!t]
 \caption{Quorum Behaviour Under Compromised, Silent and Crashed Agents (20 Runs per Row, Simulator)}

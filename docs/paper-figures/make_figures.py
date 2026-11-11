@@ -232,5 +232,40 @@ def fig2():
     s.save("fig2_workflow.svg")
 
 
+def fig3():
+    s = S(1040, 610, "Fig. Experimental testbed")
+    s.box(220, 12, 600, 58, ["Agent code (identical in both environments)"], 14, True, fill="#f2f2f2")
+    s.text(520, 58, "signing, gRPC + mTLS, trust, voting, certificates, admission logic", 12, italic=True)
+    # simulator panel
+    s.rect(15, 105, 490, 355, fill="#fafafa", sw=1.4)
+    s.text(260, 128, "Simulator", 15, True)
+    s.box(40, 150, 440, 56, ["Synthetic world", "generates telemetry and injected attacks"], 13, True)
+    s.box(40, 250, 440, 56, ["Real agents A-D", "run in-process with real signatures and gRPC/mTLS"], 13, True)
+    s.box(40, 350, 440, 56, ["FakeBackend", "simulated Kubernetes API and pod replacement"], 13, True)
+    s.path([(260, 206), (260, 250)]); s.text(272, 232, "telemetry", 11, italic=True, anchor="start")
+    s.path([(260, 306), (260, 350)]); s.text(272, 332, "actions", 11, italic=True, anchor="start")
+    s.text(260, 435, "20 seeded runs per scenario, 1,140 trials in total; shorter timers", 12, italic=True)
+    # sandbox panel
+    s.rect(535, 105, 490, 355, fill="#fafafa", sw=1.4)
+    s.text(780, 128, "Kubernetes sandbox", 15, True)
+    s.text(780, 146, "Minikube, 4 nodes, Calico, Kubernetes 1.34.12", 12)
+    s.box(555, 165, 450, 62, ["Namespace healthcare", "workloads A-F and a traffic client (Synthea data)"], 13, True)
+    s.box(555, 270, 450, 62, ["Namespace resilience", "agents A-D, dashboard, two webhook replicas"], 13, True)
+    s.box(555, 375, 450, 56, ["Kubernetes API (K8sBackend)", "NetworkPolicy, Deployment updates"], 13, True)
+    s.path([(780, 270), (780, 227)]); s.text(792, 253, "monitor", 11, italic=True, anchor="start")
+    s.path([(780, 332), (780, 375)]); s.text(792, 357, "certificate-checked actions", 11, italic=True, anchor="start")
+    s.text(780, 448, "harmless tripwire only; single runs", 12, italic=True)
+    # shared code arrows
+    s.path([(300, 70), (300, 105), (260, 105), (260, 250)], halo=False, arrow=False) if False else None
+    s.path([(330, 70), (330, 88), (260, 88), (260, 105)], halo=False)
+    s.path([(710, 70), (710, 88), (780, 88), (780, 105)], halo=False)
+    # own cluster
+    s.rect(15, 490, 1010, 100, dash="6,4")
+    s.text(520, 520, "Authors' own four-node cluster (Kubernetes 1.37.0)", 14, True)
+    s.text(520, 545, "dashboard and normal-operation monitoring screenshots only; no attack was run here", 12.5)
+    s.text(520, 566, "Results from the three environments are reported separately.", 12.5, italic=True)
+    s.save("fig3_testbed.svg")
+
+
 if __name__ == "__main__":
-    fig1(); fig2()
+    fig1(); fig2(); fig3()

@@ -3,7 +3,7 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 (async () => {
   const b = await chromium.launch();
-  for (const n of ['fig1_architecture', 'fig2_workflow']) {
+  for (const n of ['fig1_architecture', 'fig2_workflow', 'fig3_testbed']) {
     const svg = fs.readFileSync(`${n}.svg`, 'utf8');
     const m = svg.match(/width="(\d+)" height="(\d+)"/);
     const w = +m[1], h = +m[2];
