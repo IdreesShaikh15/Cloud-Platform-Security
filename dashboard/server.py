@@ -46,6 +46,12 @@ from urllib.parse import parse_qs, urlparse
 HERE = os.path.dirname(os.path.abspath(__file__))
 PORT = int(os.environ.get("PORT", "8090"))
 POLL_S = float(os.environ.get("POLL_S", "1.0"))
+POLL_TIMEOUT_S = float(os.environ.get("POLL_TIMEOUT_S", "1.5"))     # one agent's /status; raise it on a slow port-forward
+# A channel nobody has asked about for IDLE_AFTER_S seconds is polled only every IDLE_POLL_S seconds (the page being shown stays at POLL_S), so the
+# Demo page's simulator and the Live page's four port-forwards do not both run at full rate while only one of them is on screen. The agents keep
+# 300 events and their last decisions themselves, so a 5 s interval loses nothing; the first request after an idle spell wakes the poller at once.
+IDLE_AFTER_S = float(os.environ.get("IDLE_AFTER_S", "15"))
+IDLE_POLL_S = float(os.environ.get("IDLE_POLL_S", "5"))
 BUFFER = int(os.environ.get("EVENT_BUFFER", "5000"))
 POOL = ThreadPoolExecutor(max_workers=8)
 
@@ -82,7 +88,7 @@ def aggregate_source(sources) -> str:
 
 def get(url: str):
     try:
-        with urllib.request.urlopen(url, timeout=1.5) as r:
+        with urllib.request.urlopen(url, timeout=POLL_TIMEOUT_S) as r:
             return json.loads(r.read())
     except Exception:
         return None
@@ -114,6 +120,8 @@ class Collector:
         self.invs: "OrderedDict" = OrderedDict()        # (agent, investigation id) -> investigation row
         self.gseq = 0
         self.last_poll = 0.0
+        self.latency: dict = {}                   # source id -> {"ms": how long its last /status took, "ok": whether it answered}; shown by scripts/demo-health.sh
+        self.wake = threading.Event()             # set by Channel.touch() to end an idle sleep early
         # Rolling readings per workload for the Live page charts (requests/s, outbound connections, data sent, failed logins), taken from what
         # the agents themselves measured on this channel. Bounded (5 minutes at 1 s); lost when the dashboard restarts.
         self.series: dict = {}
@@ -122,9 +130,11 @@ class Collector:
     def _fetch(self, sid: str, url: str):
         boot, seq = self.cursor.get(sid, (None, None))
         sep = "&" if "?" in url else "?"
+        t0 = time.time()
         res = get(f"{url}{sep}events_since={seq}" if seq is not None else url)
         if res and boot is not None and res.get("event_boot") != boot:
             res = get(url)                       # agent restarted: take its whole ring
+        self.latency[sid] = {"ms": round(1000 * (time.time() - t0), 1), "ok": res is not None}
         return sid, res
 
     def poll_once(self) -> None:
@@ -245,6 +255,18 @@ class Collector:
             return {"decisions": list(self.decisions.values()), "audit": list(self.audit.values()),
                     "snaps": list(self.snaps.values()), "invs": list(self.invs.values())}
 
+    def idle(self, now: float = None) -> bool:
+        ch_ = self.channel
+        return bool(ch_ is not None and ((now or time.time()) - ch_.touched) > IDLE_AFTER_S)
+
+    def health(self) -> dict:
+        """How the polling itself is going (for scripts/demo-health.sh): per-agent /status latency, age of the last poll, idle or not."""
+        now = time.time()
+        return {"poll_ms": {k: v["ms"] for k, v in sorted(self.latency.items())},
+                "poll_ok": {k: v["ok"] for k, v in sorted(self.latency.items())},
+                "last_poll_age_s": round(now - self.last_poll, 2) if self.last_poll else None,
+                "idle": self.idle(now), "poll_every_s": IDLE_POLL_S if self.idle(now) else POLL_S}
+
     def run(self):
         while True:
             t0 = time.time()
@@ -252,7 +274,9 @@ class Collector:
                 self.poll_once()
             except Exception:
                 pass
-            time.sleep(max(0.1, POLL_S - (time.time() - t0)))
+            self.wake.clear()
+            every = IDLE_POLL_S if self.idle() else POLL_S
+            self.wake.wait(max(0.1, every - (time.time() - t0)))
 
     def snapshot(self) -> dict:
         with self.lock:
@@ -286,7 +310,14 @@ class Channel:
         live = expect == LIVE_CLUSTER
         self.sim_url = "" if live else (sim_url or "").rstrip("/")        # a live channel can never carry simulator controls
         self.sim_token = "" if live else (sim_token or "")
+        self.touched = time.time()                # last time a browser asked this channel for anything
         self.collector = Collector(self)
+
+    def touch(self) -> None:
+        was_idle = self.collector.idle()
+        self.touched = time.time()
+        if was_idle:
+            self.collector.wake.set()
 
 
 def _urls(raw: str) -> dict:
@@ -684,7 +715,7 @@ def aggregate() -> dict:
             "pending_votes": {k: v["voters"] for k, v in pending.items()},
             "pending_detail": pending, "baseline": ch().baseline or None,
             "central_compromised": (base or {}).get("compromised"),
-            "last_poll": ch().collector.last_poll, "gseq": ch().collector.gseq,
+            "last_poll": ch().collector.last_poll, "gseq": ch().collector.gseq, "collector": ch().collector.health(),
             "channel": ch().name, "configured": True, "connection": connection_view(statuses)}
 
 
@@ -1437,6 +1468,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"enabled": False, "reason": why, "scenarios": [], "running": None, "last": None})
                 return self._send(400 if MODE == "strict" and not name else 404, json.dumps({"error": why}).encode(), "application/json")
             _ctx.channel = chn
+            chn.touch()
         if p == "/api/state":
             return self._json(aggregate())
         if p == "/api/series":

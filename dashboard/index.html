@@ -214,6 +214,7 @@
   <div class="filters" id="catfilters"></div>
   <div class="filters"><input type="search" id="q" placeholder="search, e.g. 'suspect', 'records', 'database'"><button id="clearf">Clear filters</button></div>
   <div id="timeline"></div>
+  <button id="tlmore" hidden style="margin-top:6px"></button>
   <div class="hint">Newest first. Click a line for its technical details. Each agent logs what <i>it</i> saw and did, so the same moment appears once per agent.</div>
 </section>
 </div>
@@ -263,10 +264,20 @@ const _fetch = window.fetch.bind(window);
 let CH = null;
 const NO_CH = /^api\/(channels|evaluation|eval\/)/;
 const U = path => path + (path.includes("?") ? "&" : "?") + "channel=" + CH;
+const GET_TIMEOUT_MS = 8000;
 window.fetch = async (...a) => {
   if (typeof a[0] === "string" && CH && a[0].startsWith("api/") && !NO_CH.test(a[0])) a[0] = U(a[0]);
+  if (typeof a[0] === "string" && a[0].startsWith("api/") && !(a[1] && a[1].method && a[1].method !== "GET") && !(a[1] && a[1].signal) && typeof AbortSignal !== "undefined" && AbortSignal.timeout)
+    a[1] = {...(a[1] || {}), signal: AbortSignal.timeout(GET_TIMEOUT_MS)};     // a stuck GET is abandoned, never piled up behind
   const r = await _fetch(...a); if (r.status === 401) location.reload(); return r;
 };
+// Writing the SAME markup into an element again changes nothing the viewer can see, but it costs layout, closes any <details> the viewer opened
+// and drops a text selection. Skip it. (An element whose children were cleared another way is written again: firstChild is checked.)
+(() => {
+  const d = Object.getOwnPropertyDescriptor(Element.prototype, "innerHTML");
+  Object.defineProperty(Element.prototype, "innerHTML", { configurable: true, get() { return d.get.call(this); },
+    set(v) { v = String(v); if (this.__html === v && this.firstChild !== null) return; this.__html = v; d.set.call(this, v); } });
+})();
 const DLOG_HELP = "Each agent keeps a hash-chained log of the quorum decisions it saw; a changed, deleted or re-ordered record breaks the chain.";
 const STAGES = ["QUARANTINE","RESTRICTED","MONITORED","PEER_VALIDATED","FULL"];
 const CATS = ["OBSERVE","EVIDENCE_SENT","EVIDENCE_RECEIVED","REJECTED","SCORE","VOTE_CAST","VOTE_WITHHELD","TRUST_CHANGE","FLAG","QUORUM","ACTION","PEER_LINK","INVESTIGATION"];
@@ -352,12 +363,13 @@ function renderFilters() {
     `<button class="chip ${fCats.has(c)?"sel":""}" data-c="${c}" title="${c}">${ICON[c]} ${esc(catName(c))}</button>`).join("");
 }
 document.getElementById("nodefilters").onclick = e => { const b = e.target.closest("[data-n]"); if (!b) return;
-  const n = b.dataset.n; fNodes.has(n) ? fNodes.delete(n) : fNodes.add(n); renderFilters(); renderTimeline(); };
+  const n = b.dataset.n; fNodes.has(n) ? fNodes.delete(n) : fNodes.add(n); tlLimit = TL_PAGE; renderFilters(); renderTimeline(); };
 document.getElementById("catfilters").onclick = e => { const b = e.target.closest("[data-c]"); if (!b) return;
-  const c = b.dataset.c; fCats.has(c) ? fCats.delete(c) : fCats.add(c); renderFilters(); renderTimeline(); };
-document.getElementById("q").oninput = () => renderTimeline();
+  const c = b.dataset.c; fCats.has(c) ? fCats.delete(c) : fCats.add(c); tlLimit = TL_PAGE; renderFilters(); renderTimeline(); };
+let qTimer = null;
+document.getElementById("q").oninput = () => { clearTimeout(qTimer); qTimer = setTimeout(() => { tlLimit = TL_PAGE; renderTimeline(); }, 150); };     // not on every keystroke
 document.getElementById("clearf").onclick = () => { NODES.forEach(n => fNodes.add(n)); CATS.forEach(c => fCats.add(c));
-  document.getElementById("q").value = ""; renderFilters(); renderTimeline(); };
+  document.getElementById("q").value = ""; tlLimit = TL_PAGE; renderFilters(); renderTimeline(); };
 document.getElementById("timeline").onclick = e => { const r = e.target.closest(".ev"); if (!r) return;
   const k = r.dataset.k; openEv.has(k) ? openEv.delete(k) : openEv.add(k); renderTimeline(); };
 
@@ -371,15 +383,27 @@ function evRow(e) {
 function filtered(list) {
   const q = document.getElementById("q").value.trim().toLowerCase();
   return list.filter(e => fNodes.has(e.node) && fCats.has(e.category) &&
-    (!q || (e.summary + " " + e.category + " " + (e.target||"") + " " + JSON.stringify(e.details)).toLowerCase().includes(q)));
+    (!q || (e._s ??= (e.summary + " " + e.category + " " + (e.target||"") + " " + JSON.stringify(e.details)).toLowerCase()).includes(q)));   // search text built once per event
 }
-function renderTimeline() {
+// Only the newest TL_PAGE rows are drawn (more on request): the buffer can hold thousands of events and drawing them all every second is what made the page heavy.
+const TL_PAGE = 200;
+let tlLimit = TL_PAGE, tlKey = "";
+function renderTimeline(force) {
+  const q = document.getElementById("q").value;
+  const key = [events.length, gseq, tlLimit, [...fNodes].join(), [...fCats].join(), q, [...openEv].join()].join("|");
+  if (!force && key === tlKey) return;                          // nothing changed since the last draw
+  tlKey = key;
   const f = filtered(events);
-  document.getElementById("evcount").textContent = `(${f.length} of ${events.length} buffered events shown)`;
-  f.sort((a, b) => (a.ts - b.ts) || ((a.gseq || 0) - (b.gseq || 0)));
-  document.getElementById("timeline").innerHTML = f.slice(-400).reverse().map(evRow).join("") ||
+  if (!f.every((e, i) => !i || (f[i - 1].ts <= e.ts))) f.sort((a, b) => (a.ts - b.ts) || ((a.gseq || 0) - (b.gseq || 0)));   // arrives in order; sort only if not
+  const shown = f.slice(-tlLimit);
+  document.getElementById("evcount").textContent = `(${shown.length} of ${f.length} matching events shown, ${events.length} buffered)`;
+  document.getElementById("timeline").innerHTML = shown.reverse().map(evRow).join("") ||
     '<div class="mut" style="padding:8px">No events match the filters yet.</div>';
+  const more = document.getElementById("tlmore");
+  more.hidden = f.length <= tlLimit;
+  more.textContent = `Show ${Math.min(TL_PAGE, f.length - tlLimit)} older events (${f.length - tlLimit} not drawn)`;
 }
+document.getElementById("tlmore").onclick = () => { tlLimit += TL_PAGE; renderTimeline(true); };
 async function pullEvents() {
   const r = await (await fetch(`api/events?since=${gseq}&limit=2000`)).json();
   if (!r || !Array.isArray(r.events)) return;                 // an error answer (for example "Live Monitoring is not configured") has no events: nothing to add
@@ -1161,11 +1185,27 @@ async function refresh() {
   try { renderState(s); } catch (e) { console.error("render failed", e); }
   isConnected = !(s.configured === false || !(s.connection || {}).connected);
   if (!isConnected) return;                                    // NOT CONNECTED: the banner says so, and nothing else is polled or shown
-  for (const f of [pullEvents, refreshSim, refreshSeries, refreshIncident, () => openAgent ? refreshDrawer() : null]) {
+  // The steps do not depend on each other, so they run side by side: on a slow link one cycle then costs two round trips, not five.
+  await Promise.all([pullEvents, refreshSim, refreshSeries, refreshIncident, () => openAgent ? refreshDrawer() : null].map(async f => {
     try { await f(); } catch (e) { console.error("refresh step failed", e); }                                   // a failing step never claims the backend is unreachable
-  }
+  }));
 }
-function start() { refresh(); refreshMetrics(); timers = [setInterval(refresh, 1000), setInterval(refreshMetrics, 5000)]; }
+// One refresh cycle at a time: a cycle is several requests in a row, so on a slow link (a `kubectl port-forward` on a busy laptop) a new one started every second
+// used to pile up behind the old ones. A tick that finds the previous cycle still running is skipped (counted in refreshSkipped), and a hidden tab fetches nothing.
+let refreshing = false, metricsBusy = false, refreshSkipped = 0;
+async function tickRefresh() {
+  if (document.hidden) return;
+  if (refreshing) { refreshSkipped++; return; }
+  refreshing = true;
+  try { await refresh(); } finally { refreshing = false; }
+}
+async function tickMetrics() {
+  if (document.hidden || metricsBusy) return;
+  metricsBusy = true;
+  try { await refreshMetrics(); } finally { metricsBusy = false; }
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden && !paused) tickRefresh(); });       // catch up at once when the tab comes back
+function start() { tickRefresh(); tickMetrics(); timers = [setInterval(tickRefresh, 1000), setInterval(tickMetrics, 5000)]; }
 function stop() { timers.forEach(clearInterval); timers = []; }
 document.getElementById("pause").onclick = () => {
   paused = !paused; const b = document.getElementById("pause"), l = document.getElementById("live");

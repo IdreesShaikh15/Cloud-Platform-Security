@@ -673,3 +673,20 @@ Simulator only, four-workload profile; one attack family; the implant delay (2-2
 ## Agent trust display clarified (small UI change, no algorithm change)
 * Confirmed in `dashboard/server.py aggregate()`: the card's "Agent trust" = median of the other reachable agents' own trust scores for that agent (rounded to 1 decimal; two reporters -> their mean; none -> "-"). Cards now name the agent and the calculation and show the three scores; Workload trust is labelled as the service's own health; cards E/F say they have no agent; both tooltips rewritten; new "Who trusts whom" 4x4 table in the Overview (collapsed in Simple, open in Detailed; values only as reported by the agents; "-" diagonal; "not reported" for an agent that is down). Demo Mode and Live Monitoring both verified in a real browser (Live on the sandbox cluster, including a lying agent: card 42.5 = median of 42.5, 42.5, 40). docs/DASHBOARD.md section 22; tests/test_agent_trust_display.py.
 * Regression on the final code: `python3 -m pytest -q tests` -> **602 passed, 1 failed**; the failure (`test_dataset.py::test_the_client_generates_continuous_clinician_traffic_without_errors`, availability probe 0.9231 instead of 1.0) is a start-up timing race that depends on machine load (the sandbox was also running a 4-node cluster): the same file passed 13/13 in two of three reruns and passed in the previous full run; it exercises the demo apps only, not the dashboard. `sim/local_demo.py` -> **15 of 15 PASS** (with the sandbox-only gRPC proxy setting). `gen-workloads.py --check` -> up to date.
+
+## Demo timing, dashboard load and laptop health (before the 17 November presentation; no security logic changed)
+
+Why the live attack demo felt slow: of the 83 s measured tripwire sequence, 30 s is Kubernetes' pod shutdown wait (the demo app ignores SIGTERM) and 42 s is four
+reintegration stages that each need a 10 s dwell and 20 workload-trust points at 2 per second; the rest is detection, the quorum and the replacement pod start.
+Full diagnosis, per-scenario Demo Mode timing, measurements and exact laptop steps: **docs/DEMO-TIMING.md**.
+
+* **Timing profile** (`config/timing-profiles.json`, `scripts/timing_profile.py`, `scripts/demo-profile.sh`, **docs/DEMO-PROFILE.md**): `presentation` sets `timers.stage_dwell_s` 10 -> 3,
+  `trust.workload_recover_per_s` 2 -> 8 (the values the simulator already uses) and `terminationGracePeriodSeconds` 30 -> 2 on the six workloads; `default` restores the shipped values
+  byte for byte. Expected tripwire 30-40 s (calculated, not yet measured on the laptop). `scripts/preflight.sh` prints the active profile.
+* **Dashboard** (`dashboard/index.html`, `dashboard/server.py`): one refresh cycle at a time, hidden tab fetches nothing, GET timeout 8 s, steps in parallel, log draws the newest 200 rows with "load more",
+  unchanged markup not rewritten, off-screen channel polled every 5 s. Benchmark (`scripts/bench-dashboard.js`): on a 1.5 s-per-request link 94 -> 30 requests and 7 -> 4 in flight; log redraw
+  with 3,000 buffered events and a 4x throttled CPU 645 -> 334 ms.
+* **Laptop health**: `scripts/demo-health.sh` (nodes, pods, WSL/Docker limits, dashboard latency, agent tick lag), `scripts/demo-traffic.sh` (pause / resume the Synthea clients),
+  `agent/resilience/ticktiming.py` (observability only: how late the agent's 1 s loop runs, reported in `/status`).
+* **Tests**: `tests/test_demo_profile.py`, `tests/test_demo_health.py`, `tests/test_dashboard_perf.py`. Security modules (`quorum`, `trust`, `certificate`, `admission`, `webhook`, `detection`, `reintegration`) are untouched.
+* **Not verified**: the profile on a real cluster (the October sandbox cluster no longer exists) and anything on the HP Omen / WSL2 / Docker Desktop laptop.

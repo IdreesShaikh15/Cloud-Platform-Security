@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # The presenter's dashboard: Demo Mode (local simulator) AND Live Monitoring (your Minikube cluster) on http://127.0.0.1:8091.
 #   scripts/laptop-dashboard.sh            # both pages
-#   scripts/laptop-dashboard.sh live       # Live Monitoring only (no simulator is started)
+#   scripts/laptop-dashboard.sh live       # Live Monitoring only (no simulator is started): the simulator (four extra agents ticking twice a second)
+#                                          # then does not compete with your cluster for the CPU. Use it if scripts/demo-health.sh shows a busy laptop.
+#                                          # With both pages, the page NOT on screen is polled only every 5 s (dashboard/server.py IDLE_POLL_S).
 # Live data is READ through `kubectl port-forward` to the four agents' status ports. The two pages are separate channels in the
 # dashboard backend: simulated data can never reach the Live page and the scenario controls exist only on the Demo page
 # (docs/DASHBOARD.md, docs/LIVE_DEMO.md). Everything binds to 127.0.0.1. Ctrl-C stops everything.
@@ -37,7 +39,7 @@ if [ "${1:-}" = "live" ]; then
   echo ">> Live Monitoring only: http://127.0.0.1:$PORT/?mode=live"
   python3 "$ROOT/dashboard/server.py" &
 else
-  echo ">> Demo Mode + Live Monitoring: http://127.0.0.1:$PORT/"
+  echo ">> Demo Mode + Live Monitoring: http://127.0.0.1:$PORT/   (laptop busy? Ctrl-C and run: bash scripts/laptop-dashboard.sh live)"
   python3 "$ROOT/sim/demo_server.py" --dashboard --dashboard-port "$PORT" &
 fi
 PIDS+=($!)

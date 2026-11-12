@@ -28,6 +28,8 @@ Then **restart Terminal 2** (Ctrl-C, run it again) so the Security Alerts list s
 `RESTART_WINDOW_MIN=1 bash scripts/preflight.sh` only if a recent pod restart is explained (you restarted Docker) and everything else is green.
 **Do not** run `scripts/deploy.sh`, `scripts/gen-certs.py` or `scripts/reset.sh` during the day: use `demo-reset.sh`.
 
+**Optional, if the live incident felt long on your laptop (docs/DEMO-TIMING.md, docs/DEMO-PROFILE.md):** run `bash scripts/demo-profile.sh presentation` **before** the preflight (about 1-2 minutes). It shortens only three demo timers (stage dwell 3 s, workload-trust recovery 8/s, 2 s pod shutdown wait), so the tripwire in section 4 finishes in about 30-40 s instead of about 80-90 s; the preflight prints the active profile. `bash scripts/demo-profile.sh default` goes back. While rehearsing, `bash scripts/demo-health.sh` (also `--watch`) tells you whether the laptop is the bottleneck, and `bash scripts/demo-traffic.sh pause` stops the Synthea clinician traffic (resume it before the final preflight).
+
 **Golden rule: if anything live looks wrong, say "let me show the same thing in Demo Mode" and click tab 2. Never debug in front of the audience.**
 
 ## The 20 minutes at a glance
@@ -78,7 +80,7 @@ kubectl -n resilience delete pod -l resilience.io/node=B --grace-period=0 --forc
 bash scripts/tripwire-test.sh E            # dry run: prints exactly what it will do, changes nothing
 bash scripts/tripwire-test.sh E --yes      # does it
 ```
-**Expect (sandbox, with agent B down; seconds from the command):**
+**Expect (sandbox, default timing, with agent B down; seconds from the command; with the presentation profile the pod shutdown wait is 2 s and each step is about 4 s, so the whole thing is about 30-40 s):**
 
 | Seconds | What the page shows |
 |---|---|

@@ -135,6 +135,12 @@ PY
 read -r CFGOK CFGHAVE CFGWANT < "$T/cfg.out" || true
 if [ "${CFGOK:-}" = "OK" ]; then pass "the agents' and webhook's configuration lists exactly the ${NWORK} workloads in config/workloads.json"
 else fail "configuration lists [${CFGHAVE:-?}] but config/workloads.json has [${CFGWANT:-?}]" "Run: bash scripts/upgrade-app.sh   (applies the configuration, restarts the webhook before the agents)."; fi
+PROFILE="$(python3 "$ROOT/scripts/timing_profile.py" detect < "$T/cfg.json" 2>/dev/null || true)"
+case "$PROFILE" in
+  default) pass "timing profile: default (stage dwell 10 s, pod shutdown wait 30 s: a tripwire takes about 80 s; for a shorter live demo: bash scripts/demo-profile.sh presentation)" ;;
+  presentation) pass "timing profile: presentation (a tripwire takes about 30-40 s; stage dwell 3 s)" ;;
+  custom) warn "timing profile: custom (the timing keys in resilience-config match neither profile)" "Pick one: bash scripts/demo-profile.sh default   or   bash scripts/demo-profile.sh presentation" ;;
+esac
 DRYBAD=""
 for w in "${NAMES[@]:0:$NWORK}"; do
   out="$(kc --as=system:serviceaccount:resilience:resilience-agent -n healthcare annotate deploy "$w" resilience.io/preflight-probe=1 --overwrite --dry-run=server 2>&1)"

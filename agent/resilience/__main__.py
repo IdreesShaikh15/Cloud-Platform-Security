@@ -29,6 +29,9 @@ def _loop(node, tick_s: float):
             node.tick()
         except Exception:
             log.exception("tick failed")
+        timing = getattr(node, "tick_timing", None)
+        if timing is not None:                                   # observability only (ticktiming.py); never read by a decision
+            timing.record(t0, time.time() - t0)
         time.sleep(max(0.05, tick_s - (time.time() - t0)))
 
 

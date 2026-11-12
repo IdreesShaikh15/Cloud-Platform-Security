@@ -30,6 +30,7 @@ from typing import Callable, Deque, Dict, List, Optional, Tuple
 from .config import ClusterConfig
 from .crypto import KeyRegistry, Signer
 from .decisionlog import DecisionLog, digest_of
+from .ticktiming import TickTiming
 from .detection import Detection, Detector, max_confidence
 from .evidence import Action, Evidence, ObsType, ReplayCache, Vote, open_envelope, seal
 from . import actions as act
@@ -154,6 +155,7 @@ class ResilienceAgent:
         # Overview shows them as 'since the agents started'.
         self.counters = {"incidents_opened": 0, "recoveries_succeeded": 0, "recovery_attempts_failed": 0,
                          "recoveries_abandoned": 0}
+        self.tick_timing = TickTiming(cfg.timers.tick_s)         # how late the 1 s loop runs (observability only; ticktiming.py)
         self._rec_seen: Dict[Tuple[str, int, int], float] = {}   # (target, epoch, attempt) -> redeploy first seen in cluster
         self._trust_path = trust_state_path
         self._trust_saved: Optional[str] = None
@@ -1340,6 +1342,7 @@ class ResilienceAgent:
                 "decision_log": self.decision_log.status(),
                 "snapshots": self.forensics.status(),
                 "actions": self.audit.status(),
+                "tick_timing": self.tick_timing.summary(),
                 "event_boot": self.events.boot,
                 "event_seq": self.events.seq,
                 "events": self.events.recent(since=events_since) if include_events else [],
