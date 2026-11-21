@@ -29,6 +29,10 @@
   .bar > i { display:block; height:100%; }
   .stages { display:flex; gap:2px; margin:6px 0; } .stages span { flex:1; font-size:9px; text-align:center; padding:2px 0; background:var(--line); border-radius:3px; }
   .stages span.on { background:var(--warn); color:#000; } .stages span.done { background:#2e4d36; }
+  .rungrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(520px,1fr)); gap:12px; margin-top:8px; }
+  .rungrid .chart { background:var(--card); border-radius:8px; padding:8px; } .rungrid .chart b { font-size:14px; } .rungrid svg { width:100%; height:auto; display:block; }
+  .rungrid .legend2 { display:flex; flex-wrap:wrap; gap:4px 12px; font-size:12px; color:var(--mut); } .rungrid .legend2 i { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:4px; }
+  #runeval img { max-width:100%; border-radius:6px; background:#fff; }
   .tag { font-size:11px; padding:1px 6px; border-radius:10px; background:var(--line); white-space:nowrap; }
   .tag.bad { background:var(--bad); color:#000; } .tag.warn { background:var(--warn); color:#000; } .tag.ok { background:var(--ok); color:#000; }
   .nb { display:inline-flex; align-items:center; gap:4px; font-weight:700; white-space:nowrap; }
@@ -201,6 +205,7 @@
 <section id="simctl"><b>Demo controls</b> <span class="src src-SIMULATOR">SIMULATOR ONLY</span>
   <span class="mut">(these buttons exist only when this dashboard is connected to the simulator; the backend refuses them for a live cluster. Live scenarios are terminal scripts.)</span>
   <div class="filters" style="margin-top:8px"><select id="simsel" aria-label="Scenario"></select>
+    <label class="mut" for="simtarget">on the</label><select id="simtarget" aria-label="Service to attack"></select>
     <button id="simstart">Start scenario</button> <button id="simreset">Reset simulator</button> <span id="simstat" class="mut"></span></div>
   <div id="simdesc" class="mut"></div><div id="simlast"></div></section>
 <section id="tour"><b>Guided demonstration</b> <span class="src src-SIMULATOR">SIMULATOR ONLY</span>
@@ -223,6 +228,8 @@
 <div id="inclist">
 <section id="incsec"><b>Security Alerts</b> <span class="mut">(each one is a workload that the agents agreed to isolate; click a row for everything that happened: what triggered it, the evidence, who agreed, the actions and their real results)</span>
   <table id="inctable"></table></section>
+<section id="suspsec"><b>Suspicious activity that did NOT lead to an isolation</b> <span class="mut">(not security alerts: nothing was isolated. Claims the other agents dispute, investigations, agents flagged SUSPECT and messages that failed verification, as they happen.)</span>
+  <table id="susptable"></table></section>
 <section class="adv"><b>Agreements reached (3 of 4)</b> <span class="mut">(click a row for the technical details: the votes and evidence behind it)</span><table id="dec"></table></section>
 <section class="adv"><b>Waiting for agreement</b> <span class="mut">(3 of 4 agents must agree. A missing vote is never counted as approval; each agent that has not agreed says why.)</span><div id="pend"></div></section>
 <section class="adv"><b>How fast it went</b> <span class="mut">(seconds since the attack was injected; the fastest agent's time)</span><table id="met"></table></section>
@@ -241,10 +248,16 @@
 
 <div class="panel" id="panel-recovery" role="tabpanel" aria-labelledby="tab-recovery" data-panel="recovery" hidden>
 <section id="recsec"><b>Recovery</b> <span class="mut">(a read-only copy of the affected workload's evidence is saved BEFORE it is replaced; every action taken in the cluster records its real result. A timeout is not a failure: the cluster is checked, and if it cannot be read the result is shown as UNKNOWN.)</span>
-  <div id="recunk"></div><table id="snaps"></table><table id="acts" style="margin-top:8px"></table></section>
+  <div id="recunk"></div><div id="recnone" class="mut" style="margin:8px 0"></div><table id="snaps"></table><table id="acts" style="margin-top:8px"></table></section>
 </div>
 
 <div class="panel" id="panel-evaluation" role="tabpanel" aria-labelledby="tab-evaluation" data-panel="evaluation" hidden>
+<section id="runbox" hidden>
+  <b>This run</b> <span class="src src-SIMULATOR">SIMULATOR</span> <span class="mut" id="runmeta"></span>
+  <div class="mut" style="margin:4px 0 8px">The graphs below were drawn from the scenario you just ran: ONE simulated run, read from what the four agents measured and decided, every half second. They change with the scenario.
+    The evaluation results further down (1,140 seeded trials) are fixed and are never changed by a run.</div>
+  <div id="runsum"></div><div id="rungraphs" class="rungrid"></div><div id="runeval"></div>
+</section>
 <div id="evalbox"><div class="mut">Open this tab to load the evaluation.</div></div>
 </div>
 
@@ -465,7 +478,7 @@ function showTab(name, focus) {
   if (parts[0] === "incident" && parts.length === 4) { setIncident(parts.slice(1).join(":")); name = "incidents"; }
   else { if (openInc) setIncident(null); }
   if (!TABS.includes(name)) name = "overview";
-  if (name === "evaluation") loadEvaluation();
+  if (name === "evaluation") { loadEvaluation(); if (typeof refreshRun === "function") refreshRun(); }
   for (const t of TABS) {
     const b = document.getElementById("tab-" + t), p = document.getElementById("panel-" + t);
     b.setAttribute("aria-selected", String(t === name)); b.tabIndex = t === name ? 0 : -1; p.hidden = t !== name;
@@ -744,6 +757,75 @@ function renderBanner(s) {
 }
 // ---------------------------------------------------------------- simulator demo controls (rendered only when the BACKEND says they are allowed)
 let simBusy = false;
+// ---------------------------------------------------------------- this run: graphs drawn from the recording of the scenario just run (Demo Mode only)
+const BAND_COL = {HEALTHY:"#3fb95022", ISOLATED:"#f8514933", RECOVERING:"#d2992233", VALIDATING:"#58a6ff33", QUARANTINE:"#58a6ff22", RESTRICTED:"#58a6ff2a",
+                  MONITORED:"#58a6ff33", PEER_VALIDATED:"#3fb95033", FULL:"#3fb95044"};
+const MARK_COL = {attack:"#f85149", setup:"#d29922", decision:"#58a6ff", response:"#a371f7", recovery:"#3fb950"};
+function chartSvg(p, run, labels) {
+  const W = 640, H = 210, L = 52, R = 14, T = 16, B = 30, tmax = run.t_max || 20;
+  const x = v => L + (W - L - R) * Math.min(v, tmax) / tmax;
+  const vals = p.series.flatMap(s => s.points.map(q => q[1]));
+  const ymin = p.ymin ?? 0, ymax = p.ymax ?? Math.max(1, ...vals, ...(p.thresholds || []).map(q => q.y)) * 1.15;
+  const y = v => T + (H - T - B) * (1 - (v - ymin) / ((ymax - ymin) || 1));
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(p.title)}">`;
+  if (p.bands) for (const b of run.bands || []) s += `<rect x="${x(b.from)}" y="${T}" width="${Math.max(1, x(b.to) - x(b.from))}" height="${H - T - B}" fill="${BAND_COL[b.key] || "#8b949e22"}"><title>${esc(b.label)}</title></rect>`;
+  for (let i = 0; i <= 4; i++) { const v = ymin + (ymax - ymin) * i / 4; s += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="0.5"/><text x="${L - 4}" y="${y(v) + 4}" text-anchor="end" font-size="10" fill="var(--mut)">${+v.toFixed(2)}</text>`; }
+  const step = tmax > 60 ? 20 : 10;
+  for (let tt = 0; tt <= tmax; tt += step) s += `<line x1="${x(tt)}" x2="${x(tt)}" y1="${T}" y2="${H - B}" stroke="var(--line)" stroke-width="0.5"/><text x="${x(tt)}" y="${H - B + 14}" text-anchor="middle" font-size="10" fill="var(--mut)">${tt}s</text>`;
+  s += `<text x="${(L + W - R) / 2}" y="${H - 2}" text-anchor="middle" font-size="10" fill="var(--mut)">seconds since you pressed Start</text>`;
+  for (const q of p.thresholds || []) s += `<line x1="${L}" x2="${W - R}" y1="${y(q.y)}" y2="${y(q.y)}" stroke="var(--warn)" stroke-dasharray="5 4" stroke-width="1"/>` +
+    (q.label ? `<text x="${W - R - 2}" y="${y(q.y) - 3}" text-anchor="end" font-size="10" fill="var(--warn)">${esc(q.label)}</text>` : "");
+  (run.markers || []).forEach((m, i) => { s += `<line x1="${x(m.t)}" x2="${x(m.t)}" y1="${T}" y2="${H - B}" stroke="${MARK_COL[m.kind] || "#8b949e"}" stroke-dasharray="2 3" stroke-width="1"><title>${esc(m.label)} (${m.t}s)</title></line>`;
+    if (labels) s += `<text x="${x(m.t) + 2}" y="${T + 9 + (i % 3) * 10}" font-size="9" fill="${MARK_COL[m.kind] || "#8b949e"}">${esc(m.label.length > 34 ? m.label.slice(0, 33) + "…" : m.label)}</text>`; });
+  for (const se of p.series) {
+    if (!se.points.length) continue;
+    let d = "";
+    se.points.forEach((q, i) => { d += i === 0 ? `M${x(q[0])},${y(q[1])}` : se.style === "step" ? `H${x(q[0])}V${y(q[1])}` : `L${x(q[0])},${y(q[1])}`; });
+    s += `<path d="${d}" fill="none" stroke="${se.color}" stroke-width="2" stroke-linejoin="round"/>`;
+  }
+  return s + "</svg>";
+}
+function renderRun(r) {
+  const box = document.getElementById("runbox");
+  if (CH !== "demo" || !r || !r.available) { box.hidden = true; return; }
+  box.hidden = false;
+  const m = r.meta, sm = r.summary || {};
+  document.getElementById("runmeta").textContent = `${m.title}${m.phase === "done" ? "" : " · " + (m.phase === "lead-in" ? "waiting for the attack to begin" : m.phase === "attack" ? "attack in progress" : "running")} · ${r.samples} samples`;
+  const ev = (r.evaluation || {}), med = ev.medians;
+  const cell = k => `<td>${sm[k] == null ? "-" : sm[k] + " s"}</td>` + (med ? `<td class="mut">${med[k] == null ? "-" : med[k] + " s"}</td>` : "");
+  document.getElementById("runsum").innerHTML = `<table><tr><th>from the moment the attack began</th><th>detected</th>${med ? "<th class=mut>(median of " + med.trials + " runs)</th>" : ""}<th>isolated</th>${med ? "<th class=mut>(median)</th>" : ""}<th>recovery check passed</th>${med ? "<th class=mut>(median)</th>" : ""}<th>normal access restored</th>${med ? "<th class=mut>(median)</th>" : ""}</tr>
+    <tr><td>this run</td>${cell("detected_s")}${cell("isolated_s")}${cell("recovery_check_s")}${cell("full_access_s")}</tr></table>` +
+    (med ? "" : '<div class="mut">The timing evaluation has no row for this kind of scenario, so there is nothing to compare these times with.</div>');
+  document.getElementById("rungraphs").innerHTML = (r.panels || []).map((p, i) => `<div class="chart"><b>${esc(p.title)}</b>
+    <div class="mut">${esc(p.ylabel || "")}</div>${chartSvg(p, r, i === 0)}
+    <div class="legend2">${p.series.map(se => `<span><i style="background:${se.color}"></i>${esc(se.name)}</span>`).join("")}</div>
+    <div class="mut">${esc(p.note || "")}</div></div>`).join("");
+  document.getElementById("runeval").innerHTML = ev.figure ? `<div style="margin-top:10px"><b>The evaluation graph that matches this scenario</b> <span class="mut">(fixed results of many runs, not this run): ${esc(ev.caption)}</span>
+    <div><img loading="lazy" alt="${esc(ev.caption)}" src="api/eval/figure/${encodeURIComponent(ev.figure)}"></div></div>` : "";
+}
+let runKey = "";
+async function refreshRun() {
+  if (CH !== "demo") return;
+  const visible = !document.getElementById("panel-evaluation").hidden, running = tourSim && tourSim.running;
+  if (!visible && !running) return;
+  const r = await (await fetch("api/sim/run")).json();
+  const key = r.available ? [r.samples, r.meta.phase, r.markers.length].join("|") : "none";
+  if (key === runKey && !visible) return;
+  runKey = key; renderRun(r);
+}
+function renderSuspicious(rows) {
+  const el = document.getElementById("susptable");
+  const kind = {accusation: "disputed claim", investigation: "investigation", "agent-flag": "agent flagged", rejected: "rejected message"};
+  el.innerHTML = rows && rows.length ? "<tr><th>what</th><th>status</th><th>details</th><th>agents</th></tr>" + rows.map(r =>
+    `<tr><td><span class="tag">${esc(kind[r.kind] || r.kind)}</span> ${esc(r.title)}</td><td>${r.status === "open" ? '<span class="st warn">⚠ OPEN</span>' : '<span class="st na">closed</span>'}</td><td class="mut">${esc(r.detail)}</td><td>${(r.agents || []).map(nb).join(" ")}</td></tr>`).join("")
+    : '<tr><td class="mut">Nothing suspicious right now: no disputed claims, investigations, flagged agents or rejected messages.</td></tr>';
+}
+function renderRecoveryNone(s) {
+  const el = document.getElementById("recnone"), none = !((s.snapshots || []).length || ((s.actions || {}).recent || []).length);
+  const top = (s.suspicious || [])[0];
+  el.textContent = !none ? "" : top ? `Nothing was isolated, so nothing needed recovery. What the agents did instead: ${top.title}. ${top.detail}`
+    : "Nothing was isolated, so nothing needed recovery. Evidence is saved and recovery starts automatically when 3 of the 4 agents agree to isolate a workload.";
+}
 async function refreshSim() {
   const box = document.getElementById("simctl");
   if (CH !== "demo") { box.classList.remove("on"); document.getElementById("tour").classList.remove("on"); return; }          // Live Monitoring never shows scenario controls or the walkthrough
@@ -752,14 +834,28 @@ async function refreshSim() {
   document.getElementById("tour").classList.toggle("on", !!st.enabled);
   tourSim = st;
   if (!st.enabled) return;
-  const sel = document.getElementById("simsel");
-  if (sel.options.length !== st.scenarios.length) sel.innerHTML = st.scenarios.map(x => `<option value="${esc(x.id)}">${esc(x.title)} (~${x.est_s}s)</option>`).join("");
+  const sel = document.getElementById("simsel"), tsel = document.getElementById("simtarget");
+  const cur0 = st.scenarios.find(x => x.id === sel.value) || st.scenarios[0];
+  const sameScenario = tsel.dataset.sc === (cur0 ? cur0.id : "");                      // another scenario picks its own default service; the same one keeps your choice
+  const tgt0 = (sameScenario && cur0 && cur0.targets.includes(tsel.value)) ? tsel.value : (cur0 ? cur0.default_target : "");
+  const titleOf = x => (x.texts && x.texts[tgt0] && x.targets.includes(tgt0)) ? x.texts[tgt0].title : x.title;
+  const optKey = st.scenarios.map(x => x.id + titleOf(x)).join("|");
+  if (sel.dataset.k !== optKey) { const keep = sel.value; sel.innerHTML = st.scenarios.map(x => `<option value="${esc(x.id)}">${esc(titleOf(x))} (~${x.est_s}s)</option>`).join(""); if (keep) sel.value = keep; sel.dataset.k = optKey; }
   const cur = st.scenarios.find(x => x.id === sel.value);
-  document.getElementById("simdesc").textContent = cur ? `${cur.description} Expected: ${cur.expect}` : "";
+  const svcKey = (cur ? cur.id : "") + "|" + tgt0;
+  if (tsel.dataset.k !== svcKey) {
+    const ok = cur ? cur.targets : [];
+    tsel.innerHTML = (st.services || []).filter(s => ok.includes(s.id)).map(s => `<option value="${esc(s.id)}">${esc(s.id + " · " + s.name)}${s.id === (cur && cur.default_target) ? " (default)" : ""}</option>`).join("") || '<option value="">no service (not about one service)</option>';
+    tsel.value = tgt0; tsel.dataset.k = svcKey; tsel.dataset.sc = cur ? cur.id : "";
+  }
+  tsel.disabled = !cur || !cur.targets.length || st.status !== "idle" || st.needs_reset;
+  const chosen = tsel.value || (cur ? cur.default_target : "");
+  const txt = cur && cur.texts && cur.texts[chosen] ? cur.texts[chosen] : cur;
+  document.getElementById("simdesc").textContent = cur ? `${txt.description} Expected: ${txt.expect}` : "";
   const busy = st.status !== "idle";
   document.getElementById("simstart").disabled = busy || st.needs_reset;
   document.getElementById("simreset").disabled = st.status === "resetting";
-  document.getElementById("simstat").textContent = st.status === "running" ? `running: ${st.running}…` : st.status === "resetting" ? "resetting…"
+  document.getElementById("simstat").textContent = st.status === "running" ? (st.phase === "lead-in" ? `everything is healthy: the attack begins in ${Math.ceil(st.countdown_s)} s…` : st.phase === "attack" ? "attack in progress…" : st.phase === "recovery" ? "agents are recovering the service…" : `running: ${st.running}…`) : st.status === "resetting" ? "resetting…"
     : st.needs_reset ? "press Reset before the next scenario" : "ready";
   document.getElementById("simlast").innerHTML = st.last ? `<div class="hint">Last scenario: <b>${esc(st.last.scenario)}</b> ${st.last.ok ? '<span class="tag ok">PASS</span>' : '<span class="tag bad">FAIL</span>'} in ${st.last.duration_s}s: ${esc(st.last.detail)}</div>` : "";
 }
@@ -770,9 +866,10 @@ async function simPost(path, body) {
     if (!r.ok) { const j = await r.json().catch(() => ({})); document.getElementById("simstat").textContent = "refused: " + (j.error || r.status); }
   } finally { simBusy = false; refreshSim(); }
 }
-document.getElementById("simstart").onclick = () => simPost("api/sim/start", {scenario: document.getElementById("simsel").value});
+document.getElementById("simstart").onclick = () => { const tv = document.getElementById("simtarget").value; runKey = ""; return simPost("api/sim/start", {scenario: document.getElementById("simsel").value, ...(tv ? {target: tv} : {})}); };
+document.getElementById("simtarget").onchange = () => { const t = document.getElementById("simtarget"); t.dataset.k = ""; refreshSim(); };
 document.getElementById("simreset").onclick = () => { tour.active = false; renderTour(); return simPost("api/sim/reset", {}); };
-document.getElementById("simsel").onchange = refreshSim;
+document.getElementById("simsel").onchange = () => { document.getElementById("simtarget").dataset.k = ""; refreshSim(); };
 
 
 // ---------------------------------------------------------------- guided demonstration (Demo Mode only)
@@ -1020,7 +1117,7 @@ function renderState(s) {
   renderInvestigations(s.investigations);
   renderRecovery(s);
   renderTour();
-  renderIncidentList(s.incidents); renderCounters(s.summary); renderBadges(s); renderDlogTable(s.decision_logs);
+  renderIncidentList(s.incidents); renderSuspicious(s.suspicious); renderRecoveryNone(s); renderCounters(s.summary); renderBadges(s); renderDlogTable(s.decision_logs);
   const dl = s.decision_logs, de = document.getElementById("dlog");
   if (dl && dl.checked) {
     de.className = "tag " + (dl.ok ? "ok" : "bad");
@@ -1186,7 +1283,7 @@ async function refresh() {
   isConnected = !(s.configured === false || !(s.connection || {}).connected);
   if (!isConnected) return;                                    // NOT CONNECTED: the banner says so, and nothing else is polled or shown
   // The steps do not depend on each other, so they run side by side: on a slow link one cycle then costs two round trips, not five.
-  await Promise.all([pullEvents, refreshSim, refreshSeries, refreshIncident, () => openAgent ? refreshDrawer() : null].map(async f => {
+  await Promise.all([pullEvents, refreshSim, refreshSeries, refreshRun, refreshIncident, () => openAgent ? refreshDrawer() : null].map(async f => {
     try { await f(); } catch (e) { console.error("refresh step failed", e); }                                   // a failing step never claims the backend is unreachable
   }));
 }

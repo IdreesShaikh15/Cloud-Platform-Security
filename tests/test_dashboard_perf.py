@@ -49,7 +49,7 @@ def test_identical_markup_is_not_written_twice():
 
 
 def test_the_independent_refresh_steps_run_side_by_side():
-    assert "await Promise.all([pullEvents, refreshSim, refreshSeries, refreshIncident" in HTML
+    assert "await Promise.all([pullEvents, refreshSim, refreshSeries, refreshRun, refreshIncident" in HTML
 
 
 # ------------------------------------------------------------------ the backend

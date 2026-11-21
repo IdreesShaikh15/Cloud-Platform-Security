@@ -159,6 +159,8 @@ class Collector:
                 last_boot, last_seq = self.cursor.get(sid, (None, None))
                 if boot != last_boot:
                     last_seq = None
+                    if last_boot is not None:
+                        self._forget_source(sid)                     # the agent was restarted (or the simulator reset): what it reported before is history of a previous life
                 for e in evs:
                     if last_seq is not None and e["seq"] <= last_seq:
                         continue
@@ -218,6 +220,14 @@ class Collector:
     def _accepts(self, source: str) -> bool:
         exp = self.channel.expect if self.channel else None
         return exp is None or source == exp
+
+    def _forget_source(self, sid: str) -> None:
+        """Drop the decisions, action records, snapshots and investigations this dashboard remembered from one agent. Called when that agent's event boot id
+        changes: a Demo Mode Reset rebuilds the simulated cluster, and a restarted live agent starts with an empty history. Without it, the Security Alerts list
+        kept the previous scenario's alert (and a second scenario on the same service and epoch overwrote it)."""
+        for store in (self.decisions, self.audit, self.snaps, self.invs):
+            for k in [k for k in store if k[0] == sid]:
+                del store[k]
 
     @staticmethod
     def _keep(store: "OrderedDict", key, value, cap: int) -> None:
@@ -610,6 +620,72 @@ def investigations_view(live: dict) -> dict:
     return {"enabled": enabled, "rows": out[:12], "watch": list(watch.values())}
 
 
+def suspicious_view(live: dict, inv: dict, rejections: list) -> list:
+    """Activity that did NOT (yet) lead to an isolation, so the Security Alerts tab is never empty during a scenario that, correctly, isolates nothing:
+    accusations the other agents dispute, targeted investigations, agents flagged SUSPECT, and messages that failed verification. Built only from what the agents
+    report (recent evidence, flags, rejections, investigations); it is NOT a security alert (an alert is an agreed isolation)."""
+    rows = []
+    names = {}
+    for s in live.values():
+        for tid, tv in (s.get("targets") or {}).items():
+            names[tid] = tv.get("display_name") or tv.get("workload") or tid
+    handled = {tid for s in live.values() for tid, tv in (s.get("targets") or {}).items() if (tv.get("epoch") or 0) > 0 or tv.get("phase") not in (None, "HEALTHY")}
+    # 1. accusations disputed by the agents' own observations
+    claims: dict = {}
+    for sid, s in live.items():
+        for e in s.get("recent_evidence") or []:
+            if e.get("origin") == sid or (e.get("confidence") or 0) < 0.5:
+                continue
+            if e.get("target") in handled:
+                continue                                                 # already isolated (or was): that is an alert, not a doubt
+            c = claims.setdefault((e["origin"], e["target"]), {"types": set(), "first": e.get("timestamp") or 0, "agree": set(), "dispute": set()})
+            c["types"].add(e.get("type", "?")); c["first"] = min(c["first"], e.get("timestamp") or c["first"])
+    for (origin, target), c in claims.items():
+        for sid, s in live.items():
+            if sid == origin:
+                continue
+            seen = [d for d in ((s.get("targets") or {}).get(target) or {}).get("detections", []) if (d.get("confidence") or 0) >= 0.3]
+            (c["agree"] if seen else c["dispute"]).add(sid)
+        if c["dispute"]:
+            rows.append({"kind": "accusation", "since": c["first"], "status": "open",
+                         "title": f"Agent {origin} reports {', '.join(sorted(x.replace('_', ' ').lower() for x in c['types']))} on the {names.get(target, target)}",
+                         "detail": f"Agent{'s' if len(c['dispute']) > 1 else ''} {', '.join(sorted(c['dispute']))} measure{'' if len(c['dispute']) > 1 else 's'} the {names.get(target, target)} "
+                                   f"and see nothing wrong, so no vote to isolate is cast on this claim ({len(c['agree'])} agent(s) corroborate it; 3 are needed).",
+                         "agents": sorted(c["dispute"])})
+    # 2. targeted investigations (not the ones that ended in an isolation: those are part of a security alert)
+    for r in (inv or {}).get("rows", []):
+        if r.get("target") in handled:
+            continue
+        rows.append({"kind": "investigation", "since": r.get("started_at") or 0, "status": "open" if r.get("active") else "closed",
+                     "title": f"Investigation on the {names.get(r['target'], r['workload'])}: {r['question']}",
+                     "detail": r.get("outcome_text") or "in progress", "agents": sorted(r.get("per_agent", {}))})
+    # 3. agents flagged SUSPECT / excluded
+    flagged: dict = {}
+    for sid, s in live.items():
+        for peer, f in (s.get("flags") or {}).items():
+            if f.get("suspect") or f.get("vote_excluded"):
+                e = flagged.setdefault(peer, {"suspect": [], "excluded": []})
+                e["suspect"].append(sid)
+                if f.get("vote_excluded"):
+                    e["excluded"].append(sid)
+    for peer, e in flagged.items():
+        rows.append({"kind": "agent-flag", "since": 0, "status": "open", "agents": sorted(e["suspect"]),
+                     "title": f"Agent {peer} flagged SUSPECT by {', '.join(sorted(e['suspect']))}",
+                     "detail": ("Its claims keep contradicting what the others measure themselves." +
+                                (f" {', '.join(sorted(e['excluded']))} no longer count its votes or evidence (trust below 40)." if e["excluded"] else ""))})
+    # 4. messages that failed verification, grouped
+    grp: dict = {}
+    for r in rejections or []:
+        g = grp.setdefault((r.get("from"), r.get("claimed_signer")), {"n": 0, "t": r.get("t"), "reason": r.get("reason"), "seen": set()})
+        g["n"] += 1; g["seen"].add(r.get("seen_by"))
+    for (sender, claimed), g in grp.items():
+        rows.append({"kind": "rejected", "since": g["t"] or 0, "status": "closed", "agents": sorted(x for x in g["seen"] if x),
+                     "title": f"{g['n']} message(s) from agent {sender} claiming to be agent {claimed} were rejected",
+                     "detail": f"Verification failed: {g['reason']}. The delivering agent loses trust each time."})
+    rows.sort(key=lambda r: (r["status"] != "open", -(r["since"] or 0)))
+    return rows[:20]
+
+
 def decision_logs_view(live: dict) -> dict:
     """Is every agent's tamper-evident decision log intact? (hash chain, see decisionlog.py)"""
     per = {sid: s["decision_log"] for sid, s in live.items() if s.get("decision_log")}
@@ -708,6 +784,7 @@ def aggregate() -> dict:
             "baseline_up": base is not None,
             "nodes": nodes, "trust_matrix": trust_matrix_view(live, ids), "decisions": uniq[:15], "rejections": rejections,
             "investigations": investigations_view(live),
+            "suspicious": suspicious_view(live, investigations_view(live), rejections),
             "incidents": incident_list(statuses),
             "summary": summary_view(nodes, live, ids, investigations_view(live)),
             "decision_logs": decision_logs_view(live),
@@ -1330,6 +1407,62 @@ def sim_state() -> dict:
     return {"enabled": True, "reason": "ok", **body}
 
 
+# Which evaluation graph (results/*.png, 1,140 seeded trials) says most about a scenario, and which evaluation row its timings can be compared with.
+EVAL_FOR = {
+    "app-compromise": ("fig1_timing_boxplots.png", "app-compromise", "Time to detect, isolate, recover and reach full access in 20 runs"),
+    "slow-burn": ("fig1_timing_boxplots.png", "slow-burn", "Time to detect, isolate, recover and reach full access in 20 runs"),
+    "validation-retry": ("fig1_timing_boxplots.png", "validation-retry", "Time to detect, isolate, recover and reach full access in 20 runs"),
+    "failed-validation": ("fig1_timing_boxplots.png", "validation-retry", "Time to detect, isolate, recover and reach full access in 20 runs"),
+    "lab-results-tampered": ("fig1_timing_boxplots.png", "single-signal", "Time to detect, isolate, recover and reach full access in 20 runs"),
+    "medication-failed-logins": ("fig1_timing_boxplots.png", "single-signal", "Time to detect, isolate, recover and reach full access in 20 runs"),
+    "database-cascade": ("fig1_timing_boxplots.png", "app-compromise", "Time to detect, isolate, recover and reach full access in 20 runs"),
+    "false-accusation": ("fig2_trust_trajectory.png", None, "How the others' trust in a lying agent falls, in 20 runs"),
+    "forge-evidence": ("fig2_trust_trajectory.png", None, "How the others' trust in a misbehaving agent falls, in 20 runs"),
+    "agent-crash": ("fig6_agent_crash.png", None, "4, 3 and 2 agents alive: containment and recovery in 20 runs each"),
+    "obstruct": ("fig5_fault_tolerance_boundary.png", None, "What 0, 1, 2 and 3 compromised or silent agents can and cannot do"),
+    "transient-blip": ("fig4_investigation_on_off.png", None, "Targeted investigation on and off, same inputs, 20 runs each"),
+    "ambiguous": ("fig4_investigation_on_off.png", None, "Targeted investigation on and off, same inputs, 20 runs each"),
+}
+_MEDIANS_CACHE: dict = {}
+
+
+def eval_medians(variant: str):
+    """Median times of the evaluation's 20 runs of one scenario (results/scenario_trials.csv), or None when the file is not here."""
+    loc = eval_locations()
+    path = os.path.join(loc.get("figs", ""), "scenario_trials.csv") if loc else ""
+    if not path or not os.path.isfile(path):
+        return None
+    mt = os.path.getmtime(path)
+    if _MEDIANS_CACHE.get("key") != (path, mt):
+        import csv
+        by: dict = {}
+        with open(path, newline="", encoding="utf-8") as fh:
+            for row in csv.DictReader(fh):
+                if row.get("exp") == "scenario":
+                    by.setdefault(row.get("variant"), []).append(row)
+        _MEDIANS_CACHE.update(key=(path, mt), by=by)
+    rows = _MEDIANS_CACHE["by"].get(variant) or []
+    out = {"trials": len(rows)}
+    for col, name in (("ttd_s", "detected_s"), ("tti_s", "isolated_s"), ("ttv_s", "recovery_check_s"), ("ttf_s", "full_access_s")):
+        vals = [float(r[col]) for r in rows if r.get(col) not in (None, "")]
+        out[name] = round(statistics.median(vals), 1) if vals else None
+    return out if rows else None
+
+
+def sim_run() -> dict:
+    """The recording of the scenario run on the Demo page (SIMULATOR data, one run), with the evaluation graph that matches it. Demo channel only."""
+    ok, why = sim_gate()
+    if not ok:
+        return {"available": False, "reason": why}
+    code, body = sim_call("GET", "/run")
+    if code != 200:
+        return {"available": False, "reason": body.get("error", "control server error")}
+    if body.get("available"):
+        fig, variant, caption = EVAL_FOR.get(body["meta"]["scenario"], (None, None, ""))
+        body["evaluation"] = {"figure": fig, "caption": caption, "variant": variant, "medians": eval_medians(variant) if variant else None}
+    return body
+
+
 def sim_action(kind: str, payload: dict):
     """Returns (http_status, body). Never forwards unless sim_gate() passes at this very moment."""
     ok, why = sim_gate()
@@ -1341,9 +1474,13 @@ def sim_action(kind: str, payload: dict):
     if code != 200:
         return code, body
     sid = payload.get("scenario")
-    if not isinstance(sid, str) or sid not in {s["id"] for s in body.get("scenarios", [])}:
+    meta = next((s for s in body.get("scenarios", []) if s.get("id") == sid), None) if isinstance(sid, str) else None
+    if meta is None:
         return 400, {"error": "unknown scenario"}
-    return sim_call("POST", "/start", {"scenario": sid})
+    tgt = payload.get("target")
+    if tgt is not None and (not isinstance(tgt, str) or tgt not in (meta.get("targets") or [])):
+        return 400, {"error": "unknown service"}              # only the workloads the scenario lists can be named
+    return sim_call("POST", "/start", {"scenario": sid, **({"target": tgt} if tgt else {})})
 
 
 def metrics() -> list:
@@ -1457,7 +1594,7 @@ class Handler(BaseHTTPRequestHandler):
                               {"WWW-Authenticate": "Bearer"})
         if p == "/api/channels":
             return self._json(channels_view())
-        if p in ("/api/state", "/api/events", "/api/export", "/api/metrics", "/api/series", "/api/sim/state") or p.startswith(
+        if p in ("/api/state", "/api/events", "/api/export", "/api/metrics", "/api/series", "/api/sim/state", "/api/sim/run") or p.startswith(
                 ("/api/agent/", "/api/snapshot/", "/api/incident/")):
             name = (q.get("channel") or [""])[0] or None
             chn, why = resolve(name)
@@ -1466,9 +1603,13 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(not_configured_state(name, why))
                 if p == "/api/sim/state":
                     return self._json({"enabled": False, "reason": why, "scenarios": [], "running": None, "last": None})
+                if p == "/api/sim/run":
+                    return self._json({"available": False, "reason": why})
                 return self._send(400 if MODE == "strict" and not name else 404, json.dumps({"error": why}).encode(), "application/json")
             _ctx.channel = chn
             chn.touch()
+        if p == "/api/sim/run":
+            return self._json(sim_run())
         if p == "/api/state":
             return self._json(aggregate())
         if p == "/api/series":

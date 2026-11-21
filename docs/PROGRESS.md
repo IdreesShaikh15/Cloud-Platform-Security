@@ -690,3 +690,11 @@ Full diagnosis, per-scenario Demo Mode timing, measurements and exact laptop ste
   `agent/resilience/ticktiming.py` (observability only: how late the agent's 1 s loop runs, reported in `/status`).
 * **Tests**: `tests/test_demo_profile.py`, `tests/test_demo_health.py`, `tests/test_dashboard_perf.py`. Security modules (`quorum`, `trust`, `certificate`, `admission`, `webhook`, `detection`, `reintegration`) are untouched.
 * **Not verified**: the profile on a real cluster (the October sandbox cluster no longer exists) and anything on the HP Omen / WSL2 / Docker Desktop laptop.
+
+## Demo Mode: choose the service, paced attacks, per-run graphs, no empty tabs (no security logic changed)
+
+* **Service picker**: after choosing a scenario the presenter chooses which service (A-F) the attack hits; lab / medication / database scenarios are now generic attack types usable on any service (`sim/scenarios.py`).
+* **Pacing**: 5 s visible healthy lead-in with countdown, scripted attack over several seconds, recovery about 15-20 s. Only simulator timers are short; agents are never slowed.
+* **"This run" graphs** (`sim/runlog.py`, `GET /api/sim/run`): different panels per scenario, drawn from a recording of the one simulator run, with a run-vs-evaluation-median table. The static 1,140-trial evaluation graphs are unchanged and never altered by a run.
+* **No empty tabs**: a "Suspicious activity that did NOT lead to an isolation" section and a "nothing needed recovery" card for non-isolating scenarios. Collector history is cleared when a simulator agent restarts (fixed stale alerts after Reset).
+* **Tests**: `tests/test_run_graphs.py`, `scripts/check-demo-scenarios.js` (all 13 scenarios drive the real dashboard headlessly). See `docs/DEMO-SCENARIOS.md`. Simulator results only: nothing here was run on a real cluster.

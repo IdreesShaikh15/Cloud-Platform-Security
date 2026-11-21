@@ -3,13 +3,20 @@
 Each driver acts on an already running `LocalCluster` (real agents, simulated cluster and telemetry) and returns
 (ok, detail). They only use the simulator's own mechanics: the fake world's attack/overlay hooks and the existing
 agent-compromise switch. Nothing here can touch a real cluster: `LocalCluster` is built on `FakeBackend`/`FakeWorld`.
-The same inputs as the terminal scenarios in sim/local_demo.py are used.
+
+Every scenario now follows the same shape, so a demo is easy to follow:
+  1. a lead-in (5 s, a countdown on the page) with everything healthy;
+  2. a scripted attack that PROGRESSES over several seconds (a weak signal first, the decisive one later), so the audience sees evidence build up;
+     the agents are never slowed down: they react as soon as their own rules say so;
+  3. the response and recovery, exactly as before.
+The service the attack hits can be chosen (`target`, one of the workloads A-F); the default is the one the old fixed scenario used.
+The same inputs as the terminal scenarios in sim/local_demo.py are used (those call the drivers without a lead-in).
 """
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 from world import WL, WORKLOADS  # noqa: E402  (names come from config/workloads.json)
 
@@ -18,6 +25,7 @@ WORKLOAD_C = WORKLOADS["C"]
 TARGETS = tuple(WL.nodes())                      # every workload: A-D, plus E and F in the six-workload profile
 D = {n: WL.display(n) for n in TARGETS}          # what the dashboard calls each workload (Patient Portal, ...)
 SIX = len(TARGETS) == 6
+LEAD_IN_S = 5.0                                  # the dashboard starts every scenario with this healthy countdown
 
 
 @dataclass(frozen=True)
@@ -28,14 +36,33 @@ class Scenario:
     expect: str
     est_s: int
     degrades: bool = False           # leaves the cluster in a state that needs Reset before the next scenario
+    default_target: str = ""         # the workload the scenario hits unless the presenter chooses another ("" = no service is attacked)
+    targets: Tuple[str, ...] = ()    # the workloads that may be chosen (empty = none: the scenario is not about one service)
+    title_tpl: str = ""              # title / description / expectation with {svc} for the chosen service's name
+    description_tpl: str = ""
+    expect_tpl: str = ""
+
+    def text(self, target: Optional[str] = None) -> dict:
+        svc = D.get(target or self.default_target, "")
+        f = lambda tpl, plain: tpl.format(svc=svc) if tpl else plain      # noqa: E731
+        return {"title": f(self.title_tpl, self.title), "description": f(self.description_tpl, self.description),
+                "expect": f(self.expect_tpl, self.expect)}
+
+
+def other(exclude: str, prefer: str) -> str:
+    """An agent id that is not `exclude` (the presenter may aim the attack at the service next to the agent that would otherwise play the liar)."""
+    return next(n for n in (prefer, *[x for x in NODES if x != prefer]) if n != exclude)
 
 
 class Runner:
-    """What a driver may use: the cluster, and cancellable waits."""
+    """What a driver may use: the cluster, cancellable waits, the chosen target and (in the dashboard) the run recorder."""
 
-    def __init__(self, cluster, cancelled: Callable[[], bool]):
+    def __init__(self, cluster, cancelled: Callable[[], bool], target: Optional[str] = None, run=None, lead_in_s: float = 0.0):
         self.c = cluster
         self.cancelled = cancelled
+        self.target = target
+        self.run = run                  # sim/runlog.RunRecorder or None (terminal use)
+        self.lead_in_s = lead_in_s
 
     def wait(self, pred, timeout: float, poll: float = 0.25) -> bool:
         end = time.time() + timeout
@@ -56,31 +83,93 @@ class Runner:
     def all(self, f, nodes=NODES) -> bool:
         return all(f(self.c.agents[n]) for n in nodes)
 
+    # -- the shape every scenario shares
+    def note(self, label: str, kind: str = "attack") -> None:
+        if self.run is not None:
+            self.run.note(label, kind)
 
+    def phase(self, name: str) -> None:
+        if self.run is not None:
+            self.run.set_phase(name)
+
+    def lead_in(self) -> None:
+        """Everything healthy for a few seconds (the page counts down), then the attack begins."""
+        self.phase("lead-in")
+        self.sleep(self.lead_in_s)
+        self.phase("attack")
+
+    def script(self, steps: List[Tuple[float, str, Callable[[], None]]]) -> None:
+        """Run the attack steps at their offsets (seconds after the attack began), noting each on the run's timeline."""
+        t0 = time.time()
+        for off, label, fn in sorted(steps, key=lambda x: x[0]):
+            self.sleep(max(0.0, t0 + off - time.time()))
+            if self.cancelled():
+                return
+            fn()
+            self.note(label)
+
+
+def name(n: str) -> str:
+    return D.get(n, n)
+
+
+def _attack_steps(r: Runner, v: str) -> None:
+    """The common attack: outbound connections creep up (weak, below the vote level on their own), then a file is changed and a hidden process starts
+    copying records out (decisive). The agents decide on what they measure, when they measure it."""
+    w = r.c.world
+    r.script([
+        (0.0, f"Outbound connections from the {name(v)} start creeping up", lambda: w.inject_connections(v, lambda t: 8.5 + 0.35 * t)),
+        (5.0, "A file is modified and a hidden process starts copying records out", lambda: w.attack(v, kinds=("tamper", "exfil"))),
+    ])
+
+
+def _contained_and_back(r: Runner, target: str, contain_s: float = 30, full_s: float = 120):
+    contained = r.wait(lambda: r.all(lambda a: a.states[target].phase != "HEALTHY"), contain_s)
+    if contained:
+        r.phase("recovery")
+    full = contained and r.wait(lambda: r.all(lambda a: a.states[target].phase == "HEALTHY" and a.states[target].epoch == 1
+                                              and a.states[target].stage == "FULL"), full_s)
+    return contained, bool(full)
+
+
+def _nothing_else_isolated(r: Runner, v: str) -> bool:
+    return all(a.states[n].epoch == 0 for a in r.c.agents.values() for n in TARGETS if n != v)
+
+
+# ---------------------------------------------------------------------- the scenarios
 def app_compromise(r: Runner) -> Tuple[bool, str]:
-    c = r.c
-    c.mark("app-compromise", "C")
-    c.world.attack("C")
-    contained = r.wait(lambda: r.all(lambda a: a.states["C"].phase != "HEALTHY"), 25)
-    full = contained and r.wait(lambda: r.all(lambda a: a.states["C"].phase == "HEALTHY" and a.states["C"].epoch == 1
-                                              and a.states["C"].stage == "FULL"), 120)
-    return bool(full), ("contained by quorum, recovered, validated and reintegrated through every stage" if full
-                        else f"contained: {contained}; full cycle did not complete in time")
+    c, v = r.c, r.target or "C"
+    c.mark("app-compromise", v)
+    r.lead_in()
+    _attack_steps(r, v)
+    contained, full = _contained_and_back(r, v, 25, 120)
+    return full, ("contained by quorum, recovered, validated and reintegrated through every stage" if full
+                  else f"contained: {contained}; full cycle did not complete in time")
 
 
 def false_accusation(r: Runner) -> Tuple[bool, str]:
-    c = r.c
-    c.compromise_agent("A", "B")
-    flagged = r.wait(lambda: all(c.agents[n].agent_trust.get("A") < 50 for n in "BCD"), 60)
+    c, v = r.c, r.target or "B"
+    liar = other(v, "A")
+    judges = [n for n in NODES if n != liar]
+    if r.run is not None:
+        r.run.meta["roles"] = {"liar": liar}
+    r.lead_in()
+    c.compromise_agent(liar, v)
+    r.note(f"Agent {liar} (compromised) starts signing made-up evidence against the {name(v)}")
+    flagged = r.wait(lambda: all(c.agents[n].agent_trust.get(liar) < 50 for n in judges), 60)
     r.sleep(2)
-    never = all(a.states["B"].epoch == 0 for a in c.agents.values())
-    c.restore_agent("A")
-    return bool(flagged and never), (f"agent A flagged SUSPECT by B, C and D: {flagged}; B never isolated: {never}")
+    never = all(a.states[v].epoch == 0 for a in c.agents.values())
+    c.restore_agent(liar)
+    return bool(flagged and never), (f"agent {liar} flagged SUSPECT by {', '.join(judges[:-1])} and {judges[-1]}: {flagged}; the {name(v)} never isolated: {never}")
 
 
 def forge_evidence(r: Runner) -> Tuple[bool, str]:
     c = r.c
+    if r.run is not None:
+        r.run.meta["roles"] = {"liar": "A"}
+    r.lead_in()
     c.compromise_agent("A", "D", mode="forge-evidence")
+    r.note("Agent A starts sending messages that claim to come from agent B")
     r.sleep(4)
     c.restore_agent("A")
     rej = [x for x in c.agents["C"].rejections if x["claimed_signer"] == "B"]
@@ -88,44 +177,61 @@ def forge_evidence(r: Runner) -> Tuple[bool, str]:
 
 
 def agent_crash(r: Runner) -> Tuple[bool, str]:
-    c = r.c
-    c.agents["D"].tick()
-    c.crash_agent("D")
-    c.mark("agent-crash", "C")
-    c.world.attack("C")
-    alive = "ABC"
-    contained = r.wait(lambda: r.all(lambda a: a.states["C"].phase != "HEALTHY", alive), 25)
-    full = contained and r.wait(lambda: r.all(lambda a: a.states["C"].phase == "HEALTHY" and a.states["C"].epoch == 1, alive), 120)
-    return bool(full), ("A, B and C reached the 3-of-4 quorum without D and completed the full cycle" if full
+    c, v = r.c, r.target or "C"
+    crashed = other(v, "D")
+    alive = [n for n in NODES if n != crashed]
+    c.mark("agent-crash", v)
+    r.lead_in()
+    c.agents[crashed].tick()
+    c.crash_agent(crashed)
+    r.note(f"Agent {crashed} goes offline")
+    r.sleep(3)
+    _attack_steps(r, v)
+    contained = r.wait(lambda: r.all(lambda a: a.states[v].phase != "HEALTHY", alive), 25)
+    if contained:
+        r.phase("recovery")
+    full = contained and r.wait(lambda: r.all(lambda a: a.states[v].phase == "HEALTHY" and a.states[v].epoch == 1, alive), 120)
+    return bool(full), (f"{', '.join(alive[:-1])} and {alive[-1]} reached the 3-of-4 quorum without {crashed} and completed the full cycle" if full
                         else f"contained: {contained}; full cycle did not complete in time")
 
 
 def transient_blip(r: Runner) -> Tuple[bool, str]:
-    c = r.c
-    c.mark("transient-blip", "C")
-    c.world.inject_connections("C", lambda t: 40, observers={"A", "B"}, duration=2.5)
-    done = r.wait(lambda: sum(1 for a in c.agents.values() if any(x["target"] == "C" for x in a.inv.recent)) >= 3, 25)
-    never = all(a.states["C"].epoch == 0 for a in c.agents.values())
-    return bool(done and never), f"investigated by the agents: {done}; C never isolated: {never}"
+    c, v = r.c, r.target or "C"
+    c.mark("transient-blip", v)
+    r.lead_in()
+    r.script([(0.0, "A brief spike: 40 connections for 2.5 s, seen only by agents A and B",
+               lambda: c.world.inject_connections(v, lambda t: 40, observers={"A", "B"}, duration=2.5))])
+    done = r.wait(lambda: sum(1 for a in c.agents.values() if any(x["target"] == v for x in a.inv.recent)) >= 3, 25)
+    never = all(a.states[v].epoch == 0 for a in c.agents.values())
+    return bool(done and never), f"investigated by the agents: {done}; the {name(v)} never isolated: {never}"
 
 
 def slow_burn(r: Runner) -> Tuple[bool, str]:
-    c = r.c
-    c.mark("slow-burn", "C")
+    c, v = r.c, r.target or "C"
+    c.mark("slow-burn", v)
     grow = lambda t: 9 + 0.15 * t                                   # noqa: E731
-    c.world.inject_connections("C", grow, observers={"A", "B"})
-    c.world.inject_connections("C", grow, observers={"C", "D"}, start_after=5)
-    contained = r.wait(lambda: sum(1 for a in c.agents.values() if a.states["C"].phase != "HEALTHY") >= 3, 60)
-    return bool(contained), "a weak anomaly that persisted and grew was confirmed and contained" if contained else "not contained in time"
+    r.lead_in()
+    r.script([
+        (0.0, "A weak, steadily growing signal starts; agents A and B see it", lambda: c.world.inject_connections(v, grow, observers={"A", "B"})),
+        (5.0, "Agents C and D now see it too", lambda: c.world.inject_connections(v, grow, observers={"C", "D"})),
+    ])
+    contained = r.wait(lambda: sum(1 for a in c.agents.values() if a.states[v].phase != "HEALTHY") >= 3, 60)
+    if contained:
+        r.phase("recovery")
+    full = contained and r.wait(lambda: r.all(lambda a: a.states[v].phase == "HEALTHY" and a.states[v].epoch == 1 and a.states[v].stage == "FULL"), 120)
+    return bool(contained), (("a weak anomaly that persisted and grew was confirmed and contained" + ("; recovered and returned in stages" if full else "")) if contained
+                             else "not contained in time")
 
 
 def ambiguous(r: Runner) -> Tuple[bool, str]:
-    c = r.c
-    c.mark("ambiguous", "C")
-    c.world.inject_connections("C", lambda t: 9.5, observers={"A", "B"})
-    done = r.wait(lambda: r.all(lambda a: "C" in a.inv.watch and not a.inv.active), 40)
-    never = all(a.states["C"].epoch == 0 for a in c.agents.values())
-    flagged = [n for n, a in c.agents.items() if a.inv.watch.get("C") and a.inv.watch["C"].review_needed]
+    c, v = r.c, r.target or "C"
+    c.mark("ambiguous", v)
+    r.lead_in()
+    r.script([(0.0, "A faint, steady signal (9.5 connections) that only agents A and B see",
+               lambda: c.world.inject_connections(v, lambda t: 9.5, observers={"A", "B"}))])
+    done = r.wait(lambda: r.all(lambda a: v in a.inv.watch and not a.inv.active), 40)
+    never = all(a.states[v].epoch == 0 for a in c.agents.values())
+    flagged = [n for n, a in c.agents.items() if a.inv.watch.get(v) and a.inv.watch[v].review_needed]
     return bool(done and never and len(flagged) == 4), f"human-review flag on {len(flagged)} of 4 agents; nothing isolated: {never}"
 
 
@@ -140,130 +246,150 @@ def obstruct_facts(c, attacker: str = "A", target: str = "C") -> dict:
 
 
 def obstruct(r: Runner) -> Tuple[bool, str]:
-    c = r.c
-    c.compromise_agent("A", "C", mode="obstruct")           # A refuses to vote about C (it changes only A's own behaviour)
-    c.mark("obstruct", "C", attacker="A")
-    c.world.attack("C")                                     # a genuine compromise of C
-    honest = "BCD"
-    contained = r.wait(lambda: r.all(lambda a: a.states["C"].phase != "HEALTHY", honest), 30)
-    full = contained and r.wait(lambda: r.all(lambda a: a.states["C"].phase == "HEALTHY" and a.states["C"].epoch == 1
-                                              and a.states["C"].stage == "FULL"), 120)
-    f = obstruct_facts(c)
-    c.restore_agent("A")
-    ok = bool(full and not f["attacker_voted"] and f["withheld_events"] > 0 and all(v and len(v) >= 3 for v in f["contain_voters"].values()))
-    return ok, (f"B, C and D contained C without A (voters {sorted(next(iter(f['contain_voters'].values())) or [])}); A's withheld votes are on record "
-                f"({f['withheld_events']} events); full cycle completed: {bool(full)}" if ok else
-                f"contained: {contained}; full cycle: {bool(full)}; A voted: {f['attacker_voted']}; withheld events: {f['withheld_events']}")
+    c, v = r.c, r.target or "C"
+    attacker = other(v, "A")
+    honest = [n for n in NODES if n != attacker]
+    if r.run is not None:
+        r.run.meta["roles"] = {"attacker": attacker}
+    c.compromise_agent(attacker, v, mode="obstruct")        # the attacker refuses to vote about v (it changes only its own behaviour)
+    c.mark("obstruct", v, attacker=attacker)
+    r.lead_in()
+    r.note(f"Agent {attacker} is compromised and will withhold every vote about the {name(v)}", "setup")
+    _attack_steps(r, v)                                      # a genuine compromise of v
+    contained = r.wait(lambda: r.all(lambda a: a.states[v].phase != "HEALTHY", honest), 30)
+    if contained:
+        r.phase("recovery")
+    full = contained and r.wait(lambda: r.all(lambda a: a.states[v].phase == "HEALTHY" and a.states[v].epoch == 1
+                                              and a.states[v].stage == "FULL", honest), 120)
+    f = obstruct_facts(c, attacker, v)
+    c.restore_agent(attacker)
+    ok = bool(full and not f["attacker_voted"] and f["withheld_events"] > 0 and all(x and len(x) >= 3 for x in f["contain_voters"].values()))
+    return ok, (f"{', '.join(honest[:-1])} and {honest[-1]} contained the {name(v)} without {attacker} (voters {sorted(next(iter(f['contain_voters'].values())) or [])}); "
+                f"{attacker}'s withheld votes are on record ({f['withheld_events']} events); full cycle completed: {bool(full)}" if ok else
+                f"contained: {contained}; full cycle: {bool(full)}; {attacker} voted: {f['attacker_voted']}; withheld events: {f['withheld_events']}")
 
 
 def validation_retry(r: Runner) -> Tuple[bool, str]:
-    c = r.c
-    c.world.bad_recoveries[WORKLOAD_C] = 1
-    c.mark("validation-retry", "C")
-    c.world.attack("C")
-    ok = r.wait(lambda: r.all(lambda a: a.states["C"].epoch == 1 and a.states["C"].phase == "HEALTHY"
-                              and a.states["C"].stage == "FULL"), 150)
-    att = {n: a.states["C"].attempt for n, a in c.agents.items()}
+    c, v = r.c, r.target or "C"
+    c.world.bad_recoveries[WORKLOADS[v]] = 1
+    c.mark("validation-retry", v)
+    r.lead_in()
+    _attack_steps(r, v)
+    ok = r.wait(lambda: r.all(lambda a: a.states[v].epoch == 1 and a.states[v].phase == "HEALTHY" and a.states[v].stage == "FULL"), 150)
+    att = {n: a.states[v].attempt for n, a in c.agents.items()}
     return bool(ok and set(att.values()) == {2}), f"first replacement failed validation, second passed (attempts {att})"
 
 
 def failed_validation(r: Runner) -> Tuple[bool, str]:
-    c = r.c
-    c.world.bad_recoveries[WORKLOAD_C] = 99
-    c.mark("failed-validation", "C")
-    c.world.attack("C")
-    ok = r.wait(lambda: r.all(lambda a: a.states["C"].attention), 150)
-    quarantined = (c.backend.policies.get(WORKLOAD_C) or {}).get("stage") == "QUARANTINE"
+    c, v = r.c, r.target or "C"
+    c.world.bad_recoveries[WORKLOADS[v]] = 99
+    c.mark("failed-validation", v)
+    r.lead_in()
+    _attack_steps(r, v)
+    ok = r.wait(lambda: r.all(lambda a: a.states[v].attention), 150)
+    quarantined = (c.backend.policies.get(WORKLOADS[v]) or {}).get("stage") == "QUARANTINE"
     return bool(ok and quarantined), f"needs human attention on all agents: {ok}; still quarantined: {quarantined}"
 
 
-def _contained_and_back(r: Runner, target: str, contain_s: float = 30, full_s: float = 120):
-    contained = r.wait(lambda: r.all(lambda a: a.states[target].phase != "HEALTHY"), contain_s)
-    full = contained and r.wait(lambda: r.all(lambda a: a.states[target].phase == "HEALTHY" and a.states[target].epoch == 1
-                                              and a.states[target].stage == "FULL"), full_s)
-    return contained, bool(full)
-
-
-def lab_results_tampered(r: Runner) -> Tuple[bool, str]:
-    c = r.c
-    lab = WL.node_of_role("lab-results")
-    c.mark("lab-results-tampered", lab)
-    c.world.attack(lab, kinds=("tamper",))
-    contained, full = _contained_and_back(r, lab)
-    others = all(a.states[n].epoch == 0 for a in c.agents.values() for n in TARGETS if n != lab)
-    return bool(full and others), (f"{D[lab]} contained by 3-of-4 agreement, recovered and returned in stages: {full}; "
+def file_tampering(r: Runner) -> Tuple[bool, str]:
+    c, v = r.c, r.target or WL.node_of_role("lab-results")
+    c.mark("lab-results-tampered", v)
+    r.lead_in()
+    r.script([
+        (0.0, f"A few odd outbound connection attempts from the {name(v)} (still below the alert level)",
+         lambda: c.world.inject_connections(v, lambda t: 2 + 0.6 * t)),
+        (6.0, f"A file inside the {name(v)} is modified at runtime", lambda: c.world.attack(v, kinds=("tamper",))),
+    ])
+    contained, full = _contained_and_back(r, v)
+    others = _nothing_else_isolated(r, v)
+    return bool(full and others), (f"{name(v)} contained by 3-of-4 agreement, recovered and returned in stages: {full}; "
                                    f"no other workload isolated: {others}")
 
 
-def medication_failed_logins(r: Runner) -> Tuple[bool, str]:
-    c = r.c
-    med = WL.node_of_role("medication-service")
-    c.mark("medication-failed-logins", med)
-    c.world.attack(med, kinds=("bruteforce",))
-    contained, full = _contained_and_back(r, med)
-    others = all(a.states[n].epoch == 0 for a in c.agents.values() for n in TARGETS if n != med)
-    return bool(full and others), (f"repeated failed logins from the {D[med]} confirmed and contained: {contained}; "
+def failed_logins(r: Runner) -> Tuple[bool, str]:
+    c, v = r.c, r.target or WL.node_of_role("medication-service")
+    c.mark("medication-failed-logins", v)
+    r.lead_in()
+    r.script([
+        (0.0, f"A few odd outbound connection attempts from the {name(v)} (still below the alert level)",
+         lambda: c.world.inject_connections(v, lambda t: 2 + 0.6 * t)),
+        (6.0, f"The {name(v)} starts guessing passwords at the Login & Access Service", lambda: c.world.attack(v, kinds=("bruteforce",))),
+    ])
+    contained, full = _contained_and_back(r, v)
+    others = _nothing_else_isolated(r, v)
+    return bool(full and others), (f"repeated failed logins from the {name(v)} confirmed and contained: {contained}; "
                                    f"recovered and returned in stages: {full}; no other workload isolated: {others}")
 
 
-def database_cascade(r: Runner) -> Tuple[bool, str]:
-    c = r.c
-    db = WL.node_of_role("database")
-    dependants = [n for n in TARGETS if db in WL.node_depends_on(n)]
-    c.mark("database-cascade", db)
-    c.world.attack(db)
-    contained, full = _contained_and_back(r, db, 30, 150)
-    others = all(a.states[n].epoch == 0 for a in c.agents.values() for n in TARGETS if n != db)
-    return bool(full and others), (f"{D[db]} contained and recovered: {full}; the {len(dependants)} services that read from it "
-                                   f"({', '.join(D[n] for n in dependants)}) were not isolated: {others}")
+def dependency_impact(r: Runner) -> Tuple[bool, str]:
+    c, v = r.c, r.target or WL.node_of_role("database")
+    dependants = [n for n in TARGETS if v in WL.node_depends_on(n)]
+    c.mark("database-cascade", v)
+    r.lead_in()
+    _attack_steps(r, v)
+    contained, full = _contained_and_back(r, v, 30, 150)
+    others = _nothing_else_isolated(r, v)
+    who = (f"the {len(dependants)} service{'s' if len(dependants) != 1 else ''} that depend{'' if len(dependants) != 1 else 's'} on it ({', '.join(name(n) for n in dependants)}) {'were' if len(dependants) != 1 else 'was'} not isolated: {others}" if dependants
+           else f"it has no dependants; nothing else was isolated: {others}")
+    return bool(full and others), f"{name(v)} contained and recovered: {full}; {who}"
+
+
+ALL = tuple(WL.nodes())
+
+
+def _S(id, title_tpl, description_tpl, expect_tpl, est, driver, default, degrades=False, targets=ALL):
+    s = Scenario(id, title_tpl.format(svc=D.get(default, "")), description_tpl.format(svc=D.get(default, "")), expect_tpl.format(svc=D.get(default, "")),
+                 est, degrades, default, targets if default else (), title_tpl, description_tpl, expect_tpl)
+    return s, driver
 
 
 CATALOGUE: Dict[str, Tuple[Scenario, Callable[[Runner], Tuple[bool, str]]]] = {s.id: (s, f) for s, f in [
-    (Scenario("app-compromise", f"Patient records being copied out of the {D['C']}",
-              f"Simulated copying of (synthetic) patient records out of the {D['C']}, a tampered file and repeated failed logins.",
-              f"Three of the four security agents agree to isolate the {D['C']}; a clean replacement is checked; normal access is restored in stages.", 40), app_compromise),
-    (Scenario("false-accusation", f"A security agent falsely accuses the {D['B']}",
-              f"Agent A, which is compromised, signs made-up evidence that the {D['B']} is under attack.",
-              f"One liar cannot reach 3 agreeing agents: the {D['B']} is never isolated and agent A is marked SUSPECT.", 25, True), false_accusation),
-    (Scenario("forge-evidence", "A compromised security agent pretends to be another agent",
-              "Agent A claims to be agent B while signing with its own key.",
-              "The forged messages fail verification and are rejected; A's trust drops.", 12, True), forge_evidence),
-    (Scenario("agent-crash", f"A security agent goes offline, then the {D['C']} is attacked",
-              f"One of the four agents is stopped, then the {D['C']} is attacked.",
-              "The three remaining agents still reach agreement and finish the whole cycle. Press Reset afterwards (agent D stays down).", 45, True), agent_crash),
-    (Scenario("transient-blip", f"A short traffic spike on the {D['C']} seen by two agents",
-              f"A brief jump in connections from the {D['C']} that only agents A and B see, like a busy moment.",
-              "The agents investigate, close it as a false alarm and isolate nothing.", 20), transient_blip),
-    (Scenario("slow-burn", f"Slow, quiet copying out of the {D['C']}",
-              "A weak signal that A and B see first and C and D see five seconds later, and that keeps growing.",
-              f"The investigation confirms it persists and the agents agree to isolate the {D['C']}.", 40), slow_burn),
-    (Scenario("ambiguous", f"An unexplained weak signal on the {D['C']}",
-              "No attack is injected; only two agents keep seeing something faint.",
-              "A human-review flag is raised; nothing is isolated.", 30), ambiguous),
-    (Scenario("validation-retry", f"The first replacement {D['C']} fails its health check",
-              "The attack is real; the first clean replacement does not come up healthy.",
-              "Evidence is saved, recovery is retried, the second replacement passes and normal access is restored in stages.", 60), validation_retry),
-    (Scenario("failed-validation", f"Every replacement {D['C']} fails its health check",
-              "Recovery is retried a limited number of times.",
-              f"The incident is marked NEEDS HUMAN ATTENTION and the {D['C']} stays isolated. Press Reset afterwards.", 90, True), failed_validation),
+    _S("app-compromise", "Patient records being copied out of the {svc}",
+       "Simulated copying of (synthetic) patient records out of the {svc}: outbound connections creep up, then a file is tampered with and a hidden process starts copying.",
+       "Three of the four security agents agree to isolate the {svc}; a clean replacement is checked; normal access is restored in stages.", 40, app_compromise, "C"),
+    _S("false-accusation", "A security agent falsely accuses the {svc}",
+       "A compromised agent signs made-up evidence that the {svc} is under attack.",
+       "One liar cannot reach 3 agreeing agents: the {svc} is never isolated and the lying agent is marked SUSPECT.", 30, false_accusation, "B", True),
+    _S("forge-evidence", "A compromised security agent pretends to be another agent",
+       "Agent A claims to be agent B while signing with its own key.",
+       "The forged messages fail verification and are rejected; A's trust drops.", 15, forge_evidence, "", True),
+    _S("agent-crash", "A security agent goes offline, then the {svc} is attacked",
+       "One of the four agents is stopped, then the {svc} is attacked.",
+       "The three remaining agents still reach agreement and finish the whole cycle. Press Reset afterwards (the stopped agent stays down).", 45, agent_crash, "C", True),
+    _S("transient-blip", "A short traffic spike on the {svc} seen by two agents",
+       "A brief jump in connections from the {svc} that only agents A and B see, like a busy moment.",
+       "The agents investigate, close it as a false alarm and isolate nothing.", 30, transient_blip, "C"),
+    _S("slow-burn", "Slow, quiet copying out of the {svc}",
+       "A weak signal that A and B see first and C and D see five seconds later, and that keeps growing.",
+       "The investigation confirms it persists and the agents agree to isolate the {svc}.", 45, slow_burn, "C"),
+    _S("ambiguous", "An unexplained weak signal on the {svc}",
+       "No attack is injected; only two agents keep seeing something faint.",
+       "A human-review flag is raised; nothing is isolated.", 35, ambiguous, "C"),
+    _S("validation-retry", "The first replacement {svc} fails its health check",
+       "The attack is real; the first clean replacement does not come up healthy.",
+       "Evidence is saved, recovery is retried, the second replacement passes and normal access is restored in stages.", 60, validation_retry, "C"),
+    _S("failed-validation", "Every replacement {svc} fails its health check",
+       "Recovery is retried a limited number of times.",
+       "The incident is marked NEEDS HUMAN ATTENTION and the {svc} stays isolated. Press Reset afterwards.", 70, failed_validation, "C", True),
     *(([
-        (Scenario("lab-results-tampered", f"A file in the {D.get('E', 'Laboratory Results Service')} is changed",
-                  f"A file inside the {D.get('E', 'Laboratory Results Service')} (synthetic data only) is modified at runtime.",
-                  f"The four agents, which all watch it, agree 3-of-4 to isolate only the {D.get('E', 'Laboratory Results Service')}; it is replaced, checked and returned in stages. Nothing else is isolated.", 45), lab_results_tampered),
-        (Scenario("medication-failed-logins", f"Repeated failed logins from the {D.get('F', 'Medication Service')}",
-                  f"The {D.get('F', 'Medication Service')} starts hammering the Login & Access Service with wrong passwords.",
-                  f"The failed logins are traced to the {D.get('F', 'Medication Service')}; it is isolated by 3-of-4 agreement, recovered and returned in stages.", 45), medication_failed_logins),
-        (Scenario("database-cascade", f"The {D['D']} is compromised while three services read from it",
-                  f"Records are copied out of the {D['D']}, the service the EHR API, Laboratory Results and Medication services depend on.",
-                  f"Only the {D['D']} is isolated (it is restored first); the services that depend on it are not isolated by mistake.", 60), database_cascade),
+        _S("lab-results-tampered", "A file in the {svc} is changed",
+           "A file inside the {svc} (synthetic data only) is modified at runtime, after a few odd connection attempts.",
+           "The four agents agree 3-of-4 to isolate only the {svc}; it is replaced, checked and returned in stages. Nothing else is isolated.", 45, file_tampering, "E"),
+        _S("medication-failed-logins", "Repeated failed logins from the {svc}",
+           "The {svc} starts hammering the Login & Access Service with wrong passwords.",
+           "The failed logins are traced to the {svc}; it is isolated by 3-of-4 agreement, recovered and returned in stages.", 45, failed_logins, "F"),
+        _S("database-cascade", "The {svc} is compromised while other services depend on it",
+           "Records are copied out of the {svc}; the services that depend on it are watched to make sure they are not isolated by mistake.",
+           "Only the {svc} is isolated; the services that depend on it are not isolated by mistake.", 50, dependency_impact, "D"),
     ]) if SIX else []),
-    (Scenario("obstruct", f"A compromised agent refuses to vote while the {D['C']} is attacked",
-              f"Agent A withholds every vote about the {D['C']} while its records are being copied out. No made-up evidence is sent: A simply does not take part.",
-              f"The other three agents still reach agreement and isolate and recover the {D['C']}. A's withheld votes are shown with the reason. "
-              "A's trust is not reduced (the platform has no rule for a missing vote).", 45), obstruct),
+    _S("obstruct", "A compromised agent refuses to vote while the {svc} is attacked",
+       "One agent withholds every vote about the {svc} while it is being attacked. No made-up evidence is sent: the agent simply does not take part.",
+       "The other three agents still reach agreement and isolate and recover the {svc}. The withheld votes are shown with the reason. "
+       "The agent's trust is not reduced (the platform has no rule for a missing vote).", 45, obstruct, "C"),
 ]}
 
 
 def listing() -> List[dict]:
-    return [{"id": s.id, "title": s.title, "description": s.description, "expect": s.expect, "est_s": s.est_s}
+    return [{"id": s.id, "title": s.title, "description": s.description, "expect": s.expect, "est_s": s.est_s,
+             "default_target": s.default_target, "targets": list(s.targets), "texts": {t: s.text(t) for t in s.targets}}
             for s, _ in CATALOGUE.values()]

@@ -28,6 +28,7 @@ from typing import Callable, Optional
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import scenarios as sc  # noqa: E402
+from runlog import RunRecorder  # noqa: E402
 
 SIMULATOR = "SIMULATOR"
 LOOPBACK = ("127.0.0.1", "::1", "::ffff:127.0.0.1")
@@ -74,10 +75,12 @@ class DemoController:
         self.status = "idle"                       # idle | running | resetting
         self.dirty = False                         # a scenario ran since the last reset
         self.scenario: Optional[str] = None
+        self.target: Optional[str] = None          # the service the running scenario attacks (chosen by the presenter, or the scenario's default)
         self.started_at: Optional[float] = None
         self.last: Optional[dict] = None
         self.cluster = None
         self._build()
+        self.run = RunRecorder(lambda: self.cluster)       # reads the agents' own status every 0.5 s while a scenario runs; changes nothing
 
     # ---- lifecycle
     def _build(self) -> None:
@@ -92,10 +95,17 @@ class DemoController:
             raise
         self.cluster = c
 
-    def start(self, scenario_id: str):
+    def start(self, scenario_id: str, target: Optional[str] = None):
         with self.lock:
             if scenario_id not in self.catalogue:
                 return 400, {"error": "unknown scenario"}
+            meta0 = self.catalogue[scenario_id][0]
+            allowed = tuple(getattr(meta0, "targets", ()) or ())
+            if target is not None:
+                if not isinstance(target, str) or not allowed:
+                    return 400, {"error": "this scenario does not take a service"}
+                if target not in allowed:
+                    return 400, {"error": "unknown service"}                # only the workloads of config/workloads.json can be named: no free-form input
             if self.status != "idle":
                 return 409, {"error": f"busy ({self.status})"}
             if self.dirty:
@@ -103,21 +113,25 @@ class DemoController:
             assert_simulator(self.cluster)           # again, immediately before acting
             self.gen += 1
             gen, c = self.gen, self.cluster
-            self.status, self.dirty, self.scenario, self.started_at, self.last = "running", True, scenario_id, time.time(), None
-            threading.Thread(target=self._run, args=(gen, c, scenario_id), daemon=True).start()
-            return 202, {"started": scenario_id}
+            tgt = (target or getattr(meta0, "default_target", "")) or None
+            self.status, self.dirty, self.scenario, self.target, self.started_at, self.last = "running", True, scenario_id, tgt, time.time(), None
+            text = meta0.text(tgt) if hasattr(meta0, "text") else {"title": meta0.title}
+            self.run.begin(scenario_id, text["title"], tgt or "", target_name=sc.D.get(tgt or "", ""))
+            threading.Thread(target=self._run, args=(gen, c, scenario_id, tgt), daemon=True).start()
+            return 202, {"started": scenario_id, "target": tgt}
 
-    def _run(self, gen: int, cluster, scenario_id: str) -> None:
+    def _run(self, gen: int, cluster, scenario_id: str, target: Optional[str] = None) -> None:
         meta, fn = self.catalogue[scenario_id]
         try:
-            ok, detail = fn(sc.Runner(cluster, lambda: self.gen != gen))
+            ok, detail = fn(sc.Runner(cluster, lambda: self.gen != gen, target=target, run=self.run, lead_in_s=sc.LEAD_IN_S))
         except Exception as exc:
             ok, detail = False, f"scenario driver error: {exc.__class__.__name__}"
         with self.lock:
             if self.gen != gen:                      # a Reset happened meanwhile: this result is stale, drop it
                 return
-            self.last = {"scenario": scenario_id, "ok": bool(ok), "detail": detail, "finished_at": time.time(),
+            self.last = {"scenario": scenario_id, "target": target, "ok": bool(ok), "detail": detail, "finished_at": time.time(),
                          "duration_s": round(time.time() - (self.started_at or time.time()), 1)}
+            self.run.finish(ok, detail)
             self.status = "idle"
 
     def reset(self):
@@ -126,6 +140,7 @@ class DemoController:
                 return 409, {"error": "already resetting"}
             self.gen += 1                            # cancels any running scenario and drops its result
             self.status, old = "resetting", self.cluster
+        self.run.reset()
         try:
             try:
                 old.stop()
@@ -137,20 +152,32 @@ class DemoController:
                 self.status = "idle"
             return 500, {"error": str(exc)}
         with self.lock:
-            self.status, self.dirty, self.scenario, self.started_at, self.last = "idle", False, None, None, None
+            self.status, self.dirty, self.scenario, self.target, self.started_at, self.last = "idle", False, None, None, None, None
         return 200, {"reset": True}
 
     def state(self) -> dict:
         with self.lock:
-            return {"source": SIMULATOR, "status": self.status, "running": self.scenario if self.status == "running" else None,
+            running = self.status == "running"
+            meta = self.run.meta or {}
+            phase = meta.get("phase") if running else None
+            countdown = max(0.0, sc.LEAD_IN_S - (time.time() - (self.started_at or 0))) if phase == "lead-in" else 0.0
+            return {"source": SIMULATOR, "status": self.status, "running": self.scenario if running else None,
+                    "target": self.target if running else None, "phase": phase, "countdown_s": round(countdown, 1),
                     "started_at": self.started_at, "needs_reset": self.dirty and self.status == "idle",
                     "last": self.last,
-                    "scenarios": [{"id": s.id, "title": s.title, "description": s.description, "expect": s.expect,
-                                   "est_s": s.est_s} for s, _ in self.catalogue.values()]}
+                    "services": [{"id": n, "name": sc.D[n]} for n in sc.TARGETS],
+                    "scenarios": [{"id": s.id, "title": s.title, "description": s.description, "expect": s.expect, "est_s": s.est_s,
+                                   "default_target": getattr(s, "default_target", ""), "targets": list(getattr(s, "targets", ())),
+                                   "texts": {x: s.text(x) for x in getattr(s, "targets", ())} if hasattr(s, "text") else {}}
+                                  for s, _ in self.catalogue.values()]}
 
     def stop(self) -> None:
         with self.lock:
             self.gen += 1
+        try:
+            self.run.stop()
+        except Exception:
+            pass
         try:
             self.cluster.stop()
         except Exception:
@@ -187,6 +214,8 @@ def make_server(ctl: DemoController, token: str, port: int = 50270) -> Threading
                 return
             if self.path == "/state":
                 return self._send(200, ctl.state())
+            if self.path == "/run":
+                return self._send(200, ctl.run.snapshot())
             return self._send(404, {"error": "not found"})
 
         def do_POST(self):
@@ -202,7 +231,7 @@ def make_server(ctl: DemoController, token: str, port: int = 50270) -> Threading
             try:
                 if self.path == "/start":
                     sid = body.get("scenario")
-                    return self._send(*(ctl.start(sid) if isinstance(sid, str) else (400, {"error": "scenario must be a string"})))
+                    return self._send(*(ctl.start(sid, body.get("target")) if isinstance(sid, str) else (400, {"error": "scenario must be a string"})))
                 if self.path == "/reset":
                     return self._send(*ctl.reset())
             except SafetyError as exc:
