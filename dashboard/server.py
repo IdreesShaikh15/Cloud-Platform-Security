@@ -46,7 +46,10 @@ from urllib.parse import parse_qs, urlparse
 HERE = os.path.dirname(os.path.abspath(__file__))
 PORT = int(os.environ.get("PORT", "8090"))
 POLL_S = float(os.environ.get("POLL_S", "1.0"))
-POLL_TIMEOUT_S = float(os.environ.get("POLL_TIMEOUT_S", "1.5"))     # one agent's /status; raise it on a slow port-forward
+POLL_TIMEOUT_S = float(os.environ.get("POLL_TIMEOUT_S", "4.0"))     # one agent's /status; a busy laptop can take over a second; raise it on a slow port-forward
+# An agent that misses a poll keeps its LAST answer for GRACE_S seconds (its data simply ages) and is only then called unreachable, so one slow or lost
+# reply never flips the page to "DEMO MODE NOT RUNNING". A really dead agent or simulator is still reported, GRACE_S seconds later.
+GRACE_S = float(os.environ.get("GRACE_S", "8"))
 # A channel nobody has asked about for IDLE_AFTER_S seconds is polled only every IDLE_POLL_S seconds (the page being shown stays at POLL_S), so the
 # Demo page's simulator and the Live page's four port-forwards do not both run at full rate while only one of them is on screen. The agents keep
 # 300 events and their last decisions themselves, so a 5 s interval loses nothing; the first request after an idle spell wakes the poller at once.
@@ -106,6 +109,7 @@ class Collector:
     def __init__(self, channel: "Channel" = None):
         self.channel = channel
         self.lock = threading.Lock()
+        self.first_miss: dict = {}                # source id -> when its current run of missed polls began (see GRACE_S)
         self.rejected: dict = {}                  # source id -> the data_source it claimed, when that is not what this channel accepts
         self.dropped_events = 0                   # events / records refused because their source is not this channel's
         self.received: dict = {}                  # source id -> local time its latest status arrived (freshness, clock-skew free)
@@ -142,8 +146,13 @@ class Collector:
         with self.lock:
             for sid, res in results:
                 if res is None:
+                    t_now = time.time()
+                    first = self.first_miss.setdefault(sid, t_now)
+                    if sid in self.status and t_now - first < GRACE_S:
+                        continue                                    # one missed poll: keep its last answer, it is just a little older
                     self.status.pop(sid, None)
                     continue
+                self.first_miss.pop(sid, None)
                 if not self._accepts(clean_source(res.get("data_source"))):
                     # THE SEPARATION RULE: a channel only ever holds data stamped with its own source. Anything else
                     # (simulated data on the live channel, live data on the demo channel, unknown, mixed) is discarded

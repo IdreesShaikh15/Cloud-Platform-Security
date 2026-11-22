@@ -113,3 +113,28 @@ def test_browser_measurement_on_a_slow_link_stays_bounded():
     assert m["timeline_rows_in_dom"] <= 200
     assert m["max_requests_in_flight"] <= 6, m                  # before the fix: 7 and growing with the delay
     assert m["state_fetches"] <= 6, m                            # one cycle needs two 1.5 s round trips; a new one every second used to be started regardless
+
+
+# ------------------------------------------------------------------ one lost poll must not flip the page to "not running"
+def test_one_missed_poll_keeps_the_last_answer_until_the_grace_period_ends(srv, monkeypatch):
+    chn = next(iter(srv.CHANNELS.values()))
+    col = chn.collector
+    ok = {"data_source": srv.SIMULATOR, "event_boot": "b", "event_seq": 0, "events": []}
+    answers = {"on": True}
+    monkeypatch.setattr(srv, "get", lambda url: dict(ok) if answers["on"] else None)
+    monkeypatch.setattr(srv, "GRACE_S", 0.4)
+    col.poll_once()
+    assert set(col.snapshot()) == {"A", "B", "C", "D"}
+    answers["on"] = False
+    col.poll_once()                                                   # every agent misses ONE poll: still shown, not "not running"
+    assert set(col.snapshot()) == {"A", "B", "C", "D"}
+    time.sleep(0.5)
+    col.poll_once()                                                   # still silent after GRACE_S: now they really are unreachable
+    assert col.snapshot() == {}
+    answers["on"] = True
+    col.poll_once()                                                   # and they come straight back
+    assert set(col.snapshot()) == {"A", "B", "C", "D"}
+
+
+def test_poll_timeout_default_is_generous_for_a_busy_laptop(srv):
+    assert srv.POLL_TIMEOUT_S >= 3.0 and srv.GRACE_S >= 5.0

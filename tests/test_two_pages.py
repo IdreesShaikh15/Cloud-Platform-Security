@@ -99,6 +99,7 @@ class Rig:
         if control:
             monkeypatch.setenv("SIM_CONTROL_URL", self.ctl.url)
             monkeypatch.setenv("SIM_CONTROL_TOKEN", TOKEN)
+        monkeypatch.setenv("GRACE_S", "0")        # these tests expect a silent agent to be reported at once; the grace period has its own test (test_dashboard_perf.py)
         for k, v in (extra_env or {}).items():
             monkeypatch.setenv(k, v)
         spec = importlib.util.spec_from_file_location("dash_two_pages", os.path.join(ROOT, "dashboard", "server.py"))

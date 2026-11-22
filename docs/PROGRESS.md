@@ -698,3 +698,9 @@ Full diagnosis, per-scenario Demo Mode timing, measurements and exact laptop ste
 * **"This run" graphs** (`sim/runlog.py`, `GET /api/sim/run`): different panels per scenario, drawn from a recording of the one simulator run, with a run-vs-evaluation-median table. The static 1,140-trial evaluation graphs are unchanged and never altered by a run.
 * **No empty tabs**: a "Suspicious activity that did NOT lead to an isolation" section and a "nothing needed recovery" card for non-isolating scenarios. Collector history is cleared when a simulator agent restarts (fixed stale alerts after Reset).
 * **Tests**: `tests/test_run_graphs.py`, `scripts/check-demo-scenarios.js` (all 13 scenarios drive the real dashboard headlessly). See `docs/DEMO-SCENARIOS.md`. Simulator results only: nothing here was run on a real cluster.
+
+## "DEMO MODE NOT RUNNING" no longer flickers (dashboard only; no security logic changed)
+
+* **Cause**: one `/status` poll that took longer than 1.5 s (a busy laptop) dropped that agent from the page at once; when all four missed together the page showed "DEMO MODE NOT RUNNING".
+* **Fix** (`dashboard/server.py`): the per-agent poll timeout is now 4 s (`POLL_TIMEOUT_S`), and an agent that misses a poll keeps its last answer for 8 s (`GRACE_S`, its data just ages) before it is called unreachable. A really stopped agent or simulator is still reported, 8 s later; Reset and the agent-crash scenario behave as before apart from that delay.
+* **Tests**: `tests/test_dashboard_perf.py` (grace period, defaults); `tests/test_two_pages.py` sets `GRACE_S=0` so its immediate-unreachable checks still apply.
