@@ -685,6 +685,20 @@ function keyCards(ten) {
   return `<div class="kcards">` + cards.map(([v, l]) => `<div class="kcard"><div class="kv">${esc(v || "see below")}</div><div class="kl">${esc(l)}</div></div>`).join("") +
     `<div class="kcard sim"><div class="kv">SIMULATOR</div><div class="kl">every number here comes from the simulator; nothing was measured on a real cluster</div></div></div>`;
 }
+// The nine evaluation graphs are too many to present, so the five that carry the argument stay on the page and four go into a collapsed appendix
+// (4.4 investigation on/off, 4.6 agent crash, 4.7 overhead, 4.11 baselines). Nothing is deleted: the figures, the results and the paper are unchanged, and the graph
+// that matches the scenario just run still appears under "This run".
+const EV_APPENDIX = ["4.4", "4.6", "4.7", "4.11"];
+function evCard(x) {
+  const bl = x.blocks || [], vis = bl.filter(b => b.type === "image" || b.type === "table"), long = bl.filter(b => !(b.type === "image" || b.type === "table"));
+  return `<section class="evcard" id="ev-${esc(x.id.replace(/\./g, "-"))}"><h3>${esc(x.id)} ${esc(x.title)} ${srcTag("SIMULATOR")}</h3>${evBlocks(vis.filter(b => b.type === "image"))}${evBlocks(vis.filter(b => b.type === "table"))}${long.length ? dd("ev-" + x.id, "Explanation: how to read it and what the data shows", evBlocks(long), "evd") : ""}</section>`;
+}
+function evResults(res) {
+  if (!res) return "";
+  const main = res.subsections.filter(x => !EV_APPENDIX.includes(x.id)), more = res.subsections.filter(x => EV_APPENDIX.includes(x.id));
+  return main.map(evCard).join("") +
+    (more.length ? `<section class="evcard">${dd("ev-appendix", `More results (appendix): ${more.map(x => esc(x.title)).join(" · ")}`, more.map(evCard).join(""), "evd")}</section>` : "");
+}
 function renderEvaluation(v) {
   const box = document.getElementById("evalbox");
   const banner = `<div class="evbanner" role="note">${srcTag("SIMULATOR")} ${esc(v.notice)}</div>`;
@@ -694,10 +708,9 @@ function renderEvaluation(v) {
   const about = ["1", "2", "3"].map(sec).filter(Boolean).map(s => `<details class="evd"><summary>${esc(s.title)}</summary>${evBlocks(s.blocks)}</details>`).join("");
   const ten = sec("0"), res = sec("4"), lim = sec("5");
   box.innerHTML = banner +
-    `<div class="mut">${esc(v.title)} · ${m.trials ? m.trials + " seeded trials" : "trials: unknown"} · ${esc(m.errors_text || "")} · files from ${t(m.generated_at)} · ${(m.figures || []).length} graphs</div>` +
+    `<div class="mut">${esc(v.title)} · ${m.trials ? m.trials + " seeded trials" : "trials: unknown"} · ${esc(m.errors_text || "")} · files from ${t(m.generated_at)} · ${(m.figures || []).length} graphs (${(m.figures || []).length - 4} shown, 4 in the appendix below)</div>` +
     (ten ? `<section class="evcard"><h3>Key results</h3>${keyCards(ten)}${dd("ev-twelve", "Show all twelve lines", evBlocks(ten.blocks.filter(b => b.type !== "code").slice(0, 1)), "evd")}</section>` : "") +
-    (res ? res.subsections.map(x => { const bl = x.blocks || [], vis = bl.filter(b => b.type === "image" || b.type === "table"), long = bl.filter(b => !(b.type === "image" || b.type === "table"));
-        return `<section class="evcard" id="ev-${esc(x.id.replace(/\./g, "-"))}"><h3>${esc(x.id)} ${esc(x.title)} ${srcTag("SIMULATOR")}</h3>${evBlocks(vis.filter(b => b.type === "image"))}${evBlocks(vis.filter(b => b.type === "table"))}${long.length ? dd("ev-" + x.id, "Explanation: how to read it and what the data shows", evBlocks(long), "evd") : ""}</section>`; }).join("") : "") +
+    evResults(res) +
     (lim ? `<section class="evcard"><h3>${esc(lim.title)}</h3>${dd("ev-limits", "Show the limitations", evBlocks(lim.blocks), "evd")}</section>` : "") + about;
 }
 async function loadEvaluation() {

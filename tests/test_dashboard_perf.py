@@ -152,3 +152,11 @@ def test_the_guided_walkthrough_is_removed_but_the_demo_controls_remain():
         assert gone not in HTML, gone
     for kept in ('id="simctl"', 'id="simstart"', 'id="simreset"', 'id="simsel"', 'id="simtarget"', "refreshSim", "refreshRun"):
         assert kept in HTML, kept
+
+
+# ------------------------------------------------------------------ the Performance Results tab shows five fixed graphs; four sit in a collapsed appendix
+def test_four_of_the_nine_evaluation_graphs_are_in_a_collapsed_appendix_nothing_is_deleted():
+    assert 'const EV_APPENDIX = ["4.4", "4.6", "4.7", "4.11"];' in HTML
+    assert 'dd("ev-appendix"' in HTML and "evResults(res)" in HTML
+    figs = os.listdir(os.path.join(ROOT, "results"))
+    assert len([f for f in figs if f.startswith("fig") and f.endswith(".png")]) == 9          # all nine figure files are still there (the paper uses them)
