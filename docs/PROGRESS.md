@@ -704,3 +704,11 @@ Full diagnosis, per-scenario Demo Mode timing, measurements and exact laptop ste
 * **Cause**: one `/status` poll that took longer than 1.5 s (a busy laptop) dropped that agent from the page at once; when all four missed together the page showed "DEMO MODE NOT RUNNING".
 * **Fix** (`dashboard/server.py`): the per-agent poll timeout is now 4 s (`POLL_TIMEOUT_S`), and an agent that misses a poll keeps its last answer for 8 s (`GRACE_S`, its data just ages) before it is called unreachable. A really stopped agent or simulator is still reported, 8 s later; Reset and the agent-crash scenario behave as before apart from that delay.
 * **Tests**: `tests/test_dashboard_perf.py` (grace period, defaults); `tests/test_two_pages.py` sets `GRACE_S=0` so its immediate-unreachable checks still apply.
+
+## Final check before the demo: Reset can no longer get stuck (simulator harness only; no security logic changed)
+
+* **Found**: in a three-way parallel soak of all 13 scenarios, one run's **Reset stayed on "resetting" forever** (the Start button never came back). The rebuild after a Reset raised an error that nothing caught.
+* **Fixed**: `sim/world.py` frees any port a half-built cluster already bound; `sim/demo_server.py` retries a failed rebuild (5 tries, 1.5 s apart) and, if it still fails, ends `idle` with an error so Reset can simply be pressed again. `tests/test_reset_robust.py`.
+* **Verified (simulator, headless Chromium)**: every scenario on every service A-F, 78 runs, all ok: isolating scenarios give exactly 1 security alert plus evidence and action rows; the four non-isolating ones give 0 alerts plus suspicious-activity rows; every run draws its graphs. Three further 13-scenario soaks ran in parallel with no failures after the fix. The original hang was seen once and not reproduced afterwards, so the fix is defensive, not proven against the exact cause.
+* **Full test suite**: 650 passed, 1 intermittent failure (`test_dataset.py::test_the_client_generates_continuous_clinician_traffic_without_errors`, availability 0.92 on one of three reruns; unrelated to Demo Mode).
+* **Not verified**: Live Monitoring and a real cluster, the HP Omen / WSL2 / Docker Desktop laptop, native Windows.

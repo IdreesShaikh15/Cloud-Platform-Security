@@ -142,15 +142,27 @@ class DemoController:
             self.status, old = "resetting", self.cluster
         self.run.reset()
         try:
+            old.stop()
+        except Exception:
+            pass
+        failure = None
+        for attempt in range(1, 6):                  # a port can be briefly taken (by the OS or the previous cluster): wait and try again, never get stuck
             try:
-                old.stop()
-            except Exception:
-                pass
-            self._build()
-        except SafetyError as exc:
+                self._build()
+                failure = None
+                break
+            except SafetyError as exc:
+                failure = str(exc)
+                break                                # a safety refusal is final, never retried
+            except Exception as exc:                 # noqa: BLE001  (anything else, e.g. "address already in use")
+                import traceback
+                traceback.print_exc()
+                failure = f"the simulator could not restart ({exc.__class__.__name__}: {exc})"
+                time.sleep(1.5)
+        if failure is not None:
             with self.lock:
-                self.status = "idle"
-            return 500, {"error": str(exc)}
+                self.status, self.dirty = "idle", True       # usable again: press Reset to try once more (a new scenario is refused until it worked)
+            return 500, {"error": failure}
         with self.lock:
             self.status, self.dirty, self.scenario, self.target, self.started_at, self.last = "idle", False, None, None, None, None
         return 200, {"reset": True}

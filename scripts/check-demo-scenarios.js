@@ -15,7 +15,7 @@ const up = u => new Promise(r => http.get(u, res => { res.resume(); r(res.status
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 (async () => {
   const srv = spawn("python3", [path.join(ROOT, "sim/demo_server.py"), "--dashboard", "--dashboard-port", String(PORT), "--control-port", String(CTRL), "--base-port", String(BASE)],
-    { cwd: ROOT, stdio: "ignore", detached: true });
+    { cwd: ROOT, stdio: process.env.CHECK_SERVER_LOG ? ["ignore", "ignore", require("fs").openSync(process.env.CHECK_SERVER_LOG, "a")] : "ignore", detached: true });   // CHECK_SERVER_LOG=file keeps the simulator's error output
   const kill = () => { try { process.kill(-srv.pid, "SIGKILL"); } catch (e) {} }; process.on("exit", kill);
   for (let i = 0; i < 120 && !(await up(`http://127.0.0.1:${PORT}/healthz`)); i++) await sleep(500);
   const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 1500, height: 1100 } });
@@ -26,7 +26,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const ids = await p.evaluate(() => [...document.querySelectorAll("#simsel option")].map(o => o.value));
   const results = [];
   for (const id of ids.filter(i => !ONLY.length || ONLY.includes(i))) {
-    await p.waitForFunction(() => !document.getElementById("simstart").disabled, null, { timeout: 120000 });
+    try { await p.waitForFunction(() => !document.getElementById("simstart").disabled, null, { timeout: 120000 }); }
+    catch (e) {                                                                   // the Start button never came back: say why instead of dying silently
+      const why = await p.evaluate(async () => ({ stat: document.getElementById("simstat").textContent, state: await (await fetch("api/sim/state")).json().catch(() => null) }));
+      results.push({ id, target: "-", secs: -1, countdownSeen: false, ok: false, alerts: 0, suspicious: 0, evidence: 0, actions: 0, panels: [], detail: "START BUTTON STUCK: " + JSON.stringify(why).slice(0, 400) });
+      await p.click("#simreset").catch(() => {}); await sleep(3000); continue;
+    }
     await p.selectOption("#simsel", id);
     await sleep(1500);                                                           // the page rebuilds the service list for this scenario
     const hasTarget = await p.evaluate(() => !!document.getElementById("simtarget").value);

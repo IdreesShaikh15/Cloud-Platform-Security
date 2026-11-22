@@ -252,12 +252,38 @@ class LocalCluster:
         self.agents: Dict[str, ResilienceAgent] = {}
         self.servers: List[PeerServer] = []
         self.status_servers: Dict[str, object] = {}
+        try:
+            self._build_agents(with_status, state_dir)
+        except BaseException:
+            self._release_ports()               # a port clash half-way: free what was already bound so a retry can bind the same ports
+            raise
+        self._stop = threading.Event()
+        self._threads: List[threading.Thread] = []
+        # Per-agent stop events, so a single agent can be "crashed" mid-run
+        # while the other three keep ticking (the agent-crash scenario).
+        self._crashed: Dict[str, threading.Event] = {n: threading.Event() for n in self.agents}
+        self._servers_by_node: Dict[str, PeerServer] = dict(zip(self.agents, self.servers))
+
+    def _release_ports(self) -> None:
+        for srv in list(self.servers):
+            try:
+                srv.stop(0)
+            except Exception:
+                pass
+        for ss in list(self.status_servers.values()):
+            try:
+                ss.shutdown()
+                ss.server_close()
+            except Exception:
+                pass
+
+    def _build_agents(self, with_status: bool, state_dir) -> None:
         for n, spec in self.cfg.nodes.items():
             d = os.path.join(self.pki_dir, spec.agent_name)
             signer = Signer.from_pem_file(n, os.path.join(d, "signing.key"))
             tls = TlsMaterial.from_dir(d)
             comp = CompromiseSource(path=None)
-            agent = ResilienceAgent(self.cfg, n, signer, registry, FakeTelemetry(self.world, n),
+            agent = ResilienceAgent(self.cfg, n, signer, self.registry, FakeTelemetry(self.world, n),
                                     self.backend, MetricsRecorder(n), comp,
                                     decision_log_path=(os.path.join(state_dir, f"decisions-{n}.jsonl")
                                                        if state_dir else None),
@@ -274,12 +300,6 @@ class LocalCluster:
             if with_status:
                 from resilience.status_server import serve_status
                 self.status_servers[n] = serve_status(agent, int(spec.status_url.split(":")[2].split("/")[0]))
-        self._stop = threading.Event()
-        self._threads: List[threading.Thread] = []
-        # Per-agent stop events, so a single agent can be "crashed" mid-run
-        # while the other three keep ticking (the agent-crash scenario).
-        self._crashed: Dict[str, threading.Event] = {n: threading.Event() for n in self.agents}
-        self._servers_by_node: Dict[str, PeerServer] = dict(zip(self.agents, self.servers))
 
     def start(self):
         for n, a in self.agents.items():
