@@ -142,7 +142,7 @@ Afterwards `python3 scripts/verify-baseline.py` shows six `ok` again (the tripwi
 
 ## FALLBACK: only the original four workloads, everything else kept
 Use this if six workloads will not run on your laptop (for example a Pending pod from lack of memory). It keeps the 3-of-4 quorum, the staged return, the admission webhook, the
-laptop dashboard, the guided walkthrough and the baselines; only the Laboratory Results and Medication services are left out. Rehearsed on the sandbox cluster, **on the latest code, starting
+laptop dashboard and the baselines; only the Laboratory Results and Medication services are left out. Rehearsed on the sandbox cluster, **on the latest code, starting
 from the six-workload deployment** (the harder case; if you never deployed the two extra services, the removal lines below simply do not appear).
 ```bash
 cd "/mnt/c/Users/IDREES SHAIKH/resilience-platform" && source .venv/bin/activate

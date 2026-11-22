@@ -122,7 +122,6 @@ Then restart Terminal 2 (the dashboard) to empty the alert list. **Do not** use 
 ## 7. 14:00-17:00 The measured results (Demo Mode) while the reset runs
 **Show:** tab 2 -> *Performance Results*: the five big cards: **80 of 80** trials went all the way through detection, isolation, recovery and return; **1.2 s** to isolate a genuine attack (simulator time); **0/20** healthy workloads wrongly isolated because one agent lied; **3 of 4** compromised agents are needed to break the design; and the **SIMULATOR** card (nothing here was measured on a real cluster). Click "Show all twelve lines" if asked. Optionally scroll to **4.11 Baselines**.
 **Say:** "These numbers come from 1,140 seeded trials in the simulator. The agents, signatures and agreement rules are the real code; the telemetry and Kubernetes are simulated. The design tolerates one bad agent, not two: three compromised agents can isolate a healthy service."
-**Optional (60 s):** press **Start walkthrough** (Demo Mode) and play the first steps.
 **If the page is slow:** use `docs/presentation-guide.pdf` section 6.
 
 ## 8. 17:00-19:00 What is and is not proven (be honest)

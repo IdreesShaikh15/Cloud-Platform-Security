@@ -165,7 +165,6 @@ a(table([["You see", "It means"],
 a(P("These are four separate things on purpose: there is no single combined 'security score'. Each agent is shown in exactly one of five states: <b>Agrees, Disagrees, Unavailable, Not yet responded, Message failed verification</b>. Only a counted, signed vote is 'Agrees'.", SMALL))
 a(shot("dashboard-pK-05-security-alert-story.png", "A <b>Security Alert</b> in the Simple view: it starts with a plain-English story (what happened, who agreed, how it ended) and shows each reading as a sentence; votes, trust changes and raw logs are in the Detailed view.", width=(W - 2 * M) * 0.95))
 a(shot("dashboard-pK-06-performance-key-cards.png", "<b>Performance Results</b>: five large key-result cards (the numbers are read out of the results text); the full twelve lines, graphs and tables are one click away. Labelled as simulator results.", width=(W - 2 * M) * 0.95))
-a(shot("dashboard-pK-07-walkthrough.png", "The <b>guided walkthrough</b> (Demo Mode only): eleven steps that run a real simulator scenario; a step that has not been reached yet says so instead of showing results.", width=(W - 2 * M) * 0.95))
 
 # ------------------------------------------------------------------ 5 data
 a(PageBreak())

@@ -138,3 +138,17 @@ def test_one_missed_poll_keeps_the_last_answer_until_the_grace_period_ends(srv, 
 
 def test_poll_timeout_default_is_generous_for_a_busy_laptop(srv):
     assert srv.POLL_TIMEOUT_S >= 3.0 and srv.GRACE_S >= 5.0
+
+
+# ------------------------------------------------------------------ the top bar is fixed; the guided walkthrough is gone
+def test_the_top_bar_with_the_demo_mode_banner_is_fixed_to_the_window():
+    assert "#topbar { position:fixed; top:0;" in HTML and "position:sticky" not in HTML.split("#topbar {")[1].split("}")[0]
+    assert "body { padding-top: calc(var(--tbh, 92px) + 12px); }" in HTML           # the page reserves the bar's height, so nothing hides under it
+    assert '"--tbh"' in HTML and "ResizeObserver" in HTML                            # and the reserved height follows the bar (it grows when the banner wraps)
+
+
+def test_the_guided_walkthrough_is_removed_but_the_demo_controls_remain():
+    for gone in ('id="tour"', "Guided demonstration", "renderTour", "TOUR_STEPS", "tourstart"):
+        assert gone not in HTML, gone
+    for kept in ('id="simctl"', 'id="simstart"', 'id="simreset"', 'id="simsel"', 'id="simtarget"', "refreshSim", "refreshRun"):
+        assert kept in HTML, kept
